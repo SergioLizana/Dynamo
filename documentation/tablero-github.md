@@ -44,6 +44,14 @@ En Git Bash, un argumento que empieza por `/` se reescribe como ruta de Windows:
 «C:/Program Files/Git/to-tasks…» (2026-10-26). Se evita anteponiendo `MSYS_NO_PATHCONV=1` al comando `gh`; el cuerpo
 por `--body-file -` no se ve afectado.
 
+Justo después de crear un issue, su tarjeta tarda unos segundos en salir en `gh project item-list`, y `move_card`
+falla con «specify the item to edit» (visto el 2026-10-26 con #13). Sin buscar el id de la tarjeta, por la URL del
+issue y los nombres del campo y del estado, funciona a la primera:
+
+```bash
+gh project item-edit 1 --owner SergioLizana --url https://github.com/SergioLizana/Dynamo/issues/<n>   --field "Status" --value "Todo"
+```
+
 Al borrar un issue, su tarjeta queda un rato en el tablero vacía (`content` y `status` a `null` en
 `gh project item-list`) y `gh project item-delete` la rechaza por permisos. GitHub la quita sola al cabo de unos
 minutos (visto el 2026-10-26 con #9 y #10): no hay que hacer nada.

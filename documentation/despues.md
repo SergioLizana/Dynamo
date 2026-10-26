@@ -1,0 +1,23 @@
+# Después
+
+Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientras no los pida un problema real
+(plan §8.1). Cada entrada dice de dónde sale y qué hay comprobado.
+
+## Proteger `main`
+
+- **Origen:** revisión del #4 (2026-10-26). La lista negra de `.claude/settings.json` frena `git push` y los
+  `gh api -X/--method`, pero `gh api <ruta> -f …` hace un POST implícito y `gh api graphql` admite mutaciones: una
+  ejecución desatendida podría escribir en `main` por la API.
+- **Comprobado:** con el plan Free y el repositorio privado, GitHub no deja proteger ramas ni crear reglas:
+  `gh api repos/SergioLizana/Dynamo/branches/main/protection` → `403 Upgrade to GitHub Pro or make this repository
+  public`; `.../rulesets` da lo mismo.
+- **Opciones:** GitHub Pro; o que los agentes usen un token de grano fino con *Contents* en solo lectura (los agentes
+  no necesitan escribir código en GitHub: fusionan en local), y *Issues* y *Projects* en escritura. Sin comprobar si
+  un token de grano fino puede escribir en un Project de usuario.
+
+## Una identidad propia para los agentes
+
+- **Origen:** revisión del #4. Todo lo que hacen los agentes (comentarios, etiquetas, edición de tickets) sale a
+  nombre de `SergioLizana`: GitHub no distingue lo que hizo el humano de lo que hizo un agente.
+- **Opciones:** una cuenta de máquina (sin comprobar las condiciones de GitHub para cuentas de este tipo) o una GitHub
+  App. Un token de grano fino de la cuenta propia limita lo que puede hacer el agente, pero no cambia el autor.
