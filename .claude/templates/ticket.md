@@ -8,7 +8,8 @@
 - [ ] <Casilla que se comprueba con un comando o una lectura>
 
 ## Bloqueado por
-<Nada. | #n, #m>  (la relación nativa de GitHub es la que cuenta; esto es solo para leer)
+<Nada. | #n, #m>
+<!-- La relación nativa de GitHub es la que cuenta; esta sección es solo para leer. -->
 
 ## Fuera de alcance
 <Lo que no se toca.>

@@ -35,6 +35,15 @@ GitHub solo cierra issues al fusionar en `main`, y los tickets se fusionan en `r
 gh issue edit <n> -R SergioLizana/Dynamo --add-label hecho-en-release
 ```
 
+## Añadir un issue al tablero
+
+`gh issue create ... --project "Dynamo"` lo añade al tablero **sin estado** (probado el 2026-10-26 con el issue #8,
+ya borrado: solo hay evento `AddedToProjectV2Event`). Hay que moverlo a *Todo* con `move_card`.
+
+En Git Bash, un argumento que empieza por `/` se reescribe como ruta de Windows: el issue #10 se creó con el título
+«C:/Program Files/Git/to-tasks…» (2026-10-26). Se evita anteponiendo `MSYS_NO_PATHCONV=1` al comando `gh`; el cuerpo
+por `--body-file -` no se ve afectado.
+
 ## Mover una tarjeta
 
 ```bash
