@@ -58,3 +58,18 @@ move_card() { # $1 = nº de issue, $2 = id de la opción
 
 Probado el 2026-10-26 sobre el issue de prueba #6 (ya borrado, así que no queda historial): Todo → In Progress → Verify → In Review → In Progress → In Review → Done. Si se renombra o recrea un estado,
 se vuelven a leer con `gh project field-list 1 --owner SergioLizana --format json`.
+
+## Comprobar por qué estados ha pasado una tarjeta
+
+Lo escribe GitHub, no el agente: es la evidencia de los cambios de estado. La API REST (`issues/<n>/timeline`) trae
+los eventos pero **no** los estados; hay que usar GraphQL.
+
+```bash
+gh api graphql -f query='query{repository(owner:"SergioLizana",name:"Dynamo"){issue(number:<n>){
+  timelineItems(first:50,itemTypes:[PROJECT_V2_ITEM_STATUS_CHANGED_EVENT]){nodes{
+  ... on ProjectV2ItemStatusChangedEvent{createdAt previousStatus status}}}}}}' \
+  --jq '.data.repository.issue.timelineItems.nodes[]|"\(.createdAt) \(.previousStatus) -> \(.status)"'
+```
+
+Probado el 2026-10-26 sobre #1: `Todo -> In Progress`, `In Progress -> Done`, con fecha. Un issue borrado se lleva su
+historial.
