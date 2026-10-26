@@ -256,13 +256,13 @@ y enlace a los PR, sin construir nada. Solo GitHub hasta que haga falta otra cos
 el paso en el que está trabajando el agente**, también cuando un ticket vuelve de *In Review* a *In Progress* en otra
 vuelta. Un ticket atascado lleva la etiqueta `bloqueado`, no un estado.
 
-Por comprobar en la etapa 1:
-- **Comprobado el 2026-10-26:** la relación «blocked by» nativa de GitHub se crea y se lee por la API
-  (`repos/<repo>/issues/<n>/dependencies/blocked_by`); así están enlazados los tickets #1-#5. Falta ver si basta para
-  calcular la frontera.
-- **Sin verificar:** GitHub cierra los issues automáticamente solo cuando un PR se fusiona en la rama por defecto. Si la frontera
-  mira los issues cerrados, no avanzará mientras se trabaja en la rama de integración. Probablemente harán falta
-  etiquetas (`hecho-en-integracion`, `bloqueado`).
+Comprobado el 2026-10-26 (detalle y comandos en `documentation/tablero-github.md`, plantilla en
+`.claude/templates/ticket.md`):
+- **Bloqueado por:** la relación nativa de GitHub (`.../dependencies/blocked_by`). Un bloqueador cerrado sigue listado
+  con `state: closed`; el proyecto no tiene columna «Blocked by».
+- **Hecho en release:** etiqueta `hecho-en-release` + tarjeta en *Done*; el issue sigue abierto hasta llegar a `main`
+  (el PR de la release lleva `Closes #n`; el cierre automático está sin probar). La frontera de `/run` son los issues
+  abiertos sin esa etiqueta cuyos bloqueadores la tienen o están cerrados.
 
 ## 7. Lo que hay que resolver para trabajar sin mí
 
