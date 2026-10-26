@@ -25,6 +25,8 @@ Before drafting, check facts instead of asking them:
 - what already exists in the repo that the spec mentions;
 - open issues that already cover part of the work (`gh issue list --state open`). Do not duplicate them: a new
   ticket can be blocked by an existing one.
+- whether the spec contradicts itself. If it does, ask about it among the step-4 questions; never pick a side
+  silently.
 
 ## 3. Draft the tickets
 
@@ -55,6 +57,8 @@ N1. <Título>
     - [ ] <casilla>
     - [ ] <casilla>
 ```
+
+Keep each line under ~70 characters: longer lines get cut in the terminal.
 
 New tickets are `N1, N2…`; `#n` is only for issues that already exist. Then ask:
 - ¿El tamaño es el adecuado (demasiado grande o demasiado fino)?

@@ -10,9 +10,12 @@ La relación **nativa** de GitHub es la fuente de verdad. La sección «Bloquead
 ```bash
 # id interno (no el número) del bloqueador
 ID=$(gh api repos/SergioLizana/Dynamo/issues/<bloqueador> --jq .id)
-gh api -X POST repos/SergioLizana/Dynamo/issues/<n>/dependencies/blocked_by -F issue_id=$ID
+gh api repos/SergioLizana/Dynamo/issues/<n>/dependencies/blocked_by -F issue_id=$ID
 gh api repos/SergioLizana/Dynamo/issues/<n>/dependencies/blocked_by --jq '.[]|{number,state}'
 ```
+
+Este POST sin `-X` es el que permite `.claude/settings.json`; el riesgo de que deje escribir por la API está en
+`documentation/despues.md`, «Proteger `main`».
 
 Comprobado:
 - Un bloqueador cerrado **sigue en la lista** con `state: closed`. `issueDependenciesSummary.blockedBy` (GraphQL)
