@@ -23,6 +23,7 @@
       "Bash(gh project item-edit *)",
       "Bash(gh project field-list *)",
       "Bash(gh api *)",
+      "Bash(git stash push *)",
       "Bash(claude plugin validate *)"
     ],
     "deny": [
@@ -35,7 +36,11 @@
       "Bash(git merge main*)",
       "Bash(gh pr merge*)",
       "Bash(gh issue delete*)",
-      "Bash(rm -rf*)"
+      "Bash(rm -rf*)",
+      "Bash(gh api -X *)",
+      "Bash(gh api --method *)",
+      "Bash(gh api * -X *)",
+      "Bash(gh api * --method *)"
     ]
   }
 }

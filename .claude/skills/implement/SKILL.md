@@ -60,8 +60,9 @@ uncommitted change in the current directory, and from round 2 its previous verdi
 
 1. Stage only the files of the change (`git add <paths>`, never `-A`). Commit on the ticket branch: subject in
    Spanish ending in `(#$0)`, plus the attribution line Claude Code gives you.
-2. `git checkout <base>`, `git merge --no-ff ticket/$0-<slug>`.
-3. Run the automatic check again on the base. If it fails: `git revert -m 1 --no-edit HEAD` and blocked (step 7).
+2. `git checkout <base>`, `git merge --no-ff ticket/$0-<slug> -m "Fusiona ticket/$0-<slug> en <base> (#$0)"`.
+3. Move the card to *Verify* and run the automatic check again on the base. If it fails:
+   `git revert -m 1 --no-edit HEAD` and blocked (step 7).
 4. Add the `hecho-en-release` label and move the card to *Done*.
 
 ## 6. Report on the ticket
@@ -83,8 +84,9 @@ Turns and cost are not known inside the session: the launch command posts them (
 ## 7. Blocked
 
 - Add the `bloqueado` label and post the step 6 comment with the reason: the literal failing output or verdict.
-- Leave the card in the step where it stopped. No commit, no merge: the change stays uncommitted on the ticket
-  branch for the human.
+- Leave the card in the step where it stopped. No commit, no merge.
+- Keep the change for the human and leave the tree clean for the next launch:
+  `git stash push -u -m "bloqueado #$0"`, then `git checkout <base>`. Name the stash in the comment.
 
 ## End
 
