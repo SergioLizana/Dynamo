@@ -37,3 +37,37 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
   nombre de `SergioLizana`: GitHub no distingue lo que hizo el humano de lo que hizo un agente.
 - **Opciones:** una cuenta de máquina (sin comprobar las condiciones de GitHub para cuentas de este tipo) o una GitHub
   App. Un token de grano fino de la cuenta propia limita lo que puede hacer el agente, pero no cambia el autor.
+
+## Copias de trabajo que salen de `main`
+
+- **Origen:** pruebas del #17 (2026-10-26). `main` está en `cc2dc46` y no tiene `.claude/`
+  (`git ls-tree main .claude` sale vacío). Las copias de un subagente con `isolation: worktree` y de `claude --bg`
+  salen de ahí: trabajan sin skills, sin `settings.json` en la copia y sin el `reviewer`, y sobre código viejo.
+- **Comprobado:** las tres copias de prueba de esas dos opciones estaban en `cc2dc46`. Los permisos sí se aplicaron,
+  pero los de la sesión que las lanzó, no los de la copia.
+- **Opciones:** `worktree.baseRef: "head"` (sin probar); o no usarlas y crear las copias con `git worktree add`, que
+  es lo que recomienda `documentation/fontaneria-paralelo.md`. El desfase se cierra solo cuando la release llegue a
+  `main`.
+- **Cuándo:** solo si `/run` acaba usando subagentes aislados o `--bg`.
+
+## `.claude/worktrees/` fuera de `.gitignore`
+
+- **Origen:** pruebas del #17. Las copias que crea Claude Code salen como `?? .claude/worktrees/` en
+  `git status --porcelain`.
+- **Riesgo:** un `git add -A` las metería en un commit. `/implement` ya prohíbe `-A`, y un `git status` sucio lo
+  bloquea en el paso 0.
+- **Cuándo:** si una copia acaba en un commit o bloquea un lanzamiento.
+
+## Permisos de `git worktree` para `/run`
+
+- **Origen:** pruebas del #17. `git worktree add` y `git worktree remove` no están en `.claude/settings.json`; en la
+  sesión normal los decidió el modo `auto`. Con `claude -p --permission-prompts none` se denegarían si el modo no los
+  aprueba.
+- **Cuándo:** al escribir `/run` (#18), que los necesita para crear y borrar las copias.
+
+## Borrado automático de las copias de subagente, sin ver
+
+- **Origen:** revisión del #17. La tabla de `documentation/fontaneria-paralelo.md` dice que la copia de un subagente
+  se borra sola «si no cambia nada, ni de rama». Viene de la documentación (investigación §3.2): en las pruebas
+  ninguna copia se borró sola, porque las dos tenían cambios o habían cambiado de rama.
+- **Cuándo:** si `/run` llega a depender de esa limpieza.
