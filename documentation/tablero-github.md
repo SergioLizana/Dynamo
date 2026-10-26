@@ -44,6 +44,10 @@ En Git Bash, un argumento que empieza por `/` se reescribe como ruta de Windows:
 «C:/Program Files/Git/to-tasks…» (2026-10-26). Se evita anteponiendo `MSYS_NO_PATHCONV=1` al comando `gh`; el cuerpo
 por `--body-file -` no se ve afectado.
 
+Al borrar un issue, su tarjeta queda un rato en el tablero vacía (`content` y `status` a `null` en
+`gh project item-list`) y `gh project item-delete` la rechaza por permisos. GitHub la quita sola al cabo de unos
+minutos (visto el 2026-10-26 con #9 y #10): no hay que hacer nada.
+
 ## Mover una tarjeta
 
 ```bash
