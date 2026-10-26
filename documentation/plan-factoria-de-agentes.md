@@ -187,7 +187,7 @@ Todas las escribimos nosotros. Antes de escribir cada skill se leen las de Pococ
 | `/discover` | skill | Conversa la idea, comprueba hechos en el repositorio y cierra las decisiones. Al final dice si cabe en un ticket o necesita una especificación | No escribe la especificación ni crea tickets |
 | `/to-request` | skill | Escribe la especificación con la plantilla, en la misma sesión | No decide nada nuevo |
 | `/to-tasks` | skill | Propone la lista de tickets (título, bloqueado por, qué entrega, cuándo está hecho), con 5-8 como mucho; la ajusta conmigo hasta que la apruebo y crea todos los tickets | No implementa ni planifica a fondo |
-| `/implement <ticket>` | skill | La unidad: rama, tests, implementación, **comprobación automática** (tests, build, lint; si falla, ni commit ni revisor), revisión, vuelta al Builder si falla (máx. 2 en total), commit. Anota turnos, vueltas y coste en el ticket | No fusiona en main |
+| `/implement <ticket>` | skill | La unidad: rama, tests, implementación, **comprobación automática** (tests, build, lint; si falla, ni commit ni revisor), revisión, vuelta al Builder si falla (máx. 2 en total), commit. Anota turnos, vueltas y coste en el ticket. Mueve la tarjeta del tablero en cada paso real (§6.5) | No fusiona en main |
 | `/run` | skill | La línea de montaje: calcula la frontera, lanza `/implement` en paralelo en copias de trabajo, fusiona en la rama de integración, vuelve a pasar los tests, desbloquea y sigue; al final abre o actualiza el PR de `release/x.y.z` contra `main` y da un informe | No implementa; su estado vive en los tickets, no en la conversación |
 | `reviewer` | subagente | Solo lectura; revisa el cambio contra las casillas del ticket y **si se sale del ticket**; devuelve PASA o FALLA con evidencias | No edita ficheros |
 
@@ -250,6 +250,11 @@ las copias de trabajo (investigación §3.3).
 
 **Issues de GitHub** en el repositorio privado de la factoría, y después en el del proyecto real: lista, tablero (Projects), relación «blocked by»
 y enlace a los PR, sin construir nada. Solo GitHub hasta que haga falta otra cosa (regla 2).
+
+**Tablero:** https://github.com/users/SergioLizana/projects/1, con los estados *Todo*, *In Progress* (Builder),
+*Verify* (comprobación automática), *In Review* (`reviewer`) y *Done* (fusionado en `release/x.y.z`). **Siempre refleja
+el paso en el que está trabajando el agente**, también cuando un ticket vuelve de *In Review* a *In Progress* en otra
+vuelta. Un ticket atascado lleva la etiqueta `bloqueado`, no un estado.
 
 Por comprobar en la etapa 1:
 - **Comprobado el 2026-10-26:** la relación «blocked by» nativa de GitHub se crea y se lee por la API
