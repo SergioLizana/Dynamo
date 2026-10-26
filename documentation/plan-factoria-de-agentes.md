@@ -324,7 +324,7 @@ paralelo (§7.6).
 termina en un PR sin que yo intervenga (etapa 3b). Ni una pieza más.
 
 Barreras mientras la factoría se construye a sí misma:
-- **Lo que se me ocurra por el camino** va a una lista «después del proyecto real» (`documentation/despues.md`), no a
+- **Lo que se me ocurra por el camino** va a una lista «después del proyecto real» (`documentation/backlog.md`), no a
   un ticket.
 - **Tope de tamaño:** cada skill, como mucho unas 150 líneas. Sin scripts propios mientras Claude Code lo resuelva con
   una opción.

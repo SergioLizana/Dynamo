@@ -75,7 +75,7 @@ Vueltas: <round>/2
 Comprobación: <cada comando → resultado>
 Revisor: <veredicto final, una línea por casilla>
 Pruebas sin rastro en GitHub: <command → output> | ninguna
-Fuera del ticket (para despues.md): <lo visto> | nada
+Fuera del ticket (para backlog.md): <lo visto> | nada
 ```
 
 Turns and cost are not known inside the session: the launch command posts them (see

@@ -43,7 +43,7 @@ Size: 5-8 tickets per list. If the spec needs more, propose only the **first lis
 rest) and name the remaining work in one line per item as «siguiente lista», without creating it.
 
 Scope: only what the spec asks. Anything else you notice is not a ticket: mention it so the human can put it in
-`documentation/despues.md`.
+`documentation/backlog.md`.
 
 ## 4. Propose and iterate
 

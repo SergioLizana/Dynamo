@@ -1,4 +1,4 @@
-# Después
+# Backlog
 
 Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientras no los pida un problema real
 (plan §8.1). Cada entrada dice de dónde sale y qué hay comprobado.
@@ -25,6 +25,11 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
   - Sin comprobar ninguna de las dos. Tampoco es aislamiento completo (un agente con Bash en el mismo usuario podría
     llegar al gestor de credenciales): eso solo lo da un contenedor (plan §7 y §10.4).
 - **Cuándo:** antes de dejar listas desatendidas (etapa 3).
+- **Push a `release/x.y.z`** (pensado el 2026-10-26): hoy `git push` está en `ask` (en sesión normal pregunta;
+  en `-p` se deniega). No se pasa a `allow` porque ningún ticket lo necesita (se fusiona en local) y una regla como
+  `Bash(git push origin release/*)` también deja pasar `git push origin release/0.1.0:main`, sin nada en GitHub que lo
+  pare. Hará falta en la etapa 3b, cuando `/run` suba la release para abrir el PR contra `main`: decidirlo entonces
+  junto con las credenciales (un token que solo empuje `release/*`) o GitHub Pro.
 
 ## Una identidad propia para los agentes
 

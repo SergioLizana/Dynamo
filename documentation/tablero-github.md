@@ -15,7 +15,7 @@ gh api repos/SergioLizana/Dynamo/issues/<n>/dependencies/blocked_by --jq '.[]|{n
 ```
 
 Este POST sin `-X` es el que permite `.claude/settings.json`; el riesgo de que deje escribir por la API está en
-`documentation/despues.md`, «Proteger `main`».
+`documentation/backlog.md`, «Proteger `main`».
 
 Comprobado:
 - Un bloqueador cerrado **sigue en la lista** con `state: closed`. `issueDependenciesSummary.blockedBy` (GraphQL)
