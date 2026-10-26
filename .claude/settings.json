@@ -1,0 +1,46 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit(/**)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git checkout -b *)",
+      "Bash(git checkout release/*)",
+      "Bash(git switch *)",
+      "Bash(git merge *)",
+      "Bash(git revert *)",
+      "Bash(git branch --show-current)",
+      "Bash(git rev-parse *)",
+      "Bash(gh issue view *)",
+      "Bash(gh issue list *)",
+      "Bash(gh issue edit *)",
+      "Bash(gh issue comment *)",
+      "Bash(gh project item-list *)",
+      "Bash(gh project item-edit *)",
+      "Bash(gh project field-list *)",
+      "Bash(gh api *)",
+      "Bash(git stash push *)",
+      "Bash(claude plugin validate *)"
+    ],
+    "deny": [
+      "Bash(git push*)",
+      "Bash(git reset --hard*)",
+      "Bash(git branch -d*)",
+      "Bash(git branch -D*)",
+      "Bash(git checkout main*)",
+      "Bash(git switch main*)",
+      "Bash(git merge main*)",
+      "Bash(gh pr merge*)",
+      "Bash(gh issue delete*)",
+      "Bash(rm -rf*)",
+      "Bash(gh api -X *)",
+      "Bash(gh api --method *)",
+      "Bash(gh api * -X *)",
+      "Bash(gh api * --method *)"
+    ]
+  }
+}
