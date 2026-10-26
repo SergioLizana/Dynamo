@@ -71,3 +71,18 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
   se borra sola «si no cambia nada, ni de rama». Viene de la documentación (investigación §3.2): en las pruebas
   ninguna copia se borró sola, porque las dos tenían cambios o habían cambiado de rama.
 - **Cuándo:** si `/run` llega a depender de esa limpieza.
+
+## Etiqueta con la versión en lugar de `hecho-en-release`
+
+- **Origen:** el humano, el 2026-10-27. `hecho-en-release` no dice en qué versión está el ticket.
+- **Opciones:**
+  - a) Renombrarla a `in-release`.
+  - b) Una etiqueta por versión, `release-x.y.z` (GitHub admite puntos en el nombre). `/implement` y la frontera de
+    `/run` tendrían que buscar un patrón (`release-*`) y no un nombre fijo, y hay que crear la etiqueta al abrir cada
+    versión.
+  - c) Un *milestone* `0.1.0`, lo que GitHub trae para esto: uno por issue, con barra de progreso y filtro en el
+    tablero. Pero «está en la versión» no es «ya está fusionado»: seguiría haciendo falta la tarjeta en *Done* o una
+    etiqueta para lo segundo.
+- **Dónde se usa hoy:** `.claude/skills/implement/SKILL.md` (pasos 0 y 5), `.claude/skills/run/SKILL.md`, plan §6.5 y
+  `documentation/tablero-github.md`.
+- **Sin comprobar:** cómo filtra el tablero por milestone.
