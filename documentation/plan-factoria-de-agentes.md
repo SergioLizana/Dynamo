@@ -159,12 +159,17 @@ Idea → /discover → /to-request → /to-tasks (apruebo la lista, 5-8 tickets)
                 Builder → comprobación (tests, build, lint) → ¿pasa? no → Builder
                                         sí → Revisor → ¿pasa? no → Builder
                 máximo 2 vueltas en total
-            pasa → se fusiona en la rama de integración → tests otra vez en la rama
+            pasa → se fusiona en release/x.y.z → tests otra vez en release/x.y.z
             no pasa tras 2 vueltas → «bloqueado» con su motivo; sigue con el resto
             los que dependen de un bloqueado se saltan y van al informe
                          ↓
-PR de la rama de integración + informe (bloqueados, saltados, coste)          ← yo, al final
+PR de release/x.y.z contra main + informe (bloqueados, saltados, coste)       ← yo, al final
 ```
+
+- **La rama de integración es la `release/x.y.z` en curso** (ahora `release/0.1.0`). Las ramas de ticket salen de ella
+  y se fusionan en ella sin preguntar; no hay una rama intermedia por lista.
+- **A `main` solo llega lo que apruebo yo.** Al acabar cada lista, `/run` abre o actualiza el PR de `release/x.y.z`
+  contra `main` con el informe de esa lista. Cuándo fusionarlo lo decido yo: tras una lista o al cerrar la versión.
 
 - **N** es solo cuántos tickets van a la vez. Empieza en 2 (investigación §7.9).
 - **El tope de vueltas es 2**, fijo. Stripe deja como mucho 2 rondas de CI (investigación §6.2, §8.2).
@@ -183,7 +188,7 @@ Todas las escribimos nosotros. Antes de escribir cada skill se leen las de Pococ
 | `/to-request` | skill | Escribe la especificación con la plantilla, en la misma sesión | No decide nada nuevo |
 | `/to-tasks` | skill | Propone la lista de tickets (título, bloqueado por, qué entrega, cuándo está hecho), con 5-8 como mucho; la ajusta conmigo hasta que la apruebo y crea todos los tickets | No implementa ni planifica a fondo |
 | `/implement <ticket>` | skill | La unidad: rama, tests, implementación, **comprobación automática** (tests, build, lint; si falla, ni commit ni revisor), revisión, vuelta al Builder si falla (máx. 2 en total), commit. Anota turnos, vueltas y coste en el ticket | No fusiona en main |
-| `/run` | skill | La línea de montaje: calcula la frontera, lanza `/implement` en paralelo en copias de trabajo, fusiona en la rama de integración, vuelve a pasar los tests, desbloquea y sigue; al final abre el PR y da un informe | No implementa; su estado vive en los tickets, no en la conversación |
+| `/run` | skill | La línea de montaje: calcula la frontera, lanza `/implement` en paralelo en copias de trabajo, fusiona en la rama de integración, vuelve a pasar los tests, desbloquea y sigue; al final abre o actualiza el PR de `release/x.y.z` contra `main` y da un informe | No implementa; su estado vive en los tickets, no en la conversación |
 | `reviewer` | subagente | Solo lectura; revisa el cambio contra las casillas del ticket y **si se sale del ticket**; devuelve PASA o FALLA con evidencias | No edita ficheros |
 
 Por qué el revisor mira si el agente se sale del ticket: es el fallo más común de un agente desatendido; el juez de
@@ -296,7 +301,7 @@ Lo mínimo se escribe a mano; el resto lo construye la propia factoría.
 | 1. A mano | `/to-tasks`, `/implement`, el `reviewer` y la plantilla de ticket, escritos en conversación tras leer los de Pocock. Este plan hace de especificación, así que aún no hacen falta `/discover` ni `/to-request` | `/to-tasks` parte este plan en una lista de 5-8 tickets en GitHub que entiendo sin releerlos, y sé cómo marcar «bloqueado por» y «hecho» |
 | 2. La unidad | `/implement` construye esos tickets de uno en uno: la comprobación automática, el tope de 2 vueltas, `/discover`, `/to-request`, la plantilla de petición; turnos, vueltas y coste anotados en cada ticket | 3 tickets **seguidos** terminan en PR que acepto, sin que yo intervenga, con sus datos anotados |
 | 3a. Paralelo simple | `/implement` construye `/run` para N = 2 sobre tickets **sin dependencias entre sí**; antes, probar qué fontanería va mejor (subagentes en copia, `claude --bg`, nube) y comparar con `implement-spec` y Projects | Dos tickets van a la vez y terminan en PR sin que yo intervenga |
-| 3b. Línea de montaje | `/run` construye lo que le falta: frontera, rama de integración, fusión, tests tras cada fusión, saltar los dependientes de un bloqueado e informe | Una lista de tickets con dependencias termina en un PR sin que yo intervenga por el camino: **«completo»** |
+| 3b. Línea de montaje | `/run` construye lo que le falta: frontera, fusión en `release/x.y.z`, tests tras cada fusión, saltar los dependientes de un bloqueado e informe | Una lista de tickets con dependencias termina en un PR sin que yo intervenga por el camino: **«completo»** |
 | 4. Proyecto real | Las skills pasan a plugin y se instalan en el proyecto real; la factoría se usa allí | La primera lista real del proyecto termina en un PR |
 | 5. Mejorar según datos | Revisores por enfoque, decisión de si hace falta persona, más N, nube… | Cada mejora responde a un problema medido en el proyecto real |
 
@@ -352,9 +357,10 @@ y tickets solo en GitHub (regla 2).
 1. **¿Qué proyecto real se construye al llegar a «completo»?** Ya tengo uno pensado; se concreta en la etapa 4.
    Recomendado: que se pueda iterar poco a poco, con tests fáciles y poco riesgo; nada que maneje datos sensibles al
    principio (investigación §8.2).
-2. **¿Un PR por lista o uno por ticket?** Recomendado: rama de integración y un PR por lista, con 5-8 tickets como
-   mucho; si el PR final cuesta de revisar, un PR por ticket contra la rama de integración (investigación §8.5). Un PR
-   por ticket contra main me vuelve a poner de cuello de botella a mitad del camino.
+2. **¿Cómo reviso lo que llega a `release/x.y.z`?** Decidido: los tickets se fusionan en `release/x.y.z` sin
+   preguntar y a `main` solo llega el PR que apruebo yo (§6.1). Queda por decidir si basta con el informe de cada lista
+   o si, cuando la revisión cueste, cada ticket abre su propio PR contra `release/x.y.z` (investigación §8.5).
+   Recomendado: empezar con el informe, con listas de 5-8 tickets.
 3. **¿Ejecución en local o en la nube?** Se decide en la etapa 0, mirando la cuenta. Recomendado: la nube si está
    disponible, porque resuelve a la vez el PC encendido y la falta de sandbox en Windows (investigación §8.6).
 4. **¿Qué permisos se dan a una ejecución desatendida?** Recomendado en local: modo `auto` con lista blanca y
