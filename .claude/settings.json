@@ -27,10 +27,7 @@
       "Bash(claude plugin validate *)"
     ],
     "deny": [
-      "Bash(git push*)",
       "Bash(git reset --hard*)",
-      "Bash(git branch -d*)",
-      "Bash(git branch -D*)",
       "Bash(git checkout main*)",
       "Bash(git switch main*)",
       "Bash(git merge main*)",
@@ -41,6 +38,11 @@
       "Bash(gh api --method *)",
       "Bash(gh api * -X *)",
       "Bash(gh api * --method *)"
+    ],
+    "ask": [
+      "Bash(git push*)",
+      "Bash(git branch -d*)",
+      "Bash(git branch -D*)"
     ]
   }
 }
