@@ -5,7 +5,7 @@ construyan, prueben y revisen hasta abrir un PR que aprueba una persona. Reposit
 
 - Diseño: `documentation/plan-factoria-de-agentes.md` (léelo antes de proponer nada).
 - Investigación de apoyo: `documentation/investigacion-factorias-de-agentes.md` (consultar por secciones, no entera).
-- Estado: etapa 0 (arranque). Las etapas están en el plan, §8.
+- Estado: etapa 2 (la unidad). Las etapas están en el plan, §8.
 
 ## Cómo trabajamos
 
