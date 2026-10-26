@@ -86,3 +86,14 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
 - **Dónde se usa hoy:** `.claude/skills/implement/SKILL.md` (pasos 0 y 5), `.claude/skills/run/SKILL.md`, plan §6.5 y
   `documentation/tablero-github.md`.
 - **Sin comprobar:** cómo filtra el tablero por milestone.
+
+## Columnas *Blocked* y *Closed* en el tablero
+
+- **Origen:** el humano, el 2026-10-27, al encontrar el #21 (ticket de prueba del #18) cerrado pero con la tarjeta en
+  *Todo*. Quiere ver en el tablero, sin abrir cada ticket, cuándo le toca intervenir.
+- **Qué choca:** el plan §6.5 decidió que un ticket atascado lleva la etiqueta `bloqueado` y no un estado, y
+  `/implement` (paso 7) deja la tarjeta en el paso donde se paró. Una columna *Blocked* cambia las dos cosas, y
+  `/run` también las usa.
+- **Sin comprobar:** si el flujo integrado del proyecto («Item closed») puede mover sola la tarjeta a *Closed* al
+  cerrar el issue. En el historial del #21 hay un `Todo -> Closed` y un `Closed -> Todo` el 2026-10-26 a las 23:46
+  que nadie ha explicado, sin que exista una opción *Closed*.
