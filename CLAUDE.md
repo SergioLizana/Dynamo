@@ -19,13 +19,17 @@ construyan, prueben y revisen hasta abrir un PR que aprueba una persona. Reposit
 ## Convenciones
 
 - Con el humano se habla en español. Skills, agentes y código, en inglés; la documentación de trabajo, en español.
-- Rama principal: `main`. Tickets: issues de GitHub en `SergioLizana/Dynamo`.
+- Rama principal: `main`. Rama de trabajo: la `release/x.y.z` en curso (ahora `release/0.1.0`); todo se hace ahí antes
+  de llegar a `main`. Tickets: issues de GitHub en `SergioLizana/Dynamo`.
 - Skills en `.claude/skills/<nombre>/SKILL.md`; subagentes en `.claude/agents/<nombre>.md`.
 - Comprobación automática: aún no hay; se define al escribir `/implement`.
 - Finales de línea LF (`.gitattributes`).
 
 ## Límites
 
-- Nunca push ni merge a `main` sin autorización explícita del humano.
+- Se puede hacer merge en una rama `release/x.y.z` sin preguntar (las ramas de ticket y de integración se fusionan
+  ahí).
+- A `main` solo llega lo que aprueba el humano: nunca merge ni push a `main` sin su autorización explícita.
+- Push de cualquier otra rama, solo con autorización del humano.
 - Nunca secretos en git (claves, tokens, `.env`).
 - Cadenza (`E:\Proyectos\cadenza`) es solo referencia de textos: no se copia su código ni su estructura.
