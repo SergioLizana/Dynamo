@@ -204,10 +204,12 @@ que ya existen.
 | Qué ticket va ahora (frontera), cuándo se bloquea, qué se salta, qué va en el informe | Copias de trabajo: subagentes con `isolation: worktree` o `git worktree add` (§3.2, §3.3) |
 | El bucle Builder → comprobación → revisor, con tope de 2 | Hook `Stop` para la comprobación (§3.9) |
 | Qué se anota por ticket | `claude -p --output-format json` da `total_cost_usd`; `--max-turns` y `--max-budget-usd` ponen topes (§3.8) |
-| Cuándo se fusiona y qué pasa si choca | Sesiones en segundo plano (`claude --bg`) o en la nube, que abren PR (§3.4, §3.14) |
+| Cuándo se fusiona y qué pasa si choca | Sesiones en segundo plano (`claude --bg`) que abren PR (§3.4) |
+| Cuándo se lanza una lista | El Programador de tareas de Windows lanzando `claude -p`, o `/loop` en una sesión abierta |
 
-En la etapa 3 se prueba cuál de esas opciones de fontanería va mejor antes de escribir `/run`. `implement-spec` y
-Projects se prueban como **comparación**, para ver qué resuelven ellos y qué no, no para sustituir lo nuestro.
+Todo corre **en local**, en mi PC (§10, pregunta 3). En la etapa 3a se prueba cuál de esas opciones va mejor antes de
+escribir `/run`. `implement-spec` se lee como **comparación**, para ver qué resuelve y qué no, no para sustituir lo
+nuestro.
 
 ### 6.4 Estructura del repositorio
 
@@ -250,7 +252,9 @@ las copias de trabajo (investigación §3.3).
 y enlace a los PR, sin construir nada. Solo GitHub hasta que haga falta otra cosa (regla 2).
 
 Por comprobar en la etapa 1:
-- **Sin verificar:** que la relación «blocked by» nativa de GitHub sirva para calcular la frontera.
+- **Comprobado el 2026-10-26:** la relación «blocked by» nativa de GitHub se crea y se lee por la API
+  (`repos/<repo>/issues/<n>/dependencies/blocked_by`); así están enlazados los tickets #1-#5. Falta ver si basta para
+  calcular la frontera.
 - **Sin verificar:** GitHub cierra los issues automáticamente solo cuando un PR se fusiona en la rama por defecto. Si la frontera
   mira los issues cerrados, no avanzará mientras se trabaja en la rama de integración. Probablemente harán falta
   etiquetas (`hecho-en-integracion`, `bloqueado`).
@@ -263,14 +267,14 @@ Por comprobar en la etapa 1:
   una sesión en segundo plano se queda en «Needs input» (investigación §3.4, §3.12). Hace falta
   `--permission-prompts none` o un tiempo máximo.
 - **Windows.** No hay sandbox de Claude Code en Windows nativo, y las reglas de «no volver a preguntar» se guardan en
-  cada copia de trabajo y se pierden al borrarla (investigación §3.3, §8.6). La nube o WSL2 lo resuelven.
+  cada copia de trabajo y se pierden al borrarla (investigación §3.3, §8.6). Como todo corre en local, se resuelve con
+  los permisos de §10, pregunta 4; WSL2 queda como plan B.
 - **Límites de uso.** Varios agentes a la vez gastan la ventana de uso mucho más rápido, y nunca se ha medido cuánto
   cabe. `/run` tiene que poder pararse por límite y retomarse sin perder nada. En modo `-p` o en segundo plano, un
   workflow dinámico falla al llegar al límite en vez de esperar (investigación §3.6).
-- **Coste.** Tope por ticket con `--max-budget-usd` (ver §10, pregunta 6). Si se usa Projects, cada hilo va en Opus con
-  esfuerzo alto por defecto (investigación §3.15).
-- **El PC encendido.** En local, sí. La alternativa son sesiones en la nube que abren PR solas; se comprueba en la
-  etapa 0 qué ofrece la cuenta.
+- **Coste.** Tope por ticket con `--max-budget-usd` (ver §10, pregunta 6).
+- **El PC encendido.** Sí, mientras corre una lista. Las tareas programadas de Claude Code corren en la nube
+  (investigación §3.16), así que en local se usa el Programador de tareas de Windows.
 - **Copias de trabajo.**
   - Salen de la rama principal, no de la de integración, salvo que se configure `worktree.baseRef: "head"` o se creen
     con `git worktree add` (investigación §3.3). Si no, los tickets no ven el trabajo del que dependen.
@@ -297,13 +301,13 @@ Lo mínimo se escribe a mano; el resto lo construye la propia factoría.
 
 | Etapa | Qué tengo al acabar | Hecha cuando |
 |---|---|---|
-| 0. Arranque | Repositorio privado `SergioLizana/Dynamo` clonado en `E:\Proyectos\Dynamo`, `CLAUDE.md` corto; una hora mirando qué ofrece la cuenta (Projects, sesiones en la nube, sesiones en segundo plano) | El repositorio existe, `gh` tiene sesión y sé qué opciones tengo |
+| 0. Arranque | Repositorio privado `SergioLizana/Dynamo` clonado en `E:\Proyectos\Dynamo`, `CLAUDE.md` corto, rama `release/0.1.0`, tablero en GitHub Projects con los tickets de la etapa 1 | El repositorio existe, `gh` tiene sesión y el tablero muestra los tickets (hecha el 2026-10-26) |
 | 1. A mano | `/to-tasks`, `/implement`, el `reviewer` y la plantilla de ticket, escritos en conversación tras leer los de Pocock. Este plan hace de especificación, así que aún no hacen falta `/discover` ni `/to-request` | `/to-tasks` parte este plan en una lista de 5-8 tickets en GitHub que entiendo sin releerlos, y sé cómo marcar «bloqueado por» y «hecho» |
 | 2. La unidad | `/implement` construye esos tickets de uno en uno: la comprobación automática, el tope de 2 vueltas, `/discover`, `/to-request`, la plantilla de petición; turnos, vueltas y coste anotados en cada ticket | 3 tickets **seguidos** terminan en PR que acepto, sin que yo intervenga, con sus datos anotados |
-| 3a. Paralelo simple | `/implement` construye `/run` para N = 2 sobre tickets **sin dependencias entre sí**; antes, probar qué fontanería va mejor (subagentes en copia, `claude --bg`, nube) y comparar con `implement-spec` y Projects | Dos tickets van a la vez y terminan en PR sin que yo intervenga |
+| 3a. Paralelo simple | `/implement` construye `/run` para N = 2 sobre tickets **sin dependencias entre sí**; antes, probar qué fontanería local va mejor (subagentes en copia, `claude --bg`) y comparar con `implement-spec` | Dos tickets van a la vez y terminan en PR sin que yo intervenga |
 | 3b. Línea de montaje | `/run` construye lo que le falta: frontera, fusión en `release/x.y.z`, tests tras cada fusión, saltar los dependientes de un bloqueado e informe | Una lista de tickets con dependencias termina en un PR sin que yo intervenga por el camino: **«completo»** |
 | 4. Proyecto real | Las skills pasan a plugin y se instalan en el proyecto real; la factoría se usa allí | La primera lista real del proyecto termina en un PR |
-| 5. Mejorar según datos | Revisores por enfoque, decisión de si hace falta persona, más N, nube… | Cada mejora responde a un problema medido en el proyecto real |
+| 5. Mejorar según datos | Revisores por enfoque, decisión de si hace falta persona, más N… | Cada mejora responde a un problema medido en el proyecto real |
 
 La medición ya no es una etapa: empieza en la 2. La rama de integración con fusión automática va en la 3b porque es
 lo único que la investigación marca como «no probado» (§8.4), y hay pocas tareas que se puedan hacer de verdad en
@@ -361,8 +365,9 @@ y tickets solo en GitHub (regla 2).
    preguntar y a `main` solo llega el PR que apruebo yo (§6.1). Queda por decidir si basta con el informe de cada lista
    o si, cuando la revisión cueste, cada ticket abre su propio PR contra `release/x.y.z` (investigación §8.5).
    Recomendado: empezar con el informe, con listas de 5-8 tickets.
-3. **¿Ejecución en local o en la nube?** Se decide en la etapa 0, mirando la cuenta. Recomendado: la nube si está
-   disponible, porque resuelve a la vez el PC encendido y la falta de sandbox en Windows (investigación §8.6).
+3. **¿Ejecución en local o en la nube?** Decidido el 2026-10-26: **en local.** Solo hacen falta sesiones en segundo
+   plano, lanzar listas a una hora (Programador de tareas de Windows) y vigilar el límite de uso del plan. La nube y
+   Projects no interesan por ahora.
 4. **¿Qué permisos se dan a una ejecución desatendida?** Recomendado en local: modo `auto` con lista blanca y
    `--permission-prompts none`. `bypassPermissions` nunca fuera de un contenedor (investigación §3.12, §8.8).
 5. **¿Qué pasa con los tickets que dependen de uno bloqueado?** Recomendado: se saltan, se listan en el informe y el PR
