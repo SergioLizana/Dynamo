@@ -56,5 +56,5 @@ move_card() { # $1 = nº de issue, $2 = id de la opción
 | In Review | `7eccea7a` |
 | Done | `e617f390` |
 
-Probado: Todo → In Progress → Verify → In Review → In Progress → In Review → Done. Si se renombra o recrea un estado,
+Probado el 2026-10-26 sobre el issue de prueba #6 (ya borrado, así que no queda historial): Todo → In Progress → Verify → In Review → In Progress → In Review → Done. Si se renombra o recrea un estado,
 se vuelven a leer con `gh project field-list 1 --owner SergioLizana --format json`.
