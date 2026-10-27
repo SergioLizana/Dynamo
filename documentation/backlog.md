@@ -61,16 +61,6 @@ Each entry says where it comes from and what has been verified.
 - **Resolved 2026-10-27:** `worktree.baseRef: "head"` in `.claude/settings.json` (`d4a1a26`). Tested in the trials of
   `documentation/workflow-trial.md`: the copies started from the tip of the base, with `.claude/`.
 
-## `.claude/worktrees/` outside `.gitignore`
-
-- **Origin:** tests of #17. The copies that Claude Code creates show up as `?? .claude/worktrees/` in
-  `git status --porcelain`.
-- **Risk:** a `git add -A` would put them in a commit. `/implement` already forbids `-A`, and a dirty `git status` blocks
-  it in step 0.
-- **When:** if a copy ends up in a commit or blocks a launch.
-- **Happened** (2026-10-27): run `wf_1c98469c-230` stopped #37 and kept its two copies; the next `/implement 42` stopped
-  in step 0 with `?? .claude/worktrees/` and sent #42 to *Needs Human*. The copies had to be removed by hand.
-
 ## `git worktree` permissions for `/run`
 
 - **Origin:** tests of #17. `git worktree add` and `git worktree remove` are not in `.claude/settings.json`; in a normal
