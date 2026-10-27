@@ -91,7 +91,7 @@ Nothing agreed.
   - Dynamo data written into the pieces: `reviewer.md:8` («Dynamo agent factory») and `:42-43` (fixed rules: "each skill at
     most ~150 lines", "working docs in Spanish"); `to-tasks/SKILL.md:77` (`--project "Dynamo"`); paths
     `documentation/github-board.md`, `documentation/backlog.md` and `documentation/launch-one-ticket.md` in `implement`,
-    `to-tasks`, `run` and `discover`; labels `hecho-en-release` and `bloqueado` in `implement` and `run`; "in Spanish" in all of
+    `to-tasks`, `run` and `discover`; labels `in-release` and `bloqueado` in `implement` and `run`; "in Spanish" in all of
     them.
   - References to an operating system:
     - `.claude/skills/to-tasks/SKILL.md:77-78` (Git Bash and `MSYS_NO_PATHCONV=1`);

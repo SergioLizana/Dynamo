@@ -24,8 +24,7 @@ them until they open a PR that a person approves. Private repository.
 
 - Replies to the human are in the language set in their own `~/.claude/CLAUDE.md`, outside the repository. Everything
   in the repository is in English: skills, agents, code, documents, tickets, commits, GitHub comments and verdicts.
-  Exception: the research, `documentation/agent-factory-research.md`, stays in Spanish until its own ticket.
-- Files in `documentation/` are named in English and written in English (except the research, see above).
+- Files in `documentation/` are named in English and written in English.
 - The project data (repository, board and its states, labels, main and working branch, automatic check, document
   language, where the backlog and the specifications go) lives in `.claude/factory.md`. Skills and agents read it from
   there and do not name any of it.
