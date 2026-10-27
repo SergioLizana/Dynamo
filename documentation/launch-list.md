@@ -53,35 +53,49 @@ label, the card and the comment of each ticket. It also leaves the report of the
 
 ## The end of a list
 
-After the cleanup the script builds the report of the list from the results (not from what an agent remembers) and
-looks for an open pull request from the working branch to the main branch (`gh pr list`). **The run never pushes and
-never opens a PR** (plan §6.1, `CLAUDE.md`, «Limits»).
+The script builds the report of the list from the results (not from what an agent remembers), and everything that
+closes the list is **one `runner` call**: the cleanup of the copies, the branches left, the report file, the remote and
+the body of the release PR. **The run never pushes and never opens a PR** (plan §6.1, `CLAUDE.md`, «Limits»).
 
-The report has: per ticket the result, the rounds and the merge commit; the blocked tickets and the skipped ones, each
-with its reason; the «Out of the ticket» lines the Builders noted; a `/cost` line for the human to fill in; and a
-`Closes #n` line for each merged ticket.
+The report keeps one section per run, and the release PR body is complete:
 
-- **A PR exists:** the report is added to the end of its body (what the body had stays), without repeating a
-  `Closes #n` line it already has. The script reads the body back from GitHub and says in `pullRequest.updated` whether
-  it matches. The human fills in the cost line in the PR, reads it, and decides when to merge it.
-- **No PR exists:** the run changes nothing on GitHub. It returns the report, written also to
-  `.claude/worktrees/run-report.md` (ignored by git), and `commandsForTheHuman`: the push (`git push -u origin <base>`)
-  and `gh pr create ... --body-file .claude/worktrees/run-report.md`, to run in that order from the main folder. If the
-  base is not on the remote, `notes` says so and the push creates it; if the PRs or the remote could not be read, `notes`
-  says that too and the commands are still returned. After the push, a person (not the run) approves and merges into
-  the main branch.
+- Each run adds a section («run 1», «run 2», …) with: per ticket the result, the rounds and the merge commit; the
+  blocked tickets and the skipped ones, each with its reason; the «Out of the ticket» lines the Builders noted; and a
+  `/cost` line for the human to fill in. The earlier sections stay: the file is one per base,
+  `.claude/worktrees/run-report-<base>.md` (the base with `/` as `-`, ignored by git), read at the start and written
+  back with the new section, not overwritten. Only the sections whose header names this base count (also when the file
+  holds others): «run k» is the number of those plus one, and a report of another release never shows in this one.
+- Then comes one `Closes #n` line for every ticket merged into the base since the main branch (the first-parent log of
+  the base read at the start, where a merge that was reverted does not count, plus this run's merges). The file's
+  `Closes` lines are used only when that log could not be read, and only from this base's sections: a merge reverted by
+  hand between two runs does not come back.
+
+- **A PR exists:** this run's section is added to the end of its body (what the body had stays, the earlier sections
+  too), with a `Closes #n` line only for a ticket the body does not close already. The script reads the body back from
+  GitHub and says in `pullRequest.updated` whether it matches. The human fills in the cost line in the PR, reads it, and
+  decides when to merge it.
+- **No PR exists:** the run changes nothing on GitHub. It returns the report, also in the file, and
+  `commandsForTheHuman`: `gh pr create ... --body-file .claude/worktrees/run-report-<base>.md`.
+- **The remote against the local base:** the script compares the tip `git ls-remote` printed with the local one and
+  counts the commits not on `origin`. When the remote is behind (`remote.state: "behind"`) or does not have the base
+  (`"missing"`), the **first** command for the human is the push (`git push -u origin <base>`), with a PR or without
+  one, and `notes` says how many commits are missing. If the remote could not be read, or has a different tip with
+  nothing to push, `notes` says that too. After the push, a person (not the run) approves and merges into the main
+  branch.
 
 The human fills in the `/cost` of the session and decides about the backlog lines.
 
 ## The start
 
-No agent interprets the start: it is two literal reads and the script decides (one agent per phase, not per command).
+No agent interprets the start: it is two literal reads, each a `runner` call, and the script decides (one agent per
+phase, not per command).
 
-1. `.claude/factory.json`, read by an agent that returns the file as it is.
-2. One agent runs three commands and returns each one's exit code and output as they are: `git status --porcelain
-   --untracked-files=no`, `git branch --show-current` and one `gh api graphql` query with every ticket (the requested
-   ones, or the first 100 open ones), its labels, the status of its card and its native blockers (with their state and
-   labels). Every list is checked against its total, so nothing is cut off silently.
+1. `.claude/factory.json`, read by the `runner`, which returns the file as it is.
+2. One `runner` call runs the commands and returns each one's exit code and output as they are: `git status --porcelain
+   --untracked-files=no`, `git branch --show-current`, the report file of the earlier runs, one `gh api graphql` query
+   with every ticket (the requested ones, or the first 100 open ones), its labels, the status of its card and its native
+   blockers (with their state and labels), and, for the report at the end, the first-parent log of the base since the
+   main branch and the open PR of the base. Every list is checked against its total, so nothing is cut off silently.
 
 The script then stops the run, before any *Build*, if the main folder has changes in tracked files, is not on the base,
 or the base is the main branch, and if a requested ticket cannot be read (it is named in the result). With no numbers,
@@ -127,7 +141,19 @@ says why (`run.js:288-295`, check at `:254-276`).
   other tickets merge). The folder does not carry over between Bash calls, so each check is one command,
   `sh -c 'cd <copy> && <check>'`, and the script requires the printed folder to be the copy. The
   script decides from the exit codes and from which commands ran: if the check fails, the ticket goes where its
-  `onFail` says, with the literal output for *Build*.
+  `onFail` says, with the literal output for *Build*. The same call ends with the card move of the next phase (*Review*),
+  which the runner only reaches if every check passed, so it costs no agent of its own.
+- ***Merge* is decided by the script too**, in the serial slot (one at a time in the main folder), with `runner` calls:
+  1. status and branch of the main folder, a gate that stops the runner if they are wrong, `git merge --no-ff`, the
+     commands of the check with `<base>` = `HEAD~1` (the base before the merge) and the proof, `git merge-base
+     --is-ancestor <branch> HEAD` and `git rev-parse --short HEAD`. The runner stops at the first command that fails.
+  2. Only if needed: on a conflict, the files and `git merge --abort`; on a failed check, `git revert -m 1 --no-edit HEAD`.
+  3. The done label, the card to *Done* read back, and the ticket's comment, read back.
+  A merge is *merged* because `is-ancestor` said so, not because an agent did: if call 1 returns nothing after a real
+  merge, one more call reads `is-ancestor` and runs the checks again, and the ticket still ends *done* with its label.
+  On success that is two `runner` calls. A ticket that passes in round 1 launches ten agents in the whole run: the two
+  reads of the start, the card to *Build*, the Builder, the base read, *Verify*, the reviewer, the two of *Merge* and the
+  one at the end.
 - **Plumbing does not cost a round:** a call that returns nothing, or that did not run what it should, is repeated once;
   a second time the ticket stops as «infrastructure» (that is its «Stopped at») and uses no round. The fields of a round
   (build, base sha, checks, verdict) are reset when the next round starts, so a block in round 2 quotes only round 2.
@@ -142,20 +168,29 @@ says why (`run.js:288-295`, check at `:254-276`).
   be already closed or done; if not, the ticket is skipped (`:436`).
 - **Skipping the dependents of a blocked ticket:** "skipped: depends on #n, which did not reach the release" (`:443`),
   with no label and the card where it was.
-- **A stopped ticket always shows as stuck:** the script moves it to the *Needs Human* column of the JSON and checks it
-  (`run.js:368-371`). If *Merge* stops, it has already published its report and the script only moves the card
-  (`:474-477`); if a phase returns nothing, it is blocked anyway (`:459`). If after two attempts it is still not moved,
-  the result says `marked: false` and warns about it (`:363`).
-- **What a checkbox asks for outside the code:** *Build* publishes it during its step (`run.js:147`); *Merge* publishes
-  only the final report and does not repeat it (`:237`).
+- **A stopped ticket always shows as stuck:** the script moves it to the *Needs Human* column of the JSON and checks it,
+  in the same `runner` call that posts its comment (a read of what is left, then the comment). If a phase returns
+  nothing, it is blocked anyway. If after two attempts the card is still not moved, the result says `marked: false`
+  and warns about it.
+- **The ticket's comment is written by the script**, for a merged ticket and for a blocked or skipped one (every ad-hoc
+  agent is a `runner` now: the read of `factory.json`, the start, the reports and the cleanup). What an agent wrote (the
+  reviewer's checkboxes, the Builder's no-trace and out-of-ticket lines, the reason) goes in the comment only inside a
+  fenced block, as quoted data; the Builder's `published` text is not repeated, and none of those texts is in the
+  prompt of an agent in the *Merge* phase. The comment travels as base64 in one command
+  (`printf %s <text> | base64 --decode | gh issue comment N --body-file -`), so no character of it reaches a shell, and
+  the script reads it back. The prompts do not ask any agent to read the `project` block: the script passes the values
+  (the documents language to the Builder and the reviewer).
+- **What a checkbox asks for outside the code:** *Build* publishes it during its step; *Merge* publishes only the
+  final report and does not repeat it.
 
 ## Failures from the trial, fixed
 
 Failures 1-5 of `documentation/workflow-trial.md`:
 
-1. **It did not clean up everything:** at the end, an agent removes all the copies of the run, from every round (except
-   the copy of a blocked ticket with no commit, which keeps the only copy of the work), and lists the branches left for
-   the human to delete, because deleting branches asks for permission (`run.js:155` and `:504-515`).
+1. **It did not clean up everything:** at the end, the `runner` removes the copies of the run, from every round, whose
+   ticket is done or whose Builder committed (the copy of a blocked ticket with no commit stays: it holds the only copy
+   of the work), and the script lists from `git branch --list` the branches left for the human to delete, because
+   deleting branches asks for permission.
 2. **Dirty history in the second round:** round 2 brings round 1's work with `git cherry-pick`, and only if
    `git log <base>..<branch>` lists commits (`run.js:126` and `:131-132`).
 3. **A second round that does no good:** if *Build* says the ticket needs the human, it is blocked without a second round
@@ -180,3 +215,8 @@ The first one with real tickets: 2026-10-27, tickets #35-#38. #35 was merged (`4
 Still untested: what the trial left pending (a check that fails after merging, a permission asked in the middle of the
 run, a pause at the usage limit); that the script receives `args` correctly from `/run`; and the #39 changes with real
 tickets (only dry-run, with simulated agents).
+
+The #58 changes (the *Merge* sequence, the comments sent as base64, the report that accumulates, the end of the list
+in one call) were tried only in a dry run with simulated agents. A real run still has to show that the `runner` copies
+a long `printf %s <base64> | …` command without a change (the script reads the comment and the files back and says
+when they differ) and that `sh -c` and `base64` are allowed without a prompt.
