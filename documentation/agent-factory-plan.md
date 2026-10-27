@@ -188,7 +188,7 @@ Todas las escribimos nosotros. Antes de escribir cada skill se leen las de Pococ
 | `/to-request` | skill | Escribe la especificación con la plantilla, en la misma sesión | No decide nada nuevo |
 | `/to-tasks` | skill | Propone la lista de tickets (título, bloqueado por, qué entrega, cuándo está hecho), con 5-8 como mucho; la ajusta conmigo hasta que la apruebo y crea todos los tickets | No implementa ni planifica a fondo |
 | `/implement <ticket>` | skill | La unidad: rama, tests, implementación, **comprobación automática** (tests, build, lint; si falla, ni commit ni revisor), revisión, vuelta al Builder si falla (máx. 2 en total), commit. Anota turnos, vueltas y coste en el ticket. Mueve la tarjeta del tablero en cada paso real (§6.5) | No fusiona en main |
-| `/run` | skill | La línea de montaje: calcula la frontera, lanza `/implement` en paralelo en copias de trabajo, fusiona en la rama de integración, vuelve a pasar los tests, desbloquea y sigue; al final abre o actualiza el PR de `release/x.y.z` contra `main` y da un informe | No implementa; su estado vive en los tickets, no en la conversación |
+| `/run` | workflow | La línea de montaje: calcula la frontera, lanza `/implement` en paralelo en copias de trabajo, fusiona en la rama de integración, vuelve a pasar los tests, desbloquea y sigue; al final abre o actualiza el PR de `release/x.y.z` contra `main` y da un informe | No implementa; su estado vive en los tickets, no en la conversación |
 | `reviewer` | subagente | Solo lectura; revisa el cambio contra las casillas del ticket y **si se sale del ticket**; devuelve PASA o FALLA con evidencias | No edita ficheros |
 
 Por qué el revisor mira si el agente se sale del ticket: es el fallo más común de un agente desatendido; el juez de
@@ -226,9 +226,10 @@ dynamo/
       to-request/SKILL.md
       to-tasks/SKILL.md
       implement/SKILL.md
-      run/SKILL.md
     agents/
       reviewer.md
+    workflows/
+      run.js            # /run: la línea de montaje (workflow, no skill)
     templates/
       request.md        # problema, solución, qué cambia para quien lo usa, decisiones, cómo se prueba, fuera de alcance, notas
       ticket.md         # problema, qué entrega, criterios de aceptación como casillas, bloqueado por, fuera de alcance
