@@ -478,10 +478,23 @@ async function runTicket(t) {
   // The phases of factory.json, in order. The card enters a phase's column when the phase starts (moveCard
   // "start") or when it passes ("end"), never earlier.
   const ctx = { round: 1, prev: null, failure: null, build: null, checks: [], verdict: null, prevVerdict: null, mergeCommit: null }
+  const at = { step: 'build', group: F.phases[0].name } // where the ticket is, for the comment if it throws
+  try {
+    return await runPhases(t, ctx, at)
+  } catch (e) {
+    // A ticket that throws (budget exhausted, schema error) also ends in the needsHuman column, with a comment.
+    log(`#${t.number} threw at ${at.step}: ${String(e)}`)
+    return block(t, ctx, at.step, `the run threw: ${String(e)}`, at.group)
+  }
+}
+
+async function runPhases(t, ctx, at) {
   let i = 0
   while (i < F.phases.length) {
     const ph = F.phases[i]
+    at.group = ph.name
     const spec = PHASES[ph.name](t, ctx)
+    at.step = spec.step
     if (ph.moveCard === 'start') await moveCard(t.number, ph.column, ph.name)
     const opts = { ...optsOf(ph), label: `${ph.name.toLowerCase()}:#${t.number}:r${ctx.round}`, phase: ph.name }
     if (spec.schema) opts.schema = spec.schema
