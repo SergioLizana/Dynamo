@@ -40,18 +40,6 @@ GitHub only closes issues when merging into `main`, and tickets are merged into 
 gh issue edit <n> -R <repo> --add-label <done>
 ```
 
-### Renaming the done label (once, by the human)
-
-The label used to be called `hecho-en-release`; `.claude/factory.md` now names it `in-release`. The human renames it on
-GitHub right after ticket #37 merges and before the next run (a run reads the label name when it starts, so the run that
-builds #37 is not affected). No agent renames it:
-
-```bash
-gh label edit hecho-en-release --name in-release -R <repo>
-```
-
-Renaming keeps the label on the issues that already carry it.
-
 ## Needs Human (stuck ticket)
 
 A ticket that stops (`/implement`, or the `run` workflow) ends with its card in *Needs Human* and a comment that says
@@ -112,20 +100,16 @@ Tested 2026-10-26 on test issue #6 (since deleted, so no history remains): Todo 
 In Progress → In Review → Done. If a state is renamed or recreated, read them again with
 `gh project field-list <number> --owner <owner> --format json`.
 
-## Renaming a column
+## Reading the option ids again
 
-The human does it on the GitHub website, not through the API (it has not been checked that renaming keeps the option
-ids). To go from *In Progress* to *Build* and from *In Review* to *Review*:
-
-1. Merge the ticket that changes `.claude/factory.json` (#41) into the release.
-2. Right after, before the next run, on the board: *Settings* → *Status* field → rename the option.
-3. Check that the ids are still those in `options` of `.claude/factory.json`:
+If a column is renamed or recreated on the board, check that the ids are still those in `options` of
+`.claude/factory.json`:
 
 ```bash
 gh project field-list <number> --owner <owner> --format json
 ```
 
-   If an id has changed, fix `options` in the JSON. Until renamed, moving a card to *Build* or *Review* fails.
+If an id has changed, fix `options` in the JSON; until then, moving a card to that column fails.
 
 ## Checking which states a card has passed through
 

@@ -30,8 +30,7 @@ If a state is renamed or recreated, read the ids again with
 
 ## Labels
 
-- Done in the working branch (the issue stays open until it reaches the main branch): `in-release`. The human renames the label on GitHub right after the merge of ticket #37, before the next run
-  (`documentation/github-board.md`); until then the label that exists there is still `hecho-en-release`.
+- Done in the working branch (the issue stays open until it reaches the main branch): `in-release`.
 
 ## Automatic check
 
