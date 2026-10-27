@@ -41,6 +41,8 @@ Write GitHub comments in the documents language; code, commits and files follow 
 - Read the ticket and the plan sections it cites. Nothing else is in scope.
 - If the project has tests, write the failing test first for each checkbox it can cover, then make it pass.
 - For a checkbox that leaves no trace in git or GitHub, note `command → output` for the final comment.
+- If a checkbox asks for something written outside the code (a comment on the ticket, a note), produce it now,
+  during the build, so the reviewer can find it.
 - From round 2: fix exactly what failed (the check output or the reviewer's «Para el Builder»), nothing more.
 
 ## 3. Automatic check
@@ -69,7 +71,8 @@ uncommitted change in the current directory, and from round 2 its previous verdi
 
 ## 6. Report on the ticket
 
-One `gh issue comment $0`, in the documents language, with this shape:
+One `gh issue comment $0`, in the documents language, with this shape. It does not repeat what step 2 already
+published for a checkbox:
 
 ```text
 /implement · <PASA y fusionado en <base> | no fusionado>
