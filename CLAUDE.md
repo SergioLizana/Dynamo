@@ -26,8 +26,9 @@ them until they open a PR that a person approves. Private repository.
   in the repository is in English: skills, agents, code, documents, tickets, commits, GitHub comments and verdicts.
 - Files in `documentation/` are named in English and written in English.
 - The project data (repository, board and its states, labels, main and working branch, automatic check, document
-  language, where the backlog and the specifications go) lives in `.claude/factory.md`. Skills and agents read it from
-  there and do not name any of it.
+  language, where the backlog and the specifications go) has its values in the `project` block of
+  `.claude/factory.json`; `.claude/factory.md` keeps what each value means and how to change it and points to the JSON.
+  Skills and agents read it from there and do not name any of it.
 - Skills in `.claude/skills/<name>/SKILL.md`; subagents in `.claude/agents/<name>.md`.
 - LF line endings (`.gitattributes`).
 

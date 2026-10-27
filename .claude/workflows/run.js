@@ -5,8 +5,9 @@ export const meta = {
 }
 
 // A dumb orchestrator: the script only decides what runs next. State comes from GitHub and from what the agents
-// return. Project data (repo, branches, board, labels, check, language) comes from .claude/factory.md; the board
-// columns and the phases (order, column, model, effort, agent type, where a failure goes) from .claude/factory.json.
+// return. Project data (repo, branches, board, labels, check, language, document paths) comes from the `project`
+// block of .claude/factory.json, read by the script without an agent's summary; so do the board columns and the phases
+// (order, column, model, effort, agent type, where a failure goes).
 // One phase = one column = one agent. To add one: an entry in factory.json and a function in PHASES
 // (documentation/launch-list.md, «The phases»).
 
@@ -16,13 +17,13 @@ const MAX_ROUNDS = 2
 
 // Every agent gets these rules. Trial failure 5: in a worktree, chained commands are refused, so one command per
 // call. Trial failure 4: facts come from commands, never from memory.
-const COMMON = `Project data is in \`.claude/factory.md\`: read it first. The board commands are in the file it names.
+const COMMON = `Project data is in the \`project\` block of \`.claude/factory.json\`: read it first. The board commands are in the file \`project.boardCommands\` names.
 Hard limits: never push; never check out, merge into or commit on the main branch; never delete a branch.
 Run one command per Bash call: no \`&&\`, \`;\`, pipes or \`$(...)\`. Never move a card: the script moves them.
 Every fact you return or write on GitHub comes from a command you ran in this step: a commit is the sha that
 \`git rev-parse --short HEAD\` printed, a copy or branch exists only if \`git worktree list\` or
 \`git branch --list\` shows it. Never write «HEAD of …» or a path you did not see.
-Write GitHub comments and commit subjects in the documents language of \`.claude/factory.md\`.`
+Write GitHub comments and commit subjects in the documents language (\`project.documentsLanguage\`).`
 
 // Trial failure 4: a commit must be a sha, not «HEAD of …».
 const SHA = { type: 'string', pattern: '^[0-9a-f]{7,40}$' }
@@ -37,20 +38,10 @@ const CHECKS = {
 
 const FRONTIER_SCHEMA = {
   type: 'object',
-  required: ['ok', 'stopReason', 'project', 'tickets'],
+  required: ['ok', 'stopReason', 'tickets'],
   properties: {
     ok: { type: 'boolean' },
     stopReason: { type: 'string' },
-    project: {
-      type: 'object',
-      required: ['repo', 'mainBranch', 'workingBranch', 'doneLabel', 'checks', 'boardOwner', 'boardNumber'],
-      properties: {
-        repo: { type: 'string' }, mainBranch: { type: 'string' }, workingBranch: { type: 'string' },
-        doneLabel: { type: 'string' },
-        checks: { type: 'array', items: { type: 'string' } },
-        boardOwner: { type: 'string' }, boardNumber: { type: 'integer' },
-      },
-    },
     tickets: {
       type: 'array',
       items: {
@@ -275,6 +266,14 @@ function checkFactory(f) {
   const str = v => typeof v === 'string' && v.length > 0
   const opt = v => v === null || str(v)
   if (!f || typeof f !== 'object') return 'it is not a JSON object'
+  const pr = f.project
+  if (!pr || typeof pr !== 'object') return 'project is missing: it holds the project data (repo, branches, board, check, documents)'
+  for (const k of ['repo', 'mainBranch', 'workingBranch', 'boardOwner', 'boardId', 'boardName', 'statusFieldId',
+    'boardCommands', 'doneLabel', 'documentsLanguage', 'plan', 'backlog', 'specifications', 'launchOneTicket']) {
+    if (!str(pr[k])) return `project.${k} must be a non-empty string`
+  }
+  if (!Number.isInteger(pr.boardNumber)) return 'project.boardNumber must be an integer'
+  if (!Array.isArray(pr.checks) || !pr.checks.length || !pr.checks.every(str)) return 'project.checks must be a list of commands with at least one'
   const c = f.columns
   if (!c || !str(c.todo) || !str(c.needsHuman) || !str(c.done)) return 'columns needs todo, needsHuman and done'
   const s = f.start
@@ -314,6 +313,7 @@ try { F = JSON.parse(rawFactory.stdout.trim()) } catch (e) { return { stopped: `
 const invalid = checkFactory(F)
 if (invalid) return { stopped: `${FACTORY_JSON} is invalid: ${invalid}` }
 const C = F.columns
+const P = F.project
 const SMALL = optsOf(F.start) // the Frontier and the script's small agents: raw reads, cards, reports, cleanup
 const START = F.start.name
 const LAST = F.phases[F.phases.length - 1].name
@@ -331,27 +331,25 @@ const unreadable = tokens.filter(t => !/^\d+$/.test(t))
 if (unreadable.length) return { stopped: `these are not ticket numbers: ${unreadable.join(', ')}` }
 const wanted = tokens.map(Number)
 
+// The base is known from factory.json and the call: the main branch stops the run before any other agent.
+const base = input.base ? String(input.base) : P.workingBranch
+if (base === P.mainBranch) return { stopped: `the base is the main branch (${base})` }
+
 phase(START)
 const front = await agent(`${COMMON}
 
 Read the state of the tickets for a run. Change nothing.
-1. From \`.claude/factory.md\`: repo, main branch, working branch, done label, every command of the automatic check,
-   and the board's owner and number.
-   Base branch: ${input.base ? `\`${input.base}\`` : 'the working branch'}; return it as workingBranch.
-2. In this folder: \`git status --porcelain --untracked-files=no\` must be empty and \`git branch --show-current\` must be the base branch.
+1. In this folder: \`git status --porcelain --untracked-files=no\` must be empty and \`git branch --show-current\` must be \`${base}\`.
    If not, ok = false and stopReason says which.
-3. Tickets: ${wanted.length ? wanted.map(n => `#${n}`).join(', ') : `every open issue that has neither the done label nor a card in *${C.needsHuman}*`}.
-   For each: \`gh issue view <n> -R <repo> --json number,title,state,labels,projectItems\`. Do not read its blockers.
+2. Tickets: ${wanted.length ? wanted.map(n => `#${n}`).join(', ') : `every open issue that has neither the label \`${P.doneLabel}\` nor a card in *${C.needsHuman}*`}.
+   For each: \`gh issue view <n> -R ${P.repo} --json number,title,state,labels,projectItems\`. Do not read its blockers.
    status = the name of its item's status in the board, or "" if it has none.
-4. ok = false too if the base branch is the main branch. Otherwise ok = true and stopReason = "".`,
+3. Otherwise ok = true and stopReason = "".`,
   { ...SMALL, label: START.toLowerCase(), phase: START, schema: FRONTIER_SCHEMA })
 
 if (!front || !front.ok) {
   return { stopped: front ? front.stopReason : `the ${START} agent returned nothing` }
 }
-const P = front.project
-const base = P.workingBranch
-if (base === P.mainBranch) return { stopped: `the base is the main branch (${base})` }
 
 const byNum = {}
 for (const t of front.tickets) byNum[t.number] = t
