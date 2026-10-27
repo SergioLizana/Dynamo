@@ -90,8 +90,8 @@ const BUILD_SCHEMA = {
 
 const VERIFY_SCHEMA = {
   type: 'object',
-  required: ['head', 'status', 'checks', 'passed'],
-  properties: { head: { type: 'string' }, status: { type: 'string' }, checks: CHECKS, passed: { type: 'boolean' } },
+  required: ['checks', 'passed'],
+  properties: { checks: CHECKS, passed: { type: 'boolean' } },
 }
 
 const MERGE_SCHEMA = {
@@ -162,7 +162,8 @@ copy (a git worktree) that starts at the tip of the base.
   }
 }
 
-// The check runs in the Builder's copy, on its commit, and the script reads the result.
+// The check runs in the Builder's copy, on its commit, and the script reads the result. The commit and the state of
+// the copy are not the agent's to report: the script reads them from the literal output of two commands.
 function verifyPhase(t, ctx) {
   const b = ctx.build
   return {
@@ -173,17 +174,20 @@ function verifyPhase(t, ctx) {
 Run the automatic check of ticket #${t.number} in the Builder's copy \`${b.worktreePath}\` (branch \`${b.branch}\`,
 commit ${b.commit}). Change nothing: no edit, no commit, no label, no comment.
 1. \`cd ${b.worktreePath}\`, alone in its call. Every command below runs there.
-2. \`git rev-parse --short HEAD\`: return what it prints as head.
-3. \`git status --porcelain\`: return what it prints as status ("" if nothing).
-4. Run each of these, one per call, and return each with its exit code and its literal output (trimmed to the
+2. Run each of these, one per call, and return each with its exit code and its literal output (trimmed to the
    failing part):
 ${P.checks.map(c => `   - \`${c.split('<base>').join(base)}\``).join('\n')}
-5. passed = true only if every one of them exited 0.`,
-    read: v => {
+3. passed = true only if every one of them exited 0.`,
+    read: async v => {
       ctx.checks = v.checks
       const bad = []
-      if (!(v.head.startsWith(b.commit) || b.commit.startsWith(v.head))) bad.push(`it ran on ${v.head}, not on the Builder's commit ${b.commit}`)
-      if (v.status.trim()) bad.push(`uncommitted changes in the copy:\n${v.status}`)
+      const head = await readRaw(`head:#${t.number}:r${ctx.round}`, `git -C ${b.worktreePath} rev-parse --short HEAD`, 'Verify')
+      const status = await readRaw(`status:#${t.number}:r${ctx.round}`, `git -C ${b.worktreePath} status --porcelain`, 'Verify')
+      const sha = head && head.exitCode === 0 ? head.stdout.trim() : ''
+      if (!sha) bad.push('the commit of the copy could not be read')
+      else if (!(sha.startsWith(b.commit) || b.commit.startsWith(sha))) bad.push(`it ran on ${sha}, not on the Builder's commit ${b.commit}`)
+      if (!status || status.exitCode !== 0) bad.push('the state of the copy could not be read')
+      else if (status.stdout.trim()) bad.push(`uncommitted changes in the copy:\n${status.stdout}`)
       if (v.checks.length < P.checks.length) bad.push('not every command of the check ran')
       for (const c of v.checks) if (c.exitCode !== 0) bad.push(`\`${c.command}\` → ${c.exitCode}\n${c.output}`)
       if (!v.passed && !bad.length) bad.push('the agent said the check did not pass')
@@ -330,11 +334,16 @@ for (const t of front.tickets) byNum[t.number] = t
 const doneOnBoard = t => t.state.toLowerCase() === 'closed' || t.labels.includes(P.doneLabel)
 const onNeedsHuman = t => t.status === C.needsHuman
 
-// One command, its literal output, parsed here. null if it failed or is not JSON.
-async function readJson(label, command, phase) {
-  const r = await agent(`Run exactly this one command and nothing else, then return its exit code and its standard
+// One command and its literal output, as the agent got them. null if the agent returned nothing.
+function readRaw(label, command, phase) {
+  return agent(`Run exactly this one command and nothing else, then return its exit code and its standard
 output character for character: no summary, no reformatting, nothing left out.
 ${command}`, { ...SMALL, label, phase, schema: RAW_SCHEMA })
+}
+
+// The same, parsed here. null if it failed or is not JSON.
+async function readJson(label, command, phase) {
+  const r = await readRaw(label, command, phase)
   if (!r || r.exitCode !== 0) return null
   try { return JSON.parse(r.stdout.trim()) } catch (e) { return null }
 }
@@ -456,7 +465,7 @@ async function runTicket(t) {
     if (spec.isolation) opts.isolation = spec.isolation
     const call = () => agent(spec.prompt, opts)
     const r = spec.serial ? await serial(call) : await call()
-    const out = r ? spec.read(r) : { pass: false, stop: true, failure: `the ${ph.name} agent returned nothing` }
+    const out = r ? await spec.read(r) : { pass: false, stop: true, failure: `the ${ph.name} agent returned nothing` }
     if (out.pass) {
       if (ph.moveCard === 'end') await moveCard(t.number, ph.column, ph.name)
       i++
