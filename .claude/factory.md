@@ -22,6 +22,9 @@ The columns (*Todo*, *Build*, *Verify*, *Review*, *Needs Human*, *Done*) with th
 *Needs Human* is where a stuck ticket ends: `/implement` and the `run` workflow move its card there, with a comment that
 says what failed. A person takes it out (see the board commands file).
 
+`small` (model and effort) is for the script's small agents: the literal reads, the card moves, the reports and the
+cleanup. The start of the run has no agent of its own; see `documentation/launch-list.md`, «The start».
+
 The phases of the `run` workflow (order, column, model, effort,
 agent type and where a failure goes) are in `.claude/factory.json`. How to change them or add a phase:
 `documentation/launch-list.md`, «The phases».

@@ -11,7 +11,7 @@ board columns and the phases from `.claude/factory.json`, with the script and no
 - Workflows enabled in `/config` (on the Pro plan they come off).
 - `"worktree": { "baseRef": "head" }` in `.claude/settings.json`: the copies start from the current checkout.
 - The main folder, on the working branch and with no changes in tracked files (the copies in `.claude/worktrees/` do not
-  count): that is where the merges happen. Otherwise the workflow stops at *Frontier* and says why.
+  count): that is where the merges happen. Otherwise the workflow stops at the start and says why.
 
 ## Launching
 
@@ -29,7 +29,7 @@ base `release/0.0.0-prueba`" (`args = { tickets, base }`).
 (`["34", "35"]`, `[34, 35]` or `[34]`) or `{ tickets, base }`, where `tickets` is a number, text or an array
 (`{ tickets: 34 }`, `{ tickets: "34 35" }`). Anything that is not an object is the list of tickets, and a single value
 is a list of one. No `args`, or empty text, means every ticket.
-If something is not a ticket number (`"34 abc"`, `"#34"`), the run stops before *Frontier* and says which part it could
+If something is not a ticket number (`"34 abc"`, `"#34"`), the run stops before reading anything and says which part it could
 not read.
 
 If `/run` does not appear as a command, the session was opened before the workflow was saved (a workflow created or
@@ -41,7 +41,7 @@ that needs permission in the middle of the run is asked of the human, and that a
 
 ## Following it
 
-`/workflows` opens the view of the run: *Frontier* and the phases of `.claude/factory.json` (today *Build*, *Verify*,
+`/workflows` opens the view of the run: the two reads of the start and the phases of `.claude/factory.json` (today *Build*, *Verify*,
 *Review* and *Merge*), each agent with its calls, its result and its tokens. `p` pauses or resumes, `x` stops one agent or the whole run. A progress line also appears in
 the task panel, below the entry.
 
@@ -71,10 +71,25 @@ with its reason; the «Out of the ticket» lines the Builders noted; a `/cost` l
 
 The human fills in the `/cost` of the session and decides about the backlog lines.
 
+## The start
+
+No agent interprets the start: it is two literal reads and the script decides (one agent per phase, not per command).
+
+1. `.claude/factory.json`, read by an agent that returns the file as it is.
+2. One agent runs three commands and returns each one's exit code and output as they are: `git status --porcelain
+   --untracked-files=no`, `git branch --show-current` and one `gh api graphql` query with every ticket (the requested
+   ones, or the first 100 open ones), its labels, the status of its card and its native blockers (with their state and
+   labels). Every list is checked against its total, so nothing is cut off silently.
+
+The script then stops the run, before any *Build*, if the main folder has changes in tracked files, is not on the base,
+or the base is the main branch, and if a requested ticket cannot be read (it is named in the result). With no numbers,
+more than 100 open tickets also stops it. The rules for which tickets are ready (done, in *Needs Human*, blocked)
+are the script's, not an agent's.
+
 ## The phases
 
-`.claude/factory.json` gives the project data (`project`; the file is rejected without it), the columns *Todo*, *Needs Human* and *Done* (`columns`), the starting step (`start`: name,
-model and effort of *Frontier* and of the script's small agents) and the phases, in order (`phases`). One phase = one
+`.claude/factory.json` gives the project data (`project`; the file is rejected without it), the columns *Todo*, *Needs Human* and *Done* (`columns`), the small agents (`small`:
+model and effort of the script's small agents: raw reads, cards, reports, cleanup) and the phases, in order (`phases`). One phase = one
 column = one agent. Each phase carries:
 
 - `name`: the name; it picks its function in `PHASES` (`run.js:249`).
@@ -110,9 +125,9 @@ says why (`run.js:288-295`, check at `:254-276`).
   whether from *Verify* or from the reviewer (`run.js:465-472`). When they run out, blocked (`:474-478`).
 - **The script moves the board:** each phase puts the card in its column, by the issue URL, and checks it with
   `gh issue view` (`run.js:351-365`, calls at `:453` and `:461`). The phase agents do not move cards (`run.js:21`).
-- **Blockers, from GitHub:** an agent runs `.../dependencies/blocked_by` and returns the literal output; the script
-  parses it (`run.js:334-349`), for all tickets before starting any (`:497`). If it cannot be read, the ticket is
-  skipped (`:433`).
+- **Blockers, from GitHub:** they come in the same read as the tickets (see «The start»), as GitHub printed them, and
+  the script parses them before starting any ticket. A list cut short is a ticket that cannot be read, which stops the
+  run.
 - **Waiting for blockers:** each ticket waits for the ones in the list (`run.js:440`). A blocker outside the list has to
   be already closed or done; if not, the ticket is skipped (`:436`).
 - **Skipping the dependents of a blocked ticket:** "skipped: depends on #n, which did not reach the release" (`:443`),
@@ -145,7 +160,7 @@ Failures 1-5 of `documentation/workflow-trial.md`:
 The first one with real tickets: 2026-10-27, tickets #35-#38. #35 was merged (`49829bd`). Two failures, both from failure
 6 of the trial (the script trusted what its agents said), fixed in #39:
 
-- *Frontier* returned #38 with `"blockers": []`, but in GitHub #38 is blocked by #37. #38 was built with #37 skipped; only
+- The agent that read the tickets returned #38 with `"blockers": []`, but in GitHub #38 is blocked by #37. #38 was built with #37 skipped; only
   the reviewer stopped it.
 - After a merge conflict, the *Merge* agent said that `.claude/factory.md` "no longer defines" the blocked label (false:
   it was still there) and left #36 with no label and its card in *In Review*: nothing showed that it was stuck.
@@ -153,5 +168,5 @@ The first one with real tickets: 2026-10-27, tickets #35-#38. #35 was merged (`4
 ## Not tested yet
 
 Still untested: what the trial left pending (a check that fails after merging, a permission asked in the middle of the
-run, a pause at the usage limit); that *Frontier* receives `args` correctly from `/run`; and the #39 changes with real
+run, a pause at the usage limit); that the script receives `args` correctly from `/run`; and the #39 changes with real
 tickets (only dry-run, with simulated agents).
