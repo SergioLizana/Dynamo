@@ -7,7 +7,9 @@ export const meta = {
 // A dumb orchestrator: the script only decides what runs next. State comes from GitHub and from what the agents
 // return. Project data (repo, branches, board, labels, check, language, document paths) comes from the `project`
 // block of .claude/factory.json, read by the script without an agent's summary; so do the board columns and the phases
-// (order, column, model, effort, agent type, where a failure goes).
+// (order, column, model, effort, agent type, where a failure goes). The start is two literal reads, with no agent that
+// interprets: factory.json, then the tickets, their blockers and the state of the main folder in one agent (one agent
+// per phase, not per command); the script parses and decides.
 // One phase = one column = one agent. To add one: an entry in factory.json and a function in PHASES
 // (documentation/launch-list.md, «The phases»).
 
@@ -36,33 +38,19 @@ const CHECKS = {
   },
 }
 
-const FRONTIER_SCHEMA = {
-  type: 'object',
-  required: ['ok', 'stopReason', 'tickets'],
-  properties: {
-    ok: { type: 'boolean' },
-    stopReason: { type: 'string' },
-    tickets: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['number', 'title', 'state', 'labels', 'status'],
-        properties: {
-          number: { type: 'integer' }, title: { type: 'string' }, state: { type: 'string' },
-          labels: { type: 'array', items: { type: 'string' } },
-          status: { type: 'string' },
-        },
-      },
-    },
-  },
-}
-
 // Run wf_41e0b269-ab2: an agent's summary of a command is not the command. A raw read returns the literal output
 // and the script parses it.
 const RAW_SCHEMA = {
   type: 'object',
   required: ['exitCode', 'stdout'],
   properties: { exitCode: { type: 'integer' }, stdout: { type: 'string' } },
+}
+
+// The only read of the start besides factory.json: three commands, each with its literal output.
+const START_SCHEMA = {
+  type: 'object',
+  required: ['status', 'branch', 'tickets'],
+  properties: { status: RAW_SCHEMA, branch: RAW_SCHEMA, tickets: RAW_SCHEMA },
 }
 
 const BUILD_SCHEMA = {
@@ -276,14 +264,14 @@ function checkFactory(f) {
   if (!Array.isArray(pr.checks) || !pr.checks.length || !pr.checks.every(str)) return 'project.checks must be a list of commands with at least one'
   const c = f.columns
   if (!c || !str(c.todo) || !str(c.needsHuman) || !str(c.done)) return 'columns needs todo, needsHuman and done'
-  const s = f.start
-  if (!s || !str(s.name) || !opt(s.model) || !opt(s.effort)) return 'start needs a name, a model and an effort (or null)'
+  const s = f.small
+  if (!s || !opt(s.model) || !opt(s.effort)) return 'small needs a model and an effort (a string or null)'
   if (!Array.isArray(f.phases) || !f.phases.length) return 'phases must be a list with at least one phase'
   const seen = []
   for (const p of f.phases) {
     if (!p || !str(p.name)) return 'every phase needs a name'
     const at = `phase «${p.name}»`
-    if (seen.includes(p.name) || p.name === s.name) return `${at} is named twice`
+    if (seen.includes(p.name)) return `${at} is named twice`
     if (!PHASES[p.name]) return `${at} has no function in PHASES of .claude/workflows/run.js`
     if (!str(p.column)) return `${at} needs a column`
     if (p.moveCard !== 'start' && p.moveCard !== 'end') return `${at}: moveCard is "start" or "end"`
@@ -314,8 +302,7 @@ const invalid = checkFactory(F)
 if (invalid) return { stopped: `${FACTORY_JSON} is invalid: ${invalid}` }
 const C = F.columns
 const P = F.project
-const SMALL = optsOf(F.start) // the Frontier and the script's small agents: raw reads, cards, reports, cleanup
-const START = F.start.name
+const SMALL = optsOf(F.small) // the script's small agents: raw reads, cards, reports, cleanup
 const LAST = F.phases[F.phases.length - 1].name
 
 // ---------- Frontier ----------
@@ -335,26 +322,80 @@ const wanted = tokens.map(Number)
 const base = input.base ? String(input.base) : P.workingBranch
 if (base === P.mainBranch) return { stopped: `the base is the main branch (${base})` }
 
-phase(START)
-const front = await agent(`${COMMON}
+// The three reads of the start in one agent, with the literal output of each: the state of the main folder, the branch
+// and the tickets with their labels, card status and native blockers (one GraphQL query, every list with its total
+// checked, so nothing is cut off silently). The script parses and decides.
+const [OWNER, REPO_NAME] = P.repo.split('/')
+const TICKET_FIELDS = 'number title state labels(first:20){totalCount nodes{name}} '
+  + 'projectItems(first:5){totalCount nodes{fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}} '
+  + 'blockedBy(first:20){totalCount nodes{number state labels(first:10){totalCount nodes{name}}}}'
+const wantedSet = [...new Set(wanted)]
+const query = `query { repository(owner:"${OWNER}", name:"${REPO_NAME}") { ${wantedSet.length
+  ? wantedSet.map(n => `t${n}: issue(number:${n}) { ${TICKET_FIELDS} }`).join(' ')
+  : `issues(states:OPEN, first:100) { pageInfo{hasNextPage} nodes { ${TICKET_FIELDS} } }`} } }`
 
-Read the state of the tickets for a run. Change nothing.
-1. In this folder: \`git status --porcelain --untracked-files=no\` must be empty and \`git branch --show-current\` must be \`${base}\`.
-   If not, ok = false and stopReason says which.
-2. Tickets: ${wanted.length ? wanted.map(n => `#${n}`).join(', ') : `every open issue that has neither the label \`${P.doneLabel}\` nor a card in *${C.needsHuman}*`}.
-   For each: \`gh issue view <n> -R ${P.repo} --json number,title,state,labels,projectItems\`. Do not read its blockers.
-   status = the name of its item's status in the board, or "" if it has none.
-3. Otherwise ok = true and stopReason = "".`,
-  { ...SMALL, label: START.toLowerCase(), phase: START, schema: FRONTIER_SCHEMA })
+const read = await agent(`Run exactly these three commands, one per Bash call, and nothing else. For each, return its exit code
+and its standard output character for character: no summary, no reformatting, nothing left out. A command that exits
+with a non-zero code is not an error for you to fix: return the code and what it printed.
+status: git status --porcelain --untracked-files=no
+branch: git branch --show-current
+tickets: gh api graphql -f query='${query}'`,
+{ ...SMALL, label: 'tickets', schema: START_SCHEMA })
 
-if (!front || !front.ok) {
-  return { stopped: front ? front.stopReason : `the ${START} agent returned nothing` }
+if (!read) return { stopped: 'the read of the tickets and of the main folder returned nothing' }
+if (read.status.exitCode !== 0) return { stopped: 'the state of the main folder could not be read' }
+if (read.status.stdout.trim()) return { stopped: `the main folder has changes in tracked files:\n${read.status.stdout.trimEnd()}` }
+if (read.branch.exitCode !== 0) return { stopped: 'the current branch of the main folder could not be read' }
+if (read.branch.stdout.trim() !== base) return { stopped: `the main folder is on «${read.branch.stdout.trim()}», not on the base (${base})` }
+
+// GitHub prints the data and the errors together (a missing ticket is null with an error), then exits non-zero: the
+// output is parsed whatever the code, and a stray line before or after the JSON is ignored.
+let answer = null
+const out = read.tickets.stdout
+for (const text of [out.trim(), out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)]) {
+  try { answer = JSON.parse(text); break } catch (e) { /* the next text */ }
+}
+const repository = answer && answer.data && answer.data.repository
+if (!repository) return { stopped: `the tickets could not be read: GitHub's answer is not usable (exit code ${read.tickets.exitCode})` }
+
+const whole = c => (c && Array.isArray(c.nodes) && c.nodes.length === c.totalCount ? c.nodes : null)
+// A ticket as the run uses it, or null if what GitHub returned is incomplete or malformed.
+function toTicket(n) {
+  if (!n || !Number.isInteger(n.number) || typeof n.title !== 'string' || typeof n.state !== 'string') return null
+  const labels = whole(n.labels), items = whole(n.projectItems), blocked = whole(n.blockedBy)
+  if (!labels || !items || !blocked) return null
+  const blockers = []
+  for (const b of blocked) {
+    const bl = b && whole(b.labels)
+    if (!bl || !Number.isInteger(b.number) || typeof b.state !== 'string') return null
+    blockers.push({ number: b.number, state: b.state, labels: bl.map(l => l.name) })
+  }
+  const status = items.map(i => i && i.fieldValueByName && i.fieldValueByName.name).find(x => typeof x === 'string')
+  return { number: n.number, title: n.title, state: n.state, labels: labels.map(l => l.name), status: status || '', blockers }
 }
 
-const byNum = {}
-for (const t of front.tickets) byNum[t.number] = t
 const doneOnBoard = t => t.state.toLowerCase() === 'closed' || t.labels.includes(P.doneLabel)
 const onNeedsHuman = t => t.status === C.needsHuman
+
+// A requested ticket that cannot be read stops the run here, before any Build, and is named.
+let tickets
+if (wantedSet.length) {
+  tickets = wantedSet.map(n => toTicket(repository[`t${n}`]))
+  const unreadableTickets = wantedSet.filter((n, i) => !tickets[i] || tickets[i].number !== n)
+  if (unreadableTickets.length) return { stopped: `these tickets cannot be read on GitHub: ${unreadableTickets.map(n => `#${n}`).join(', ')}` }
+} else {
+  const open = repository.issues
+  if (!open || !Array.isArray(open.nodes) || !open.pageInfo) return { stopped: 'the list of open tickets could not be read' }
+  if (open.pageInfo.hasNextPage) return { stopped: 'there are more than 100 open tickets: name the ones to run' }
+  tickets = open.nodes.map(toTicket)
+  const bad = open.nodes.map((n, i) => (tickets[i] ? null : n && Number.isInteger(n.number) ? `#${n.number}` : 'one of them')).filter(Boolean)
+  if (bad.length) return { stopped: `these tickets cannot be read on GitHub: ${bad.join(', ')}` }
+  tickets = tickets.filter(t => !doneOnBoard(t) && !onNeedsHuman(t))
+}
+if (read.tickets.exitCode !== 0 && !(answer.errors || []).length) return { stopped: `the tickets query failed (exit code ${read.tickets.exitCode}) with no error to show` }
+
+const byNum = {}
+for (const t of tickets) byNum[t.number] = t
 
 // One command and its literal output, as the agent got them. null if the agent returned nothing.
 function readRaw(label, command, phase) {
@@ -368,15 +409,6 @@ async function readJson(label, command, phase) {
   const r = await readRaw(label, command, phase)
   if (!r || r.exitCode !== 0) return null
   try { return JSON.parse(r.stdout.trim()) } catch (e) { return null }
-}
-
-// Native blockers, from GitHub's output and not from an agent's summary. null if they cannot be read.
-async function readBlockers(n) {
-  const list = await readJson(`blockers:#${n}`,
-    `gh api repos/${P.repo}/issues/${n}/dependencies/blocked_by --jq '[.[]|{number,state,labels:[.labels[].name]}]'`, START)
-  if (!Array.isArray(list)) return null
-  if (!list.every(b => b && Number.isInteger(b.number) && typeof b.state === 'string' && Array.isArray(b.labels))) return null
-  return list
 }
 
 // The script moves every card, by issue URL, and checks it on GitHub: the board always shows the real step.
@@ -452,7 +484,7 @@ function skip(t, reason) {
 
 Ticket #${t.number} in repo \`${P.repo}\` is skipped in this run. Change no label.
 Post one \`gh issue comment ${t.number} -R ${P.repo}\`: «${NAME} · skipped: ${reason}».`,
-    { ...SMALL, label: `skip:#${t.number}`, phase: START }))
+    { ...SMALL, label: `skip:#${t.number}`, phase: 'Skipped' }))
     .then(() => ({ number: t.number, status: 'skipped', reason }))
 }
 
@@ -461,8 +493,7 @@ async function runTicket(t) {
   if (onNeedsHuman(t)) return { number: t.number, status: 'blocked', note: `already in ${C.needsHuman}` }
 
   // Wait for blockers in this run; a blocker outside the run must already be done.
-  const blockers = blockersOf[t.number]
-  if (!blockers) return skip(t, 'its blockers could not be read on GitHub')
+  const blockers = t.blockers
   for (const bl of blockers) {
     if (!byNum[bl.number] && bl.state.toLowerCase() !== 'closed' && !bl.labels.includes(P.doneLabel)) {
       return skip(t, `depends on #${bl.number}, which is not in the release`)
@@ -536,10 +567,7 @@ function start(n) {
   return running[n]
 }
 
-const order = front.tickets.map(t => t.number).sort((a, b) => a - b)
-// All blockers before any ticket starts: start() finds cycles only while runTicket has not awaited yet.
-const blockersOf = {}
-await parallel(order.map(n => async () => { blockersOf[n] = await readBlockers(n) }))
+const order = tickets.map(t => t.number).sort((a, b) => a - b)
 log(`${order.length} tickets on ${base}: ${order.map(n => `#${n}`).join(', ')}`)
 const results = await Promise.all(order.map(start))
 await queue

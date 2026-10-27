@@ -29,7 +29,7 @@
     "Needs Human": "40dfd960",
     "Done": "e617f390"
   },
-  "start": { "name": "Frontier", "model": "haiku", "effort": "high" },
+  "small": { "model": "haiku", "effort": "high" },
   "phases": [
     { "name": "Build", "column": "Build", "moveCard": "start", "model": "sonnet", "effort": "high", "agentType": null, "onFail": "Needs Human" },
     { "name": "Verify", "column": "Verify", "moveCard": "start", "model": "haiku", "effort": "high", "agentType": null, "onFail": "Build" },
