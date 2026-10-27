@@ -38,6 +38,9 @@ Every «move the card to X» below means two things, in this order:
 
 ## 0. Start
 
+A stop in this step (every «stop as blocked» below, and the hard limit on the main branch) is a stop at `start`: step 7
+only comments, because nothing is built yet and the tree may hold the human's own work.
+
 1. `git status --porcelain` must be empty. If not, stop as blocked («working tree not clean»).
 2. Read `.claude/factory.md` and `CLAUDE.md`. No automatic check defined: stop as blocked. Never treat a missing
    check as passed.
@@ -62,7 +65,9 @@ Every «move the card to X» below means two things, in this order:
 
 ## 3. Automatic check
 
-Move the card to the Verify column. Run every command of the automatic check with `<base>` replaced.
+Move the card to the Verify column. First `git add -N <paths of the new files>` (intent to add, nothing else is
+staged): `git diff --check <base>` ignores files git does not know. Run every command of the automatic check with
+`<base>` replaced.
 - All exit 0: go to step 4.
 - Any fails: no commit and no reviewer. If `round = 1`: `round = 2`, card to the Build column, back to step 2 with the
   failing output. If `round = 2`: blocked (step 7) with the failing command and its output.
@@ -101,12 +106,15 @@ Out of the ticket (for the backlog): <what was seen> | nothing
 
 ## 7. Blocked
 
+- Stopped at `start` (step 0): post only the comment, with `Stopped at: start` and `Left: nothing`. No card move (a
+  card already in *Needs Human* stays there; the `run` workflow skips a ticket whose blocker is not done), no stash, no
+  checkout. Skip the rest of this step.
 - Move the card to the Needs Human column (option id in `.claude/factory.json`, by URL as the board commands file says).
 - Post the step 6 comment with the reason (the literal failing output or verdict), and these three lines after
   `Reviewer:`:
 
   ```text
-  Stopped at: <build | check | review | merge>
+  Stopped at: <start | build | check | review | merge>
   Left: <branch and stash, by name | nothing>
   To relaunch: take the card out of *Needs Human* (documentation/github-board.md) and launch `/implement $0` by hand
   (documentation/launch-one-ticket.md). First, the human deletes the branch in «Left» or renames it.
