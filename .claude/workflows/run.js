@@ -304,8 +304,14 @@ const LAST = F.phases[F.phases.length - 1].name
 
 // ---------- Frontier ----------
 
-const input = Array.isArray(args) ? { tickets: args } : (args || {})
-const wanted = (input.tickets || []).map(Number)
+// /run passes the tickets as text («38», «38 43», «38,43»); a call by script path, as an array or { tickets, base }.
+// Something that is not a ticket number stops the run: an empty list would take every ticket.
+const input = Array.isArray(args) || typeof args === 'string' ? { tickets: args } : (args || {})
+const given = typeof input.tickets === 'string' ? input.tickets.split(/[\s,]+/) : (input.tickets || [])
+const tokens = given.map(t => String(t).trim()).filter(t => t !== '')
+const unreadable = tokens.filter(t => !/^\d+$/.test(t))
+if (unreadable.length) return { stopped: `these are not ticket numbers: ${unreadable.join(', ')}` }
+const wanted = tokens.map(Number)
 
 phase(START)
 const front = await agent(`${COMMON}
