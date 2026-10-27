@@ -45,28 +45,13 @@ Each entry says where it comes from and what has been verified.
 - **Options:** a machine account (conditions for this type of account on GitHub not checked) or a GitHub App. A
   fine-grained token of the own account limits what the agent can do, but does not change the author.
 
-## Working copies that start from `main`
-
-- **Origin:** tests of #17 (2026-10-26). `main` is at `cc2dc46` and has no `.claude/` (`git ls-tree main .claude` comes out
-  empty). The copies of a subagent with `isolation: worktree` and of `claude --bg` start there: they work without skills,
-  without `settings.json` in the copy and without the `reviewer`, and on old code.
-- **Verified:** the three test copies of those two options were at `cc2dc46`. The permissions did apply, but those of the
-  session that launched them, not those of the copy.
-- **Why `main`:** it is the default of `worktree.baseRef` (`"fresh"`, the main branch of the remote), not the current
-  checkout (research §3.3). The human expected them to start from the branch checked out (2026-10-27).
-- **Options:** `worktree.baseRef: "head"` (not tested); or not use them and create the copies with `git worktree add`, which
-  is what `documentation/parallel-launch-trial.md` recommends. The mismatch closes by itself when the release reaches
-  `main`.
-- **When:** only if `/run` ends up using isolated subagents or `--bg`.
-- **Resolved 2026-10-27:** `worktree.baseRef: "head"` in `.claude/settings.json` (`d4a1a26`). Tested in the trials of
-  `documentation/workflow-trial.md`: the copies started from the tip of the base, with `.claude/`.
-
 ## `git worktree` permissions for `/run`
 
 - **Origin:** tests of #17. `git worktree add` and `git worktree remove` are not in `.claude/settings.json`; in a normal
   session the `auto` mode decided them. With `claude -p --permission-prompts none` they would be denied if the mode does
   not approve them.
-- **When:** when writing `/run` (#18), which needs them to create and delete the copies.
+- **When:** the `run` workflow removes its copies with `git worktree remove` in its last `runner` call. If a real run
+  asks for permission there, add the rule then.
 
 ## Automatic deletion of subagent copies, unseen
 
@@ -75,29 +60,11 @@ Each entry says where it comes from and what has been verified.
   was deleted by itself, because both had changes or had changed branch.
 - **When:** if `/run` ends up depending on that cleanup.
 
-## Label with the version instead of `hecho-en-release`
-
-- **Origin:** the human, 2026-10-27. `hecho-en-release` does not say which version the ticket is in.
-- **Options:**
-  - a) Rename it to `in-release`.
-  - b) One label per version, `release-x.y.z` (GitHub allows dots in the name). `/implement` and the `/run` frontier would
-    have to search for a pattern (`release-*`) and not a fixed name, and the label has to be created when each version
-    opens.
-  - c) A *milestone* `0.1.0`, which GitHub provides for this: one per issue, with a progress bar and a filter on the
-    board. But "is in the version" is not "already merged": the card in *Done* or a label would still be needed for the
-    latter.
-- **Where it is used today:** `.claude/skills/implement/SKILL.md` (steps 0 and 5), `.claude/skills/run/SKILL.md`, plan §6.5
-  and `documentation/github-board.md`.
-- **Not checked:** how the board filters by milestone.
-
-## *Blocked* and *Closed* columns on the board
+## *Closed* column on the board
 
 - **Origin:** the human, 2026-10-27, on finding #21 (test ticket of #18) closed but with its card in *Todo*. He wants to
-  see on the board, without opening each ticket, when he has to step in.
-- **Resolved (the *Blocked* part):** #36 adds the *Needs Human* column: a stuck ticket ends there, and `/implement` and the
-  `run` workflow move the card. The *Closed* column stays open; it is not part of this ticket.
-- **What clashed (already resolved):** plan §6.5 said that a stuck ticket carries the `bloqueado` label, and `/implement`
-  (step 7) left the card at the step where it stopped.
+  see on the board, without opening each ticket, when he has to step in. The *Needs Human* column (#36) covers the
+  stuck tickets; a *Closed* column is still open.
 - **Not checked:** whether the project's built-in flow ("Item closed") can move the card to *Closed* by itself when the
   issue is closed. In the history of #21 there is a `Todo -> Closed` and a `Closed -> Todo` on 2026-10-26 at 23:46 that
   nobody has explained, with no *Closed* option existing.
@@ -106,25 +73,17 @@ Each entry says where it comes from and what has been verified.
 
 - **Origin:** the human, 2026-10-27: it is often read that each phase of a factory has its own agent, and there are
   orchestrators that are a skill launching subagents (like Pocock's `implement-spec`).
-- **How it is now:** the Builder is the `/implement` session itself (with `-p`, a new session per ticket); *Verify* is the
-  commands of "Automatic check", with no model, so that it does not depend on what one answers; *Review* is the `reviewer`
-  subagent, with its own context and read-only. `/run` is the orchestrator and launches one `claude -p` per ticket
-  (recommendation of #17: it gives cost per ticket and does not wait for permissions).
+- **How it is now:** `/implement` is one session that follows `.claude/agents/builder.md` itself, runs the commands of
+  "Automatic check" (no model, so that it does not depend on what one answers) and launches the `reviewer` subagent,
+  with its own context and read-only. The `run` workflow already splits the phases: one agent per phase (the `builder`,
+  the `reviewer`) and the script decides the rest from the commands' exit codes. What stays open is only whether the
+  by-hand `/implement` should split too.
 - **Verified:** a subagent can launch its own up to three levels below the main session (subagent documentation,
   2026-10-27).
 - **Data:** from #14 to #16, 13-17 turns and 0.49-0.86 USD per ticket. The only extra round (#15) came from the order of
   the steps, not from mixing phases.
 - **Signal to do it:** the Builder runs out of context on large tickets, or there are rounds because the Builder judges
   itself. Before that, read research §3 and §7 on separating phases.
-
-## File references in this repository when it becomes a plugin
-
-- **Origin:** conversation of 2026-10-26. The skills name files that exist only here:
-  `documentation/launch-one-ticket.md` (`/implement`, only as a reference), `CLAUDE.md` (automatic check) and
-  `documentation/github-board.md` (board ids and commands).
-- **When:** in stage 4, when the skills are taken out into a plugin for another project.
-- **Resolved 2026-10-27:** the project data is in `.claude/factory.md`, and the skills and the `reviewer` read it from there
-  (#30 and #31).
 
 ## `/to-request` takes free text as the file name
 
@@ -140,3 +99,58 @@ Each entry says where it comes from and what has been verified.
 - `/to-request` writes "Nothing agreed" in an empty section, and the `request.md` template uses "None".
 - #16 added two things that no checkbox asked for (sending ideas to `backlog.md` and the limit of ~70 characters per
   line), and the reviewer said PASS: watch whether the reviewer lets through what goes beyond the ticket.
+
+## Minor findings of the review of 2026-10-27
+
+Small things found when reviewing the list #53-#58. None is a problem yet; each waits for a ticket that touches the file.
+
+- **`to-tasks` and the board states.** The skill says the board states are in `.claude/factory.md` and moves the new
+  card to *Todo* by name. It should take the states from `.claude/factory.json` and the column from `columns.todo`.
+- **Document paths in `/implement` and in the ticket comment.** `/implement` names `documentation/github-board.md` and
+  `documentation/launch-one-ticket.md`, and `ticketComment` in `run.js` names `documentation/github-board.md` and
+  `documentation/launch-list.md` in the «To relaunch» line. They should come from the project data
+  (`project.boardCommands`, `project.launchOneTicket`; `launch-list.md` has no key yet).
+- **The ticket template and the plan path.** `.claude/templates/ticket.md` ends with the literal
+  `documentation/agent-factory-plan.md`; it should take the path from `project.plan`.
+- **`documentation/spec-pendientes-etapa-2.md`** has a Spanish name. It needs an English one (the files in
+  `documentation/` are named in English, `CLAUDE.md`).
+- **«Parado en» in `run.js`.** The comment before the phase functions still says «Parado en»; the comment, the report and
+  the docs say «Stopped at».
+- **The `bloqueado` label on GitHub.** No skill, agent or workflow uses it since #36 (the column *Needs Human* is the
+  signal). The human deletes it: `gh label list -R SergioLizana/Dynamo` still showed it on 2026-10-27.
+- **`move_card()` in `documentation/github-board.md`** is bash-only and reads at most `--limit 100` cards. The form
+  `gh project item-edit <number> --owner <owner> --url <issue URL> --field "Status" --value "<column>"`, which `cardCommands`
+  in `run.js` already uses, works on any shell and with any number of cards; replace the function by it.
+- **Out of the ticket, noted by the Builders and never taken to the backlog.**
+  - #38: `CLAUDE.md` said the research stayed in Spanish; it reads English now (nothing left to do).
+  - #41: `to-tasks` still says the states are in `factory.md` (first entry above); plan §6.5 said that nothing else copies
+    the phase models while it cited them; fixed in #61.
+  - #43: Git Bash turns a commit subject that starts with «/» into a path (the first commit became
+    «C:/Program Files/Git/implement …» and was amended). `/implement` step 5 and the Builder could warn about a leading
+    «/» in a subject, or set `MSYS_NO_PATHCONV=1`.
+- **The skills and the reviewer read `.claude/factory.md`.** The text says «read `.claude/factory.md`», which only points
+  to the JSON. They should name `.claude/factory.json` directly (`implement`, `to-tasks`, `to-request`, `discover` and
+  the `reviewer`). From the run of #53-#55.
+
+## Phases without globals, and a cap on parallel builds (#59)
+
+- **Origin:** ticket #59, moved to the backlog by the human on 2026-10-27: it waits for a real problem.
+- **What it asked for:** the phase functions of `run.js` use globals declared hundreds of lines later (`P`, `base`,
+  `builds`) and change `ctx` inside `read()`. Each phase would be an entry with `input(t, ctx, env)` and
+  `judge(result, t, ctx, env)` and no globals, with `run.js` at most 300 lines; `factory.json` would gain `limits`
+  (`maxRounds`, `parallel`), and the script would never run more than `parallel` builds at once (plan §6.1 says N starts
+  at 2; today the workflow has no cap).
+- **Already done from it:** the round fields reset when a round starts (#56) and the agent ceiling of a ticket that
+  passes in round 1 (#58).
+- **When:** a run uses up the usage limit or the machine with several builds at once, or `run.js` is hard to change.
+
+## Splitting `run.js` into files (#60)
+
+- **Origin:** ticket #60, moved to the backlog by the human on 2026-10-27. The human wants `run.js` split into several
+  JavaScript files once it grows. The workflow runtime has no documented `import`; its one documented composition is a
+  child workflow (`workflow({scriptPath}, args)`, one level deep, no shared functions). Nobody has tried either.
+- **To test, with throwaway scripts outside `.claude/workflows/`:** an `import` of a sibling file; a child
+  `workflow({scriptPath})` with object args and a returned value; whether a script under `.claude/workflows/run/` shows up
+  as a `/` command; and what a resume does with a child.
+- **When:** only if `run.js` grows again after #53-#58. Then the findings and a recommendation go in
+  `documentation/launch-list.md`, «The phases».

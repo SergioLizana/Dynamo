@@ -1,7 +1,8 @@
 # Dynamo: the agent factory, starting point
 
 Date: 2026-10-26. Origin: conversation about Cadenza, the research into Matt Pocock's approach and another person's
-factory scheme. Status: design draft; nothing is built yet.
+factory scheme. Status: design, kept in line with what is built. The six pieces of §6.2 exist and the factory builds
+itself with them (stage 2 in use, §8); the design decisions below are the ones of 2026-10-26.
 
 Reviewed on 2026-10-26 against `agent-factory-research.md` (hereafter "the research"). The idea does not change:
 we build the factory ourselves, step by step, on a real project. What is added are rules that the evidence makes
@@ -151,12 +152,11 @@ Idea → /discover → /to-request → /to-tasks (I approve the list, 5-8 ticket
                          ↓
 /run: while tickets remain
         frontier = tickets whose blockers are already merged
-        each one (up to N at a time), in the background and in its working copy:
-            /implement:
-                Builder → check (tests, build, lint) → pass? no → Builder
-                                        yes → Reviewer → pass? no → Builder
+        each one (up to N at a time), in its own working copy, goes through the phases of `.claude/factory.json`:
+                Build → Verify (tests, build, lint) → pass? no → Build
+                                        yes → Review → pass? no → Build
                 maximum 2 rounds in total
-            pass → merged into release/x.y.z → tests again on release/x.y.z
+            pass → Merge: merged into release/x.y.z → tests again on release/x.y.z
             not passing after 2 rounds → "blocked" with its reason; continues with the rest
             those that depend on a blocked one are skipped and go into the report
                          ↓
@@ -167,7 +167,11 @@ PR from release/x.y.z against main + report (blocked, skipped, cost)       ← m
   and merge into it without asking; there is no intermediate branch per list.
 - **Only what I approve reaches `main`.** When each list ends, `/run` opens or updates the `release/x.y.z` PR against
   `main` with that list's report. When to merge it is my decision: after a list or when closing the version.
-- **N** is only how many tickets go at the same time. It starts at 2 (research §7.9).
+- **N** is only how many tickets go at the same time. It starts at 2 (research §7.9). The workflow has no cap yet: it
+  starts every ticket whose blockers are done (`documentation/backlog.md`).
+- **`/implement` and `/run` are two ways to run the same loop,** not one inside the other: `/implement` is the loop for
+  one ticket in the current session, and `/run` is the same loop as a workflow, with a script that decides and one agent
+  per phase. The Builder's rules are one file, `.claude/agents/builder.md`, which both follow.
 - **The round cap is 2**, fixed. Stripe allows at most 2 CI rounds (research §6.2, §8.2).
 - **Lists of 5-8 tickets.** So that the final PR can be read. If even that is hard, it moves to one PR per ticket against the
   integration branch (see §10, question 2). Large PRs are reviewed worse and merged less often (research §7.1, §7.2, §8.5).
@@ -182,9 +186,13 @@ We write all of them ourselves. Before writing each skill, the Pocock ones that 
 | `/discover` | skill | Talks the idea through, checks facts in the repository and closes the decisions. At the end it says whether it fits in one ticket or needs a specification | Does not write the specification or create tickets |
 | `/to-request` | skill | Writes the specification with the template, in the same session | Decides nothing new |
 | `/to-tasks` | skill | Proposes the ticket list (title, blocked by, what it delivers, when it is done), with 5-8 at most; adjusts it with me until I approve it and creates all the tickets | Does not implement or plan in depth |
-| `/implement <ticket>` | skill | The unit: branch, tests, implementation, **automatic check** (tests, build, lint; if it fails, neither commit nor reviewer), review, back to the Builder if it fails (max. 2 in total), commit. Records turns, rounds and cost on the ticket. Moves the board card at each real step (§6.5) | Does not merge into main |
-| `/run` | workflow | The assembly line: computes the frontier, launches `/implement` in parallel in working copies, merges into the integration branch, runs the tests again, unblocks and continues; at the end it opens or updates the `release/x.y.z` PR against `main` and gives a report | Does not implement; its state lives in the tickets, not in the conversation |
+| `/implement <ticket>` | skill | The unit: branch, tests, implementation, **automatic check** (tests, build, lint; if it fails, neither commit nor reviewer), review, back to the Builder if it fails (max. 2 in total), commit and merge into `release/x.y.z`. The final comment on the ticket has the rounds, the checks and the reviewer's verdict; the cost goes in the report of the list. Moves the board card at each real step (§6.5). The Builder's rules are `.claude/agents/builder.md` | Does not merge into main |
+| `/run` | workflow | The assembly line, `.claude/workflows/run.js`: a script reads the tickets and the main folder in GitHub, starts each ticket once its blockers are done, and takes it through the phases of `.claude/factory.json` in its own working copy (Build with the `builder`, Verify with the check, Review with the `reviewer`, Merge into `release/x.y.z`, with the tests run again after the merge); it skips the dependents of a blocked ticket; at the end it updates the `release/x.y.z` PR against `main` with the report, or gives the command to open it, and never pushes | Does not implement; the script decides and its state lives in GitHub, not in the conversation |
 | `reviewer` | subagent | Read-only; reviews the change against the ticket's checkboxes and **whether it goes beyond the ticket**; returns PASS or FAIL with evidence | Does not edit files |
+
+Two subagents are not pieces of their own, they are roles of the `/run` workflow: the `builder` (Sonnet; the one
+definition of the Builder's rules, which `/implement` also follows) and the `runner` (Haiku; runs a list of commands
+literally and returns their output, so the script decides from exit codes and not from an agent's summary).
 
 Why the reviewer checks whether the agent goes beyond the ticket: it is the most common failure of an unattended agent;
 Spotify's judge vetoes one session in four for that reason (research §7.4). It goes in the same reviewer, not in a separate
@@ -223,15 +231,20 @@ dynamo/
       to-tasks/SKILL.md
       implement/SKILL.md
     agents/
+      builder.md        # the Builder's rules, one definition for /implement and /run
       reviewer.md
+      runner.md         # runs a list of commands literally, for the script of /run
     workflows/
       run.js            # /run: the assembly line (workflow, not a skill)
     templates/
       request.md        # problem, solution, what changes for the user, decisions, how it is tested, out of scope, notes
       ticket.md         # problem, what it delivers, acceptance criteria as checkboxes, blocked by, out of scope
-  .worktreeinclude      # what is copied to each working copy (.env, etc.)
+    factory.json        # the project data, the board columns and the phases of /run; the script reads it
+    factory.md          # what each value of factory.json means and how to change it
   documentation/
 ```
+
+`.worktreeinclude` (what is copied to each working copy: `.env`, etc.) is not there yet: no ticket has needed it.
 
 When the real project arrives, `.claude-plugin/plugin.json` is added and the skills move to `skills/`, `agents/` and
 `templates/` at the root, so they can be installed there as a plugin.
@@ -248,10 +261,10 @@ working copies (research §3.3).
 **GitHub issues** in the factory's private repository, and later in the real project's: list, board (Projects), the "blocked
 by" relation and a link to the PRs, with nothing to build. Only GitHub until something else is needed (rule 2).
 
-**Board:** https://github.com/users/SergioLizana/projects/1, with the columns *Todo*, *Build* (Builder, Sonnet), *Verify*
-(automatic check, Haiku), *Review* (`reviewer`, on the model of its definition), *Needs Human* (stuck ticket) and *Done*
-(merged into `release/x.y.z`, Haiku). The names, the ids of their options and the agent and model of each phase are in
-`.claude/factory.json`; nothing else copies them. It **always shows the step the agent is working on**, also when a
+**Board:** https://github.com/users/SergioLizana/projects/1, with the columns *Todo*, *Build* (the Builder), *Verify*
+(the automatic check), *Review* (the `reviewer`), *Needs Human* (stuck ticket) and *Done* (merged into `release/x.y.z`).
+The names, the ids of their options and the agent and model of each phase are in `.claude/factory.json`; nothing else
+copies them. It **always shows the step the agent is working on**, also when a
 ticket goes back from *Review* to *Build* in another round. A stuck ticket ends in *Needs Human*, with a comment that says what failed, at which step it stopped, what
 is left (branch or stash) and how to relaunch it. It carries no label: the column is the signal. Taking it out of *Needs
 Human* and relaunching it is in `documentation/github-board.md`.

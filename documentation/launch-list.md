@@ -97,6 +97,10 @@ phase, not per command).
    blockers (with their state and labels), and, for the report at the end, the first-parent log of the base since the
    main branch and the open PR of the base. Every list is checked against its total, so nothing is cut off silently.
 
+   The query has caps (`TICKET_FIELDS` in `run.js`): 20 labels per ticket, 5 board cards per ticket, 20 blockers per
+   ticket and 10 labels per blocker, and 100 open tickets when no numbers are given. A ticket with more than that
+   cannot be read whole: the run stops before any *Build* and names the ticket, it does not go on with a cut list.
+
 The script then stops the run, before any *Build*, if the main folder has changes in tracked files, is not on the base,
 or the base is the main branch, and if a requested ticket cannot be read (it is named in the result). With no numbers,
 more than 100 open tickets also stops it. The rules for which tickets are ready (done, in *Needs Human*, blocked)
@@ -104,37 +108,41 @@ are the script's, not an agent's.
 
 ## The phases
 
-`.claude/factory.json` gives the project data (`project`; the file is rejected without it), the columns *Todo*, *Needs Human* and *Done* (`columns`), the small agents (`small`:
-model and effort of the script's small agents: raw reads, cards, reports, cleanup) and the phases, in order (`phases`). One phase = one
-column = one agent. Each phase carries:
+`.claude/factory.json` gives the project data (`project`; the file is rejected without it), the columns *Todo*, *Needs Human* and *Done* (`columns`), the small agents (`small`, see below) and the phases, in order (`phases`). One phase = one
+column = one agent. `small` is the model and effort of every `runner` call that has no phase of its own: the start's reads, the card
+moves, the comments, the report and the cleanup (`SMALL` in `run.js`). A phase takes its own `model` and `effort`, and
+`small` never overrides them. The first read, the one that gets this file, runs before `small` is known, so it uses the
+`runner`'s own model.
 
-- `name`: the name; it picks its function in `PHASES` (`run.js:249`).
+Each phase carries:
+
+- `name`: the name; it picks its function in `PHASES`, the table next to the phase functions in `run.js`.
 - `column`: the board column where it puts the card. `moveCard`: `"start"` puts it there when the phase starts, `"end"`
   only if the phase passes (so *Merge* ends in *Done* without going back).
 - `model`, `effort`, `agentType`: those of the agent; `null` leaves its own (the one in its definition). A phase
   with an `agentType` must have `model` and `effort` null: the workflow rejects the file otherwise.
 - `onFail`: an earlier phase, where the ticket goes back for another round, or the *Needs Human* column, which stops it.
 
-Today (`factory.json:13-16`): *Build* with the `builder` (Sonnet, from `.claude/agents/builder.md`, the one definition of the Builder's rules that `/implement` also follows), *Verify* on Haiku, *Review* with the `reviewer` and *Merge* on Haiku. A
+Today (the `phases` of `.claude/factory.json`): *Build* with the `builder` (Sonnet, from `.claude/agents/builder.md`, the one definition of the Builder's rules that `/implement` also follows), *Verify* on Haiku, *Review* with the `reviewer` and *Merge* on Haiku. A
 merged card goes *Todo* → *Build* → *Verify* → *Review* → *Done*.
 
 Changing a model, an effort or the name of a column means editing only the JSON. **Adding a phase:**
 
 1. An entry in `phases` of `.claude/factory.json`, in its place in the order, with the seven fields.
-2. A function in `run.js` next to the others (`buildPhase`, `run.js:127`, is the template) that receives the ticket and
+2. A function in `run.js` next to the others (`buildPhase` is the template) that receives the ticket and
    its state (`ctx`) and its entry in the JSON (`ph`) and returns `prompt`, `step` (the word for «Stopped at»), `schema`,
-   `isolation` or `serial` if it needs them (or `exec()` instead of the prompt, as *Verify* does), and `read(result)` → `{ pass: true }` or `{ pass: false, failure }` (`run.js:120-124`).
-3. Add it to `PHASES` with the same name (`run.js:249`). The loop (`run.js:450-479`) is not touched.
+   `isolation` or `serial` if it needs them (or `exec()` instead of the prompt, as *Verify* does), and `read(result)` → `{ pass: true }` or `{ pass: false, failure }` (the comment that opens the «Phases» section of `run.js` describes the shape).
+3. Add it to `PHASES` with the same name. The loop (`runPhases`) is not touched.
 
 If the function is missing, or the JSON is missing, cannot be read or is not valid, the workflow stops at the start and
-says why (`run.js:288-295`, check at `:254-276`).
+says why (`checkFactory` and the read of the JSON at the start of `run.js`).
 
 ## How it decides
 
-- **Models and efforts:** from `.claude/factory.json`, never written in `run.js` (`optsOf`, `run.js:279-285`); the
-  `reviewer` with `agentType: 'reviewer'` and no model, so it uses the one in its definition, Opus (`factory.json:15`).
-  Only the reading of the JSON itself runs without a model, because it is not known yet (`run.js:287-290`).
-- ***Build* does not check:** it changes and commits (`run.js:149-151`). It ends with one read in the copy,
+- **Models and efforts:** from `.claude/factory.json`, never written in `run.js` (`optsOf`); the
+  `reviewer` with `agentType: 'reviewer'` and no model, so it uses the one in its definition, Opus (the *Review* entry
+  of `phases`). Only the reading of the JSON itself runs with the `runner`'s own model (Haiku, from its definition), because the `small` key is not known yet.
+- ***Build* does not check:** it changes and commits (`buildPhase`). It ends with one read in the copy,
   `git merge-base HEAD <base>`, and the script keeps that sha. ***Verify*** is decided by the script, not by an agent:
   one `runner` call moves the card and reads it back, prints the folder the checks run in, reads the state of the *Build*
   copy and its commit and runs the commands of the check, with `<base>` replaced by that sha (the branch name moves while
@@ -157,16 +165,17 @@ says why (`run.js:288-295`, check at `:254-276`).
 - **Plumbing does not cost a round:** a call that returns nothing, or that did not run what it should, is repeated once;
   a second time the ticket stops as «infrastructure» (that is its «Stopped at») and uses no round. The fields of a round
   (build, base sha, checks, verdict) are reset when the next round starts, so a block in round 2 quotes only round 2.
-- **Cap of 2 rounds:** `run.js:15`; each failure that sends the ticket back to an earlier phase counts one round,
-  whether from *Verify* or from the reviewer (`run.js:465-472`). When they run out, blocked (`:474-478`).
+- **Cap of 2 rounds:** `MAX_ROUNDS`; each failure that sends the ticket back to an earlier phase counts one round,
+  whether from *Verify* or from the reviewer (`runPhases`). When they run out, blocked (`block`).
 - **The script moves the board:** each phase puts the card in its column, by the issue URL, and checks it with
-  `gh issue view` (`run.js:351-365`, calls at `:453` and `:461`). The phase agents do not move cards (`run.js:21`).
+  `gh issue view` (`moveCard`, called from `runPhases`). The phase agents do not move cards (rule 8 of
+  `.claude/agents/builder.md`).
 - **Blockers, from GitHub:** they come in the same read as the tickets (see «The start»), as GitHub printed them, and
   the script parses them before starting any ticket. A list cut short is a ticket that cannot be read, which stops the
   run.
-- **Waiting for blockers:** each ticket waits for the ones in the list (`run.js:440`). A blocker outside the list has to
-  be already closed or done; if not, the ticket is skipped (`:436`).
-- **Skipping the dependents of a blocked ticket:** "skipped: depends on #n, which did not reach the release" (`:443`),
+- **Waiting for blockers:** each ticket waits for the ones in the list (`runTicket`). A blocker outside the list has to
+  be already closed or done; if not, the ticket is skipped.
+- **Skipping the dependents of a blocked ticket:** "skipped: depends on #n, which did not reach the release" (`runTicket`),
   with no label and the card where it was.
 - **A stopped ticket always shows as stuck:** the script moves it to the *Needs Human* column of the JSON and checks it,
   in the same `runner` call that posts its comment (a read of what is left, then the comment). If a phase returns
@@ -192,13 +201,12 @@ Failures 1-5 of `documentation/workflow-trial.md`:
    of the work), and the script lists from `git branch --list` the branches left for the human to delete, because
    deleting branches asks for permission.
 2. **Dirty history in the second round:** round 2 brings round 1's work with `git cherry-pick`, and only if
-   `git log <base>..<branch>` lists commits (`run.js:126` and `:131-132`).
+   `git log <base>..<branch>` lists commits (`buildPhase`, and step 3 of «In a copy» in `.claude/agents/builder.md`).
 3. **A second round that does no good:** if *Build* says the ticket needs the human, it is blocked without a second round
-   (`run.js:157-158`).
-4. **Unchecked claims:** everything done comes from a command run in that step, never "HEAD of …" (`run.js:18` and
-   `:22-24`), and a commit has to be a sha (`:27-28`).
-5. **Compound commands:** one command per call and cards moved by the issue URL, without `move_card` (`run.js:17` and
-   `:21`, `:351-358`).
+   (`buildPhase`).
+4. **Unchecked claims:** everything done comes from a command run in that step, never "HEAD of …" (rule 8 of `.claude/agents/builder.md`), and a commit has to be a sha (`SHA` in `run.js`).
+5. **Compound commands:** one command per call and cards moved by the issue URL, without `move_card` (`cardCommands` and
+   `moveCard`).
 
 ## Execution `wf_41e0b269-ab2`
 
@@ -212,11 +220,15 @@ The first one with real tickets: 2026-10-27, tickets #35-#38. #35 was merged (`4
 
 ## Not tested yet
 
-Still untested: what the trial left pending (a check that fails after merging, a permission asked in the middle of the
-run, a pause at the usage limit); that the script receives `args` correctly from `/run`; and the #39 changes with real
-tickets (only dry-run, with simulated agents).
+Still untested:
 
-The #58 changes (the *Merge* sequence, the comments sent as base64, the report that accumulates, the end of the list
-in one call) were tried only in a dry run with simulated agents. A real run still has to show that the `runner` copies
-a long `printf %s <base64> | …` command without a change (the script reads the comment and the files back and says
-when they differ) and that `sh -c` and `base64` are allowed without a prompt.
+- what the trial left pending: a check that fails after merging, a permission asked in the middle of the run, a pause at
+  the usage limit;
+- the changes of #56-#58 (*Verify* decided by the script against a pinned base, the Builder's one definition, the *Merge*
+  sequence proved by literal reads, the comments sent as base64, the report that accumulates, the end of the list in one
+  call) with real tickets: they were tried in a dry run with simulated agents. A real run still has to show that the
+  `runner` copies a long `printf %s <base64> | …` command without a change (the script reads the comment and the files
+  back and says when they differ) and that `sh -c` and `base64` are allowed without a prompt;
+- the closing of the issues by the `Closes #n` lines when the release PR reaches the main branch;
+- a list with more tickets than the machine or the plan's usage limit can take at once: the workflow has no cap on
+  parallel builds (`documentation/backlog.md`).
