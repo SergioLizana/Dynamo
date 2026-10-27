@@ -70,12 +70,6 @@ const BUILD_SCHEMA = {
   },
 }
 
-const VERIFY_SCHEMA = {
-  type: 'object',
-  required: ['checks', 'passed'],
-  properties: { checks: CHECKS, passed: { type: 'boolean' } },
-}
-
 const MERGE_SCHEMA = {
   type: 'object',
   required: ['outcome', 'stoppedAt', 'mergeCommit', 'reason', 'checks'],
@@ -107,9 +101,10 @@ const CLEANUP_SCHEMA = {
 
 // ---------- Phases ----------
 
-// One function per phase of factory.json, picked by its name. It gets the ticket and its state (ctx) and returns:
+// One function per phase of factory.json, picked by its name. It gets the ticket, its state (ctx) and its entry (ph) and returns:
 // prompt; schema, isolation and serial (one at a time in the main folder), if it needs them; step, the word for
-// «Parado en»; and read(result) → { pass: true } or { pass: false, failure, stop?, reported? }. On a failure the
+// «Parado en»; exec(), instead of the prompt, for a phase the script decides itself from one `runner` call (it moves
+// its own card); and read(result) → { pass: true } or { pass: false, failure, stop?, reported? }. On a failure the
 // ticket goes where the phase's onFail says; stop blocks it whatever onFail says, and reported means the agent
 // already posted the ticket's comment.
 
@@ -141,48 +136,77 @@ copy (a git worktree) that starts at the tip of the base.
    plus the attribution line Claude Code gives you. Leave nothing uncommitted. Never check out the base and never merge.
 7. needsHuman = true only if the ticket contradicts itself or cannot be done without a decision from the human;
    say why in needsHumanReason. Anything you noticed outside the ticket goes in \`outOfTicket\`.`,
-    read: b => {
+    read: async b => {
       builds.push({ number: t.number, round: ctx.round, worktreePath: b.worktreePath, worktreeBranch: b.worktreeBranch, branch: b.branch })
       ctx.build = b
       outOf[t.number] = b.outOfTicket // the latest round's, for the report of the list
       // Trial failure 3: a second round cannot fix a ticket that needs the human.
       if (b.needsHuman) return { pass: false, stop: true, failure: `needs the human: ${b.needsHumanReason}` }
       if (!b.commit) return { pass: false, failure: 'the Builder made no commit' }
+      // The base moves while other tickets merge in parallel, so the check does not diff against its name: it diffs
+      // against the commit the copy started from, read here in the copy. A null read is retried once (plumbing).
+      const mb = await runListRetry(`base:#${t.number}:r${ctx.round}`, [`git -C ${b.worktreePath} merge-base HEAD ${base}`], 'Build')
+      if (!mb || !mb.length) return infrastructure('the base of the copy could not be read (merge-base): no answer twice')
+      const sha = mb[0].exitCode === 0 ? mb[0].output.trim() : ''
+      if (!/^[0-9a-f]{40}$/.test(sha)) return { pass: false, stop: true, failure: `the base of the copy could not be pinned: \`${mb[0].command}\` → ${mb[0].exitCode}\n${mb[0].output}` }
+      ctx.baseSha = sha
       return { pass: true }
     },
   }
 }
 
-// The check runs in the Builder's copy, on its commit, and the script reads the result. The commit and the state of
-// the copy are not the agent's to report: the script reads them from the literal output of two commands.
-function verifyPhase(t, ctx) {
+// Verify is decided here, not by an agent: one `runner` call runs the card move with its read-back, the move into the
+// Builder's copy, the state of the copy, its commit and the commands of the check, and the script decides from the exit
+// codes and from which commands ran. `<base>` in the check is the sha the copy started from (ctx.baseSha), not the
+// branch name, which moves while other tickets merge. A call that did not run what it should is plumbing: it is
+// retried once, and a second time stops the ticket as «infrastructure» without using a round.
+function verifyPhase(t, ctx, ph) {
   const b = ctx.build
+  const dir = b.worktreePath
+  const commands = [
+    ...cardCommands(t.number, ph.column), // 0, 1
+    `cd ${dir}`, // 2
+    `git -C ${dir} status --porcelain`, // 3
+    `git -C ${dir} rev-parse --short HEAD`, // 4
+    ...P.checks.map(c => c.split('<base>').join(ctx.baseSha)), // 5...
+  ]
+  const squash = s => String(s).replace(/\s+/g, ' ').trim()
+  // Why the answer cannot be trusted (the call is repeated), or null.
+  function plumbing(results) {
+    if (!results || !results.length) return 'no answer'
+    for (let i = 0; i < results.length; i++) {
+      if (i >= commands.length || squash(results[i].command) !== squash(commands[i])) return `it ran «${results[i].command}» where «${commands[i] || 'nothing'}» was expected`
+    }
+    if (results.length < 2 || results[0].exitCode !== 0 || results[1].exitCode !== 0 || !cardIn(results[1].output, ph.column)) return `the card did not reach ${ph.column}`
+    if (results.length < commands.length && results.every(r => r.exitCode === 0)) return 'not every command ran'
+    return null
+  }
   return {
     step: 'check',
-    schema: VERIFY_SCHEMA,
-    prompt: `${COMMON}
-
-Run the automatic check of ticket #${t.number} in the Builder's copy \`${b.worktreePath}\` (branch \`${b.branch}\`,
-commit ${b.commit}). Change nothing: no edit, no commit, no label, no comment.
-1. \`cd ${b.worktreePath}\`, alone in its call. Every command below runs there.
-2. Run each of these, one per call, and return each with its exit code and its literal output (trimmed to the
-   failing part):
-${P.checks.map(c => `   - \`${c.split('<base>').join(base)}\``).join('\n')}
-3. passed = true only if every one of them exited 0.`,
-    read: async v => {
-      ctx.checks = v.checks
+    exec: async () => {
+      let why = null
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const results = await runList(`verify:#${t.number}:r${ctx.round}${attempt > 1 ? ':retry' : ''}`, commands, ph.name,
+          optsOf({ model: ph.model, effort: ph.effort }))
+        why = plumbing(results)
+        if (!why) return results
+        log(`#${t.number} verify, attempt ${attempt}: ${why}`)
+      }
+      return { plumbing: why }
+    },
+    read: results => {
+      if (results.plumbing) return infrastructure(`the check could not be run: ${results.plumbing}, twice`)
       const bad = []
-      const head = await readRaw(`head:#${t.number}:r${ctx.round}`, `git -C ${b.worktreePath} rev-parse --short HEAD`, 'Verify')
-      const status = await readRaw(`status:#${t.number}:r${ctx.round}`, `git -C ${b.worktreePath} status --porcelain`, 'Verify')
-      const sha = head && head.exitCode === 0 ? head.stdout.trim() : ''
-      if (!sha) bad.push('the commit of the copy could not be read')
-      else if (!(sha.startsWith(b.commit) || b.commit.startsWith(sha))) bad.push(`it ran on ${sha}, not on the Builder's commit ${b.commit}`)
-      if (!status || status.exitCode !== 0) bad.push('the state of the copy could not be read')
-      else if (status.stdout.trim()) bad.push(`uncommitted changes in the copy:\n${status.stdout}`)
-      if (v.checks.length < P.checks.length) bad.push('not every command of the check ran')
-      for (const c of v.checks) if (c.exitCode !== 0) bad.push(`\`${c.command}\` → ${c.exitCode}\n${c.output}`)
-      if (!v.passed && !bad.length) bad.push('the agent said the check did not pass')
-      return bad.length ? { pass: false, failure: `The automatic check failed:\n${bad.join('\n')}` } : { pass: true }
+      const failed = results.slice(2).find(r => r.exitCode !== 0)
+      if (failed) bad.push(`\`${failed.command}\` → ${failed.exitCode}\n${failed.output}`)
+      const status = results[3], head = results[4]
+      if (status && status.exitCode === 0 && status.output.trim()) bad.push(`uncommitted changes in the copy:\n${status.output}`)
+      if (head && head.exitCode === 0) {
+        const sha = head.output.trim()
+        if (!sha || !(sha.startsWith(b.commit) || b.commit.startsWith(sha))) bad.push(`it ran on «${sha}», not on the Builder's commit ${b.commit}`)
+      }
+      ctx.checks = results.slice(5)
+      return bad.length ? { pass: false, failure: `The automatic check failed (against ${ctx.baseSha}):\n${bad.join('\n')}` } : { pass: true }
     },
   }
 }
@@ -403,11 +427,21 @@ for (const t of tickets) byNum[t.number] = t
 // A list of commands in one `runner` agent (.claude/agents/runner.md): it runs them in order, literally, stops at the
 // first that fails and returns each one it ran with its exit code and output. The runner names no project data; the
 // commands come from here. The results it ran, or null if it returned nothing.
-async function runList(label, commands, phase) {
+async function runList(label, commands, phase, own = {}) {
   const r = await agent(`Run these commands, in this order:
 ${commands.map((c, i) => `${i + 1}. ${c}`).join('\n')}`,
-  { ...SMALL, agentType: 'runner', label, phase, schema: RUN_SCHEMA })
+  { ...SMALL, ...own, agentType: 'runner', label, phase, schema: RUN_SCHEMA })
   return r && Array.isArray(r.results) ? r.results : null
+}
+
+// A null read is plumbing, not the ticket's fault: it is asked once more; null again means nothing could be read.
+async function runListRetry(label, commands, phase, own) {
+  return (await runList(label, commands, phase, own)) || (await runList(`${label}:retry`, commands, phase, own))
+}
+
+// A ticket stopped by the plumbing, not by its work: it stops where it is, uses no round and its comment says so.
+function infrastructure(reason) {
+  return { pass: false, stop: true, step: 'infrastructure', failure: `infrastructure: ${reason}` }
 }
 
 // One command and its literal output, as the agent got them. null if the agent returned nothing.
@@ -424,20 +458,31 @@ async function readJson(label, command, phase) {
 }
 
 // The script moves every card, by issue URL, and checks it on GitHub: the board always shows the real step.
+// The two commands that move a card and read it back; the script decides from the read-back, not from the edit.
+function cardCommands(n, column) {
+  return [
+    `gh project item-edit ${P.boardNumber} --owner ${P.boardOwner} --url https://github.com/${P.repo}/issues/${n} --field "Status" --value "${column}"`,
+    `gh issue view ${n} -R ${P.repo} --json projectItems`,
+  ]
+}
+
+// The parsed read-back of a card (the output of `gh issue view --json projectItems`), or null if it is not JSON.
+function cardSeen(output) {
+  try { return JSON.parse(String(output).trim()) } catch (e) { return null }
+}
+const cardIn = (output, column) => {
+  const seen = cardSeen(output)
+  const items = seen && Array.isArray(seen.projectItems) ? seen.projectItems : []
+  return items.some(i => i && i.status && i.status.name === column)
+}
+
 async function moveCard(n, column, group) {
-  const url = `https://github.com/${P.repo}/issues/${n}`
   let seen = null
   for (let attempt = 1; attempt <= 2; attempt++) {
-    // One agent edits the card and reads it back; the script decides from the read-back, not from the edit.
-    const results = await runList(`card:#${n}:${column}:${attempt}`, [
-      `gh project item-edit ${P.boardNumber} --owner ${P.boardOwner} --url ${url} --field "Status" --value "${column}"`,
-      `gh issue view ${n} -R ${P.repo} --json projectItems`,
-    ], group)
-    seen = null
+    const results = await runList(`card:#${n}:${column}:${attempt}`, cardCommands(n, column), group)
     const back = results && results.length === 2 && results[1].exitCode === 0 ? results[1] : null
-    if (back) { try { seen = JSON.parse(back.output.trim()) } catch (e) { /* not JSON: not moved */ } }
-    const items = seen && Array.isArray(seen.projectItems) ? seen.projectItems : []
-    if (items.some(i => i && i.status && i.status.name === column)) return { moved: true }
+    seen = back ? cardSeen(back.output) : null
+    if (back && cardIn(back.output, column)) return { moved: true }
   }
   log(`#${n} could not be moved to ${column}: check it by hand`)
   return { moved: false, seen }
@@ -524,7 +569,7 @@ async function runTicket(t) {
 
   // The phases of factory.json, in order. The card enters a phase's column when the phase starts (moveCard
   // "start") or when it passes ("end"), never earlier.
-  const ctx = { round: 1, prev: null, failure: null, build: null, checks: [], verdict: null, prevVerdict: null, mergeCommit: null }
+  const ctx = { round: 1, prev: null, failure: null, build: null, baseSha: null, checks: [], verdict: null, prevVerdict: null, mergeCommit: null }
   const at = { step: 'build', group: F.phases[0].name } // where the ticket is, for the comment if it throws
   try {
     return await runPhases(t, ctx, at)
@@ -540,14 +585,15 @@ async function runPhases(t, ctx, at) {
   while (i < F.phases.length) {
     const ph = F.phases[i]
     at.group = ph.name
-    const spec = PHASES[ph.name](t, ctx)
+    const spec = PHASES[ph.name](t, ctx, ph)
     at.step = spec.step
-    if (ph.moveCard === 'start') await moveCard(t.number, ph.column, ph.name)
+    // A phase with `exec` runs its own commands in one runner call, card move included.
+    if (ph.moveCard === 'start' && !spec.exec) await moveCard(t.number, ph.column, ph.name)
     const opts = { ...optsOf(ph), label: `${ph.name.toLowerCase()}:#${t.number}:r${ctx.round}`, phase: ph.name }
     if (spec.schema) opts.schema = spec.schema
     if (spec.isolation) opts.isolation = spec.isolation
     const call = () => agent(spec.prompt, opts)
-    const r = spec.serial ? await serial(call) : await call()
+    const r = spec.exec ? await spec.exec() : spec.serial ? await serial(call) : await call()
     const out = r ? await spec.read(r) : { pass: false, stop: true, failure: `the ${ph.name} agent returned nothing` }
     if (out.pass) {
       if (ph.moveCard === 'end') await moveCard(t.number, ph.column, ph.name)
@@ -560,6 +606,9 @@ async function runPhases(t, ctx, at) {
       ctx.round++
       ctx.failure = out.failure
       ctx.prev = ctx.build ? { branch: ctx.build.branch, commit: ctx.build.commit } : null
+      // What belongs to a round dies with it: a block in round 2 quotes only round 2. prevVerdict is the one thing that
+      // is meant to cross, so the reviewer sees its own previous verdict.
+      ctx.build = null; ctx.baseSha = null; ctx.checks = []; ctx.verdict = null
       i = back
       continue
     }
@@ -567,7 +616,7 @@ async function runPhases(t, ctx, at) {
       const mark = await markStuck(t.number, ph.name)
       return { number: t.number, status: 'blocked', rounds: ctx.round, reason: out.failure, ...mark }
     }
-    return block(t, ctx, spec.step, out.failure, ph.name)
+    return block(t, ctx, out.step || spec.step, out.failure, ph.name)
   }
   return { number: t.number, status: 'done', rounds: ctx.round, mergeCommit: ctx.mergeCommit }
 }

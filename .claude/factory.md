@@ -38,7 +38,7 @@ If a state is renamed or recreated, read the ids again with `gh project field-li
 
 ## Automatic check
 
-`project.checks`: the commands of the check. All must exit 0. `<base>` in a command is the working branch.
+`project.checks`: the commands of the check. All must exit 0. `<base>` in a command is the working branch; in *Verify* the run replaces it with the sha `git merge-base HEAD <base>` printed in the ticket's copy.
 
 ## Documents
 
