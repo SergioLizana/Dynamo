@@ -47,7 +47,29 @@ the task panel, below the entry.
 
 At the end, the workflow returns, per ticket: done (with the merge commit), blocked (with the reason) or skipped. It also
 returns the copies removed, the ones kept and the branches the human has to delete. The source of truth is GitHub: the
-label, the card and the comment of each ticket.
+label, the card and the comment of each ticket. It also leaves the report of the list (see «The end of a list»).
+
+## The end of a list
+
+After the cleanup the script builds the report of the list from the results (not from what an agent remembers) and
+looks for an open pull request from the working branch to the main branch (`gh pr list`). **The run never pushes and
+never opens a PR** (plan §6.1, `CLAUDE.md`, «Limits»).
+
+The report has: per ticket the result, the rounds and the merge commit; the blocked tickets and the skipped ones, each
+with its reason; the «Out of the ticket» lines the Builders noted; a `/cost` line for the human to fill in; and a
+`Closes #n` line for each merged ticket.
+
+- **A PR exists:** the report is added to the end of its body (what the body had stays), without repeating a
+  `Closes #n` line it already has. The script reads the body back from GitHub and says in `pullRequest.updated` whether
+  it matches. The human fills in the cost line in the PR, reads it, and decides when to merge it.
+- **No PR exists:** the run changes nothing on GitHub. It returns the report, written also to
+  `.claude/worktrees/run-report.md` (ignored by git), and `commandsForTheHuman`: the push (`git push -u origin <base>`)
+  and `gh pr create ... --body-file .claude/worktrees/run-report.md`, to run in that order from the main folder. If the
+  base is not on the remote, `notes` says so and the push creates it; if the PRs or the remote could not be read, `notes`
+  says that too and the commands are still returned. After the push, a person (not the run) approves and merges into
+  the main branch.
+
+The human fills in the `/cost` of the session and decides about the backlog lines.
 
 ## The phases
 
