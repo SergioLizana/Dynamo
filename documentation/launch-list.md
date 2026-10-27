@@ -97,11 +97,11 @@ column = one agent. Each phase carries:
 - `name`: the name; it picks its function in `PHASES` (`run.js:249`).
 - `column`: the board column where it puts the card. `moveCard`: `"start"` puts it there when the phase starts, `"end"`
   only if the phase passes (so *Merge* ends in *Done* without going back).
-- `model`, `effort`, `agentType`: those of the agent; `null` leaves its own (the `reviewer`, the one in its
-  definition).
+- `model`, `effort`, `agentType`: those of the agent; `null` leaves its own (the one in its definition). A phase
+  with an `agentType` must have `model` and `effort` null: the workflow rejects the file otherwise.
 - `onFail`: an earlier phase, where the ticket goes back for another round, or the *Needs Human* column, which stops it.
 
-Today (`factory.json:13-16`): *Build* on Sonnet, *Verify* on Haiku, *Review* with the `reviewer` and *Merge* on Haiku. A
+Today (`factory.json:13-16`): *Build* with the `builder` (Sonnet, from `.claude/agents/builder.md`, the one definition of the Builder's rules that `/implement` also follows), *Verify* on Haiku, *Review* with the `reviewer` and *Merge* on Haiku. A
 merged card goes *Todo* → *Build* → *Verify* → *Review* → *Done*.
 
 Changing a model, an effort or the name of a column means editing only the JSON. **Adding a phase:**

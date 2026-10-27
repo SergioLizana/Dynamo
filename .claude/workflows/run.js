@@ -108,34 +108,19 @@ const CLEANUP_SCHEMA = {
 // ticket goes where the phase's onFail says; stop blocks it whatever onFail says, and reported means the agent
 // already posted the ticket's comment.
 
-// Trial failure 2: round 2 brings round 1's commits with cherry-pick (linear history), and only if there are any.
+// The Builder's rules live in one place, .claude/agents/builder.md (the phase's agentType); here only the data of this
+// ticket goes in. Trial failure 2 (in the definition): round 2 brings round 1's commits with cherry-pick, only if any.
 function buildPhase(t, ctx) {
   const prev = ctx.prev
   const second = !prev ? '' : `
-This is round ${ctx.round}. Round ${ctx.round - 1} left its work on branch \`${prev.branch}\`${prev.commit ? ` (commit ${prev.commit})` : ' with no commit'}.
-- If \`git log --oneline ${base}..${prev.branch}\` lists commits, bring them in with
-  \`git cherry-pick ${base}..${prev.branch}\`. If it lists none, do not cherry-pick: start from the base.
-- Fix exactly what failed, nothing more:
-${ctx.failure}
-- Whatever an earlier round already published on GitHub for a checkbox: edit that comment if it must change, never post it again.`
+Previous round's branch: \`${prev.branch}\`${prev.commit ? ` (commit ${prev.commit})` : ' (no commit)'}.
+What failed:
+${ctx.failure}`
   return {
     step: 'build',
     schema: BUILD_SCHEMA,
     isolation: 'worktree',
-    prompt: `${COMMON}
-
-You are the Builder of ticket #${t.number} («${t.title}») in repo \`${P.repo}\`, base \`${base}\`. You are in your own
-copy (a git worktree) that starts at the tip of the base.
-1. Note \`git rev-parse --show-toplevel\` (worktreePath) and \`git branch --show-current\` (worktreeBranch).
-2. \`git checkout -b ticket/${t.number}-<short-slug>${ctx.round === 1 ? '' : `-r${ctx.round}`}\`.
-3. \`gh issue view ${t.number} -R ${P.repo}\`: read the ticket and the plan sections it cites. Change only what it asks.${second}
-4. If a checkbox asks for something written outside the code (a comment on the ticket, a note), publish it now and
-   list it in \`published\`. For a checkbox that leaves no trace in git or GitHub, put \`command → output\` in \`noTrace\`.
-5. Do not run the automatic check: the next phase runs it in this copy.
-6. Stage only the files of the change (\`git add <paths>\`) and commit with a subject ending in \`(#${t.number})\`
-   plus the attribution line Claude Code gives you. Leave nothing uncommitted. Never check out the base and never merge.
-7. needsHuman = true only if the ticket contradicts itself or cannot be done without a decision from the human;
-   say why in needsHumanReason. Anything you noticed outside the ticket goes in \`outOfTicket\`.`,
+    prompt: `Ticket #${t.number} («${t.title}») in repo \`${P.repo}\`. Base: \`${base}\`. Round: ${ctx.round}.${second}`,
     read: async b => {
       builds.push({ number: t.number, round: ctx.round, worktreePath: b.worktreePath, worktreeBranch: b.worktreeBranch, branch: b.branch })
       ctx.build = b
@@ -309,6 +294,8 @@ function checkFactory(f) {
     if (!str(p.column)) return `${at} needs a column`
     if (p.moveCard !== 'start' && p.moveCard !== 'end') return `${at}: moveCard is "start" or "end"`
     if (!opt(p.model) || !opt(p.effort) || !opt(p.agentType)) return `${at}: model, effort and agentType are a string or null`
+    // An agent type brings its own model and effort (its definition): setting them here would silently override it.
+    if (p.agentType && (p.model || p.effort)) return `${at}: agentType «${p.agentType}» takes its model and effort from its definition; model and effort must be null`
     if (p.onFail !== c.needsHuman && !seen.includes(p.onFail)) return `${at}: onFail is an earlier phase or «${c.needsHuman}»`
     seen.push(p.name)
   }

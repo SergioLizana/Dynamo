@@ -56,12 +56,9 @@ only comments, because nothing is built yet and the tree may hold the human's ow
 
 ## 2. Build (you are the Builder)
 
-- Read the ticket and the plan sections it cites. Nothing else is in scope.
-- If the project has tests, write the failing test first for each checkbox it can cover, then make it pass.
-- For a checkbox that leaves no trace in git or GitHub, note `command → output` for the final comment.
-- If a checkbox asks for something written outside the code (a comment on the ticket, a note), produce it now,
-  during the build, so the reviewer can find it.
-- From round 2: fix exactly what failed (the check output or the reviewer's «For the Builder»), nothing more.
+Follow `.claude/agents/builder.md`: its *Rules* and *In the current tree*. Its input is the ticket `$0`, the repo, the
+base, the round and, from round 2, what failed (the check output or the reviewer's «For the Builder»). Keep what it
+asks you to keep (what you published, the no-trace notes, what you saw outside the ticket) for step 6.
 
 ## 3. Automatic check
 

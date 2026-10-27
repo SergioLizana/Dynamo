@@ -31,7 +31,7 @@
   },
   "small": { "model": "haiku", "effort": "high" },
   "phases": [
-    { "name": "Build", "column": "Build", "moveCard": "start", "model": "sonnet", "effort": "high", "agentType": null, "onFail": "Needs Human" },
+    { "name": "Build", "column": "Build", "moveCard": "start", "model": null, "effort": null, "agentType": "builder", "onFail": "Needs Human" },
     { "name": "Verify", "column": "Verify", "moveCard": "start", "model": "haiku", "effort": "high", "agentType": null, "onFail": "Build" },
     { "name": "Review", "column": "Review", "moveCard": "start", "model": null, "effort": null, "agentType": "reviewer", "onFail": "Build" },
     { "name": "Merge", "column": "Done", "moveCard": "end", "model": "haiku", "effort": "high", "agentType": null, "onFail": "Needs Human" }
