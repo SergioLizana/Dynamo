@@ -155,20 +155,25 @@ copy (a git worktree) that starts at the tip of the base.
   }
 }
 
-// Verify is decided here, not by an agent: one `runner` call runs the card move with its read-back, the move into the
-// Builder's copy, the state of the copy, its commit and the commands of the check, and the script decides from the exit
+// Verify is decided here, not by an agent: one `runner` call runs the card move with its read-back, the folder the
+// checks run in, the state of the copy, its commit and the commands of the check, and the script decides from the exit
 // codes and from which commands ran. `<base>` in the check is the sha the copy started from (ctx.baseSha), not the
 // branch name, which moves while other tickets merge. A call that did not run what it should is plumbing: it is
 // retried once, and a second time stops the ticket as «infrastructure» without using a round.
+// The runner runs each command alone in its own Bash call and the folder does not carry over between calls, so a `cd`
+// would be lost: each check goes inside `sh -c 'cd <copy> && <command>'`, one literal command that runs in the
+// Builder's copy whatever the folder of the call (sh exists on Linux, macOS and Git Bash).
+const inCopy = (dir, command) => `sh -c '${`cd ${dir} && ${command}`.split("'").join("'\\''")}'`
+const normPath = p => String(p).trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 function verifyPhase(t, ctx, ph) {
   const b = ctx.build
   const dir = b.worktreePath
   const commands = [
     ...cardCommands(t.number, ph.column), // 0, 1
-    `cd ${dir}`, // 2
+    inCopy(dir, 'git rev-parse --show-toplevel'), // 2: the folder the checks run in, run the same way as they do
     `git -C ${dir} status --porcelain`, // 3
     `git -C ${dir} rev-parse --short HEAD`, // 4
-    ...P.checks.map(c => c.split('<base>').join(ctx.baseSha)), // 5...
+    ...P.checks.map(c => inCopy(dir, c.split('<base>').join(ctx.baseSha))), // 5...
   ]
   const squash = s => String(s).replace(/\s+/g, ' ').trim()
   // Why the answer cannot be trusted (the call is repeated), or null.
@@ -178,6 +183,7 @@ function verifyPhase(t, ctx, ph) {
       if (i >= commands.length || squash(results[i].command) !== squash(commands[i])) return `it ran «${results[i].command}» where «${commands[i] || 'nothing'}» was expected`
     }
     if (results.length < 2 || results[0].exitCode !== 0 || results[1].exitCode !== 0 || !cardIn(results[1].output, ph.column)) return `the card did not reach ${ph.column}`
+    if (results.length > 2 && (results[2].exitCode !== 0 || normPath(results[2].output) !== normPath(dir))) return `the checks would not run in the copy: it printed «${squash(results[2].output)}» for ${dir}`
     if (results.length < commands.length && results.every(r => r.exitCode === 0)) return 'not every command ran'
     return null
   }

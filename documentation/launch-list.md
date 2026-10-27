@@ -122,8 +122,10 @@ says why (`run.js:288-295`, check at `:254-276`).
   Only the reading of the JSON itself runs without a model, because it is not known yet (`run.js:287-290`).
 - ***Build* does not check:** it changes and commits (`run.js:149-151`). It ends with one read in the copy,
   `git merge-base HEAD <base>`, and the script keeps that sha. ***Verify*** is decided by the script, not by an agent:
-  one `runner` call moves the card and reads it back, goes into the *Build* copy, reads its state and its commit and runs
-  the commands of the check, with `<base>` replaced by that sha (the branch name moves while other tickets merge). The
+  one `runner` call moves the card and reads it back, prints the folder the checks run in, reads the state of the *Build*
+  copy and its commit and runs the commands of the check, with `<base>` replaced by that sha (the branch name moves while
+  other tickets merge). The folder does not carry over between Bash calls, so each check is one command,
+  `sh -c 'cd <copy> && <check>'`, and the script requires the printed folder to be the copy. The
   script decides from the exit codes and from which commands ran: if the check fails, the ticket goes where its
   `onFail` says, with the literal output for *Build*.
 - **Plumbing does not cost a round:** a call that returns nothing, or that did not run what it should, is repeated once;
