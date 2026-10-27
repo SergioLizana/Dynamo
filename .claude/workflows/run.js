@@ -228,8 +228,10 @@ function reviewPhase(t, ctx) {
     schema: REVIEW_SCHEMA,
     prompt: `Review ticket ${t.number} of repo ${P.repo}. Base: ${base}. Documents language: ${P.documentsLanguage}.
 The change is committed on branch \`${b.branch}\` (commit ${b.commit}), checked out in the Builder's copy
-\`${b.worktreePath}\`. First \`cd ${b.worktreePath}\`, alone in its call; every command after it runs there, so HEAD is
-the change and \`git diff ${base}...HEAD\` is the diff. Change nothing in the copy.
+\`${b.worktreePath}\`. Your working folder does not carry over between Bash calls, so do not rely on a \`cd\`: run every
+git command as \`git -C ${b.worktreePath} …\` (the diff is \`git -C ${b.worktreePath} diff ${base}...HEAD\`, where HEAD is the
+change) and read every file by its path inside the copy. A command that must run in the copy goes in one call as
+\`${inCopy(b.worktreePath, '<command>')}\`. Change nothing in the copy.
 The automatic check passed in the Builder's copy: ${ctx.checks.map(c => `\`${c.command}\` → ${c.exitCode}`).join('; ')}.
 Return the verdict (PASS or FAIL) in \`verdict\` and the full report, in the shape of your definition, in \`report\`.
 Round ${ctx.round}.${ctx.prevVerdict ? `\nYour previous verdict, word for word:\n${ctx.prevVerdict}` : ''}`,
