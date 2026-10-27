@@ -103,9 +103,10 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
 
 - **Origen:** el humano, el 2026-10-27, al encontrar el #21 (ticket de prueba del #18) cerrado pero con la tarjeta en
   *Todo*. Quiere ver en el tablero, sin abrir cada ticket, cuándo le toca intervenir.
-- **Qué choca:** el plan §6.5 decidió que un ticket atascado lleva la etiqueta `bloqueado` y no un estado, y
-  `/implement` (paso 7) deja la tarjeta en el paso donde se paró. Una columna *Blocked* cambia las dos cosas, y
-  `/run` también las usa.
+- **Resuelto (la parte de *Blocked*):** el #36 añade la columna *Needs Human*: un ticket atascado acaba ahí, y
+  `/implement` y el workflow `run` mueven la tarjeta. Queda abierta la columna *Closed*, que no está en este ticket.
+- **Qué chocaba (ya resuelto):** el plan §6.5 decía que un ticket atascado lleva la etiqueta `bloqueado`, y `/implement`
+  (paso 7) dejaba la tarjeta en el paso donde se paró.
 - **Sin comprobar:** si el flujo integrado del proyecto («Item closed») puede mover sola la tarjeta a *Closed* al
   cerrar el issue. En el historial del #21 hay un `Todo -> Closed` y un `Closed -> Todo` el 2026-10-26 a las 23:46
   que nadie ha explicado, sin que exista una opción *Closed*.

@@ -33,12 +33,30 @@ GitHub solo cierra issues al fusionar en `main`, y los tickets se fusionan en `r
 - «Cerrado» significa «en `main`». El PR de la release lleva `Closes #n` por cada ticket para que GitHub los cierre solo.
   *No probado*: exige fusionar en `main`, que no se hace sin tu autorización.
 - Frontera de `/run` (la define y prueba `/run`, etapa 3; aquí solo la regla de marcado): issues abiertos sin
-  `hecho-en-release` cuyos bloqueadores la tengan o estén cerrados.
-- `bloqueado` (ticket atascado) es otra etiqueta y no cambia el estado de la tarjeta.
+  `hecho-en-release`, cuya tarjeta no está en *Needs Human*, y cuyos bloqueadores la tengan o estén cerrados.
 
 ```bash
 gh issue edit <n> -R <repo> --add-label <done>
 ```
+
+## Needs Human (ticket atascado)
+
+Un ticket que se para (`/implement`, o el workflow `run`) acaba con la tarjeta en *Needs Human* y un comentario que dice
+qué falló, en qué paso se paró, qué queda (rama, copia o stash) y cómo relanzarlo. Es un estado de la tarjeta, no una
+etiqueta. **«Bloqueado por» no cambia:** sigue siendo la relación nativa de GitHub (ver arriba), y un ticket en
+*Needs Human* no la toca.
+
+Para sacar un ticket de *Needs Human*:
+
+1. Resolver lo que lo paró, o decidir que no se hace.
+2. Mover la tarjeta a *Todo*, con el comando de un solo paso (la opción de *Todo* está en `.claude/factory.md`):
+
+```bash
+gh project item-edit <número> --owner <owner> --url https://github.com/<repo>/issues/<n> --field "Status" --value "Todo"
+```
+
+3. Borrar o renombrar la rama y la copia que indica «Queda» en el comentario. Las borra el humano; los agentes no borran ramas.
+4. Relanzarlo: `/implement <n>` a mano (`documentation/launch-one-ticket.md`), o `/run <n>` (`documentation/launch-list.md`).
 
 ## Añadir un issue al tablero
 
