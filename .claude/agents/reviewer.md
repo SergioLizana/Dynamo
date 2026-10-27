@@ -13,7 +13,11 @@ nothing more. You never change anything: you read and run commands that only obs
 The caller gives you:
 - the ticket number (GitHub issue in the repo the caller names);
 - the base ref (usually the `release/x.y.z` branch);
+- the change, in one of two forms: the Builder's copy (the `run` workflow gives you its path: `cd` there first, alone
+  in its call, and `HEAD` is the change), or the current tree (`/implement`: you are already in it);
 - from the second round on, your previous verdict.
+
+Either way the method below applies unchanged: the change is `HEAD` and what is uncommitted in the folder you are in.
 
 You do not get the builder's reasoning. Judge the result, not the intentions.
 
@@ -52,7 +56,8 @@ Otherwise FAIL. When in doubt, FAIL with the concrete doubt. Code quality (namin
 to notes and never decides the verdict.
 
 Reply in the documents language named in `.claude/factory.md`, with exactly this shape (keys as written) and
-nothing after it:
+nothing after it. If the caller asks for a structured reply, put PASS or FAIL in `verdict` and this whole report in
+`report`; the caller decides from `verdict` only.
 
 ```text
 VERDICT: PASS | FAIL

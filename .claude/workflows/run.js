@@ -105,6 +105,14 @@ const MERGE_SCHEMA = {
   },
 }
 
+// The verdict is a field, not a line of the report: a regex on the report would read a FAIL that quotes
+// «VERDICT: PASS» as a PASS.
+const REVIEW_SCHEMA = {
+  type: 'object',
+  required: ['verdict', 'report'],
+  properties: { verdict: { type: 'string', enum: ['PASS', 'FAIL'] }, report: { type: 'string' } },
+}
+
 const CLEANUP_SCHEMA = {
   type: 'object',
   required: ['removed', 'kept', 'branchesLeft'],
@@ -200,14 +208,18 @@ function reviewPhase(t, ctx) {
   const b = ctx.build
   return {
     step: 'review',
+    schema: REVIEW_SCHEMA,
     prompt: `Review ticket ${t.number} of repo ${P.repo}. Base: ${base}.
-The change is committed on branch \`${b.branch}\` (commit ${b.commit}), which is not checked out here: read it with
-\`git diff ${base}...${b.branch}\`, \`git log ${base}..${b.branch}\` and \`git show ${b.branch}:<path>\`. Do not check it out.
+The change is committed on branch \`${b.branch}\` (commit ${b.commit}), checked out in the Builder's copy
+\`${b.worktreePath}\`. First \`cd ${b.worktreePath}\`, alone in its call; every command after it runs there, so HEAD is
+the change and \`git diff ${base}...HEAD\` is the diff. Change nothing in the copy.
 The automatic check passed in the Builder's copy: ${ctx.checks.map(c => `\`${c.command}\` → ${c.exitCode}`).join('; ')}.
+Return the verdict (PASS or FAIL) in \`verdict\` and the full report, in the shape of your definition, in \`report\`.
 Round ${ctx.round}.${ctx.prevVerdict ? `\nYour previous verdict, word for word:\n${ctx.prevVerdict}` : ''}`,
-    read: verdict => {
+    read: r => {
+      const verdict = r.report
       ctx.verdict = verdict
-      if (/VERDICT:\s*PASS/.test(verdict)) return { pass: true }
+      if (r.verdict === 'PASS') return { pass: true }
       ctx.prevVerdict = verdict
       const forBuilder = (verdict.match(/For the Builder:[\s\S]*?(?=\nNotes|$)/) || [verdict])[0]
       return { pass: false, failure: `The reviewer said FAIL. ${forBuilder}` }
