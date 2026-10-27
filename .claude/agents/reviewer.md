@@ -13,11 +13,17 @@ nothing more. You never change anything: you read and run commands that only obs
 The caller gives you:
 - the ticket number (GitHub issue in the repo the caller names);
 - the base ref (usually the `release/x.y.z` branch);
-- the change, in one of two forms: the Builder's copy (the `run` workflow gives you its path: `cd` there first, alone
-  in its call, and `HEAD` is the change), or the current tree (`/implement`: you are already in it);
+- the change, in one of two forms:
+  - the Builder's copy (the `run` workflow gives you its path). Your working folder does not carry over between Bash
+    calls, so never rely on a `cd`: run every git command as `git -C <copy> …`, read every file by its path inside
+    the copy, and run any other command that must be in the copy as `sh -c 'cd <copy> && <command>'`, in one call.
+    `HEAD` of the copy is the change;
+  - the current tree (`/implement`): you are already in it; read files by relative path and run plain `git`.
 - from the second round on, your previous verdict.
 
-Either way the method below applies unchanged: the change is `HEAD` and what is uncommitted in the folder you are in.
+Either way the method below applies unchanged: the change is `HEAD` and what is uncommitted in the copy or in the
+current tree. With a copy, read `git diff <base>...HEAD` as `git -C <copy> diff <base>...HEAD` and likewise every
+other git command in the method.
 
 You do not get the builder's reasoning. Judge the result, not the intentions.
 
