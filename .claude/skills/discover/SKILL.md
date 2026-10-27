@@ -15,7 +15,7 @@ no issues and no commits; the result lives in this conversation.
 ## 1. Understand the idea
 
 - The idea is `$ARGUMENTS`. If it is empty, ask for it in one line and wait.
-- Read `CLAUDE.md` and the parts of `documentation/plan-factoria-de-agentes.md` the idea touches. Ideas that the
+- Read `CLAUDE.md` and the parts of `documentation/agent-factory-plan.md` the idea touches. Ideas that the
   plan puts out of scope, or that only fix how tickets are made without a measured failure (plan §8.1), belong in
   `documentation/backlog.md`: say so and stop unless the human insists.
 - Restate the idea in two or three lines: the problem, for whom, and what changes for them. Ask if that is right.

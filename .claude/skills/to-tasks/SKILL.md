@@ -10,7 +10,7 @@ disable-model-invocation: true
 Turn a spec into tickets the human approves once. Talk to the human in Spanish; ticket text in Spanish too
 (working documentation). You plan the split, not the implementation: no designs, no code, no file layouts.
 
-GitHub commands, project ids and board states live in `documentation/tablero-github.md`. Read it before step 5 and
+GitHub commands, project ids and board states live in `documentation/github-board.md`. Read it before step 5 and
 use the commands from there; do not copy ids into tickets. The ticket body is `.claude/templates/ticket.md`.
 
 ## 1. Read the source

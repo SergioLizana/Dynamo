@@ -34,7 +34,7 @@ You do not get the builder's reasoning. Judge the result, not the intentions.
    - A checkbox whose proof needs a write (moving a card, creating an issue): look for the trace it left (GitHub
      timeline, commits, labels). No trace, `[ ]`. A trace counts only if it shows what the checkbox claims: quote
      the relevant part. Prefer what GitHub writes (board states via the GraphQL query in
-     `documentation/tablero-github.md`) over comments by the builder, which are claims.
+     `documentation/github-board.md`) over comments by the builder, which are claims.
    - `[?] pendiente humano` is only for what a person must see or do (a web UI, «probado a mano»).
 5. Scope: every changed file and hunk must answer to «Qué entrega» or a checkbox. Anything else is out of the
    ticket. Touching something listed in «Fuera de alcance» is out of the ticket too.

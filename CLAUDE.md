@@ -3,8 +3,8 @@
 Dynamo es una factoría de agentes personal para Claude Code: convierte ideas en tickets y deja que los agentes los
 construyan, prueben y revisen hasta abrir un PR que aprueba una persona. Repositorio privado.
 
-- Diseño: `documentation/plan-factoria-de-agentes.md` (léelo antes de proponer nada).
-- Investigación de apoyo: `documentation/investigacion-factorias-de-agentes.md` (consultar por secciones, no entera).
+- Diseño: `documentation/agent-factory-plan.md` (léelo antes de proponer nada).
+- Investigación de apoyo: `documentation/agent-factory-research.md` (consultar por secciones, no entera).
 - Estado: etapa 2 (la unidad). Las etapas están en el plan, §8.
 
 ## Cómo trabajamos
@@ -20,6 +20,7 @@ construyan, prueben y revisen hasta abrir un PR que aprueba una persona. Reposit
 ## Convenciones
 
 - Con el humano se habla en español. Skills, agentes y código, en inglés; la documentación de trabajo, en español.
+- Los ficheros de `documentation/` llevan nombre en inglés y contenido en español.
 - Rama principal: `main`. Rama de trabajo: la `release/x.y.z` en curso (ahora `release/0.1.0`); todo se hace ahí antes
   de llegar a `main`. Tickets: issues de GitHub en `SergioLizana/Dynamo`.
 - Skills en `.claude/skills/<nombre>/SKILL.md`; subagentes en `.claude/agents/<nombre>.md`.

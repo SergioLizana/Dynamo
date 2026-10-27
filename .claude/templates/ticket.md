@@ -14,4 +14,4 @@
 ## Fuera de alcance
 <Lo que no se toca.>
 
-Plan: `documentation/plan-factoria-de-agentes.md` §x
+Plan: `documentation/agent-factory-plan.md` §x

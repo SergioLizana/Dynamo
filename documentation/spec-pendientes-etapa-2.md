@@ -11,7 +11,7 @@ Después de construir del #14 al #18 quedan cosas por cerrar antes de seguir con
 ## Solución
 - Sustituir `/run` por un workflow guardado en `.claude/workflows/`: un orquestador «tonto» que lee el estado en
   GitHub, lanza un agente por ticket en su propia copia, revisa con el `reviewer`, fusiona de uno en uno en la
-  release y bloquea o salta lo que toque. Es el diseño probado en `documentation/ensayo-workflow.md`, con sus
+  release y bloquea o salta lo que toque. Es el diseño probado en `documentation/workflow-trial.md`, con sus
   fallos 1-5 arreglados.
 - Skills, agentes y workflow portables: funcionan en cualquier sistema operativo y no llevan datos de un proyecto;
   esos datos van en un fichero aparte de cada proyecto.
@@ -35,7 +35,7 @@ Después de construir del #14 al #18 quedan cosas por cerrar antes de seguir con
 - El lanzamiento a mano deja de usar `--output-format json`, así que no hace falta `jq`. A mano no se anotan
   turnos ni coste, y eso se dice en el documento de lanzamiento y en `CLAUDE.md` (el humano, 2026-10-27).
 - El orquestador de la etapa 3 es un workflow, no `claude -p`: el humano quiere verlo en la consola, y los tres
-  ensayos de `documentation/ensayo-workflow.md` lo dieron por bueno (el humano, 2026-10-27).
+  ensayos de `documentation/workflow-trial.md` lo dieron por bueno (el humano, 2026-10-27).
 - Los guiones de workflow son una excepción a «sin scripts propios» (ya en `CLAUDE.md`, 2026-10-27).
 - Las copias de los subagentes salen del checkout actual: `worktree.baseRef: "head"` en `.claude/settings.json`
   (`d4a1a26`).
@@ -90,22 +90,22 @@ Nada acordado.
 
 ## Notas
 - Hechos comprobados en el repositorio (2026-10-27):
-  - Los ensayos y sus fallos están en `documentation/ensayo-workflow.md`. Sin probar: choque al fusionar,
+  - Los ensayos y sus fallos están en `documentation/workflow-trial.md`. Sin probar: choque al fusionar,
     comprobación que falle tras fusionar, un permiso a mitad de ejecución, pausa por límite de uso y tickets
     reales.
   - Datos de Dynamo escritos en las piezas: `reviewer.md:8` («Dynamo agent factory») y `:42-43` (reglas fijas:
     «each skill at most ~150 lines», «working docs in Spanish»); `to-tasks/SKILL.md:77` (`--project "Dynamo"`);
-    rutas `documentation/tablero-github.md`, `documentation/backlog.md` y `documentation/lanzar-implement.md` en
+    rutas `documentation/github-board.md`, `documentation/backlog.md` y `documentation/launch-one-ticket.md` en
     `implement`, `to-tasks`, `run` y `discover`; etiquetas `hecho-en-release` y `bloqueado` en `implement` y
     `run`; «in Spanish» en todas.
   - Referencias a un sistema operativo:
     - `.claude/skills/to-tasks/SKILL.md:77-78` (Git Bash y `MSYS_NO_PATHCONV=1`);
     - `.claude/skills/run/SKILL.md:50,54` (`MSYS_NO_PATHCONV=1` y Git Bash);
-    - `documentation/lanzar-implement.md:8-12` (PowerShell, `ConvertFrom-Json`, `E:\Proyectos\Dynamo`);
-    - plan §6.3, §7 y §10.3 (`documentation/plan-factoria-de-agentes.md:208,274,282,374`);
+    - `documentation/launch-one-ticket.md:8-12` (PowerShell, `ConvertFrom-Json`, `E:\Proyectos\Dynamo`);
+    - plan §6.3, §7 y §10.3 (`documentation/agent-factory-plan.md:208,274,282,374`);
     - `documentation/backlog.md` («Proteger `main`»: gestor de credenciales de Windows);
-    - `documentation/tablero-github.md:46-47` (nota sobre Git Bash);
-    - `documentation/fontaneria-paralelo.md` y `documentation/ensayo-workflow.md` dicen que se probaron en
+    - `documentation/github-board.md:46-47` (nota sobre Git Bash);
+    - `documentation/parallel-launch-trial.md` y `documentation/workflow-trial.md` dicen que se probaron en
       Windows: son registro de una prueba.
   - Pasar el prompt por la entrada estándar conserva la `/` (probado en Windows con Git Bash:
     `printf '/zz-no-existe hola' | claude -p` → «El comando `/zz-no-existe` no está instalado»). Sin probar en Linux
