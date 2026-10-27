@@ -21,12 +21,10 @@ construyan, prueben y revisen hasta abrir un PR que aprueba una persona. Reposit
 
 - Con el humano se habla en español. Skills, agentes y código, en inglés; la documentación de trabajo, en español.
 - Los ficheros de `documentation/` llevan nombre en inglés y contenido en español.
-- Rama principal: `main`. Rama de trabajo: la `release/x.y.z` en curso (ahora `release/0.1.0`); todo se hace ahí antes
-  de llegar a `main`. Tickets: issues de GitHub en `SergioLizana/Dynamo`.
+- Los datos del proyecto (repositorio, tablero y sus estados, etiquetas, rama principal y de trabajo, comprobación
+  automática, idioma de los documentos, dónde van backlog y especificaciones) van en `.claude/factory.md`. Skills y
+  agentes los leen de ahí y no nombran ninguno.
 - Skills en `.claude/skills/<nombre>/SKILL.md`; subagentes en `.claude/agents/<nombre>.md`.
-- Comprobación automática (la usa `/implement`; todas con salida 0, `<base>` es la rama `release` en curso):
-  - `claude plugin validate . --strict`
-  - `git diff --check <base>`
 - Finales de línea LF (`.gitattributes`).
 
 ## Límites
