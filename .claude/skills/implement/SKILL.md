@@ -80,7 +80,8 @@ uncommitted change in the current directory, and from round 2 its previous verdi
 1. Stage only the files of the change (`git add <paths>`, never `-A`). Commit on the ticket branch: subject in
    the documents language, ending in `(#$0)`, plus the attribution line Claude Code gives you.
 2. `git checkout <base>`, `git merge --no-ff ticket/$0-<slug> -m "Merge ticket/$0-<slug> into <base> (#$0)"`.
-3. Move the card to the Verify column and run the automatic check again on the base. If it fails:
+3. Move the card to the Verify column and run the automatic check again on the base, with `<base>` replaced by
+   `HEAD~1` (the base before the merge: `<base>` itself would compare the branch with itself). If it fails:
    `git revert -m 1 --no-edit HEAD` and blocked (step 7).
 4. Add the done label and move the card to the Done column.
 
