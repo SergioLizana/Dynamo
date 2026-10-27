@@ -108,8 +108,8 @@ Changing a model, an effort or the name of a column means editing only the JSON.
 
 1. An entry in `phases` of `.claude/factory.json`, in its place in the order, with the seven fields.
 2. A function in `run.js` next to the others (`buildPhase`, `run.js:127`, is the template) that receives the ticket and
-   its state (`ctx`) and returns `prompt`, `step` (the word for «Stopped at»), `schema`, `isolation` or `serial` if it
-   needs them, and `read(result)` → `{ pass: true }` or `{ pass: false, failure }` (`run.js:120-124`).
+   its state (`ctx`) and its entry in the JSON (`ph`) and returns `prompt`, `step` (the word for «Stopped at»), `schema`,
+   `isolation` or `serial` if it needs them (or `exec()` instead of the prompt, as *Verify* does), and `read(result)` → `{ pass: true }` or `{ pass: false, failure }` (`run.js:120-124`).
 3. Add it to `PHASES` with the same name (`run.js:249`). The loop (`run.js:450-479`) is not touched.
 
 If the function is missing, or the JSON is missing, cannot be read or is not valid, the workflow stops at the start and
@@ -120,9 +120,17 @@ says why (`run.js:288-295`, check at `:254-276`).
 - **Models and efforts:** from `.claude/factory.json`, never written in `run.js` (`optsOf`, `run.js:279-285`); the
   `reviewer` with `agentType: 'reviewer'` and no model, so it uses the one in its definition, Opus (`factory.json:15`).
   Only the reading of the JSON itself runs without a model, because it is not known yet (`run.js:287-290`).
-- ***Build* does not check:** it changes and commits (`run.js:149-151`). ***Verify*** runs the check in the *Build* copy
-  and on its commit, and the script reads the literal result (`run.js:166-192`): if it fails, the ticket goes where its
+- ***Build* does not check:** it changes and commits (`run.js:149-151`). It ends with one read in the copy,
+  `git merge-base HEAD <base>`, and the script keeps that sha. ***Verify*** is decided by the script, not by an agent:
+  one `runner` call moves the card and reads it back, prints the folder the checks run in, reads the state of the *Build*
+  copy and its commit and runs the commands of the check, with `<base>` replaced by that sha (the branch name moves while
+  other tickets merge). The folder does not carry over between Bash calls, so each check is one command,
+  `sh -c 'cd <copy> && <check>'`, and the script requires the printed folder to be the copy. The
+  script decides from the exit codes and from which commands ran: if the check fails, the ticket goes where its
   `onFail` says, with the literal output for *Build*.
+- **Plumbing does not cost a round:** a call that returns nothing, or that did not run what it should, is repeated once;
+  a second time the ticket stops as «infrastructure» (that is its «Stopped at») and uses no round. The fields of a round
+  (build, base sha, checks, verdict) are reset when the next round starts, so a block in round 2 quotes only round 2.
 - **Cap of 2 rounds:** `run.js:15`; each failure that sends the ticket back to an earlier phase counts one round,
   whether from *Verify* or from the reviewer (`run.js:465-472`). When they run out, blocked (`:474-478`).
 - **The script moves the board:** each phase puts the card in its column, by the issue URL, and checks it with

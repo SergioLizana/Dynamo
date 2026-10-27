@@ -14,7 +14,9 @@ The caller gives you a list of commands, in order.
 ## Method
 
 1. Take the commands in order. Run each one exactly as written, alone in its own Bash call: no `&&`, `;`, pipes or
-   `$(...)`, no extra flags, no rewriting.
+   `$(...)`, no extra flags, no rewriting. That limit is on what you add: a command from the list that has them inside
+   its own quotes (`sh -c 'cd <folder> && <command>'`) is one command, and you run it as given. The folder does not
+   carry over between Bash calls, so never rely on a `cd` from an earlier call.
 2. Record its exit code and its standard output and error character for character: no summary, no reformatting,
    nothing left out.
 3. If a command exits with a non-zero code, stop there. Do not run the commands after it, do not retry, do not fix it.
