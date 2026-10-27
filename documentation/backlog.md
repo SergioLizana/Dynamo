@@ -68,6 +68,8 @@ Each entry says where it comes from and what has been verified.
 - **Risk:** a `git add -A` would put them in a commit. `/implement` already forbids `-A`, and a dirty `git status` blocks
   it in step 0.
 - **When:** if a copy ends up in a commit or blocks a launch.
+- **Happened** (2026-10-27): run `wf_1c98469c-230` stopped #37 and kept its two copies; the next `/implement 42` stopped
+  in step 0 with `?? .claude/worktrees/` and sent #42 to *Needs Human*. The copies had to be removed by hand.
 
 ## `git worktree` permissions for `/run`
 
