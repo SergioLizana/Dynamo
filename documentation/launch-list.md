@@ -51,8 +51,8 @@ columna = un agente. Cada fase lleva:
 - `model`, `effort`, `agentType`: los del agente; `null` deja el suyo (el `reviewer`, el de su definición).
 - `onFail`: una fase anterior, a la que vuelve el ticket en otra vuelta, o la columna *Needs Human*, que lo para.
 
-Hoy (`factory.json:5-8`): *Build* en Sonnet, *Verify* en Haiku, *Review* con el `reviewer` y *Merge* en Haiku. Una
-tarjeta fusionada pasa por *Todo* → *In Progress* → *Verify* → *In Review* → *Done*.
+Hoy (`factory.json:13-16`): *Build* en Sonnet, *Verify* en Haiku, *Review* con el `reviewer` y *Merge* en Haiku. Una
+tarjeta fusionada pasa por *Todo* → *Build* → *Verify* → *Review* → *Done*.
 
 Cambiar un modelo, un esfuerzo o el nombre de una columna es editar solo el JSON. **Añadir una fase:**
 
@@ -68,7 +68,7 @@ Si falta la función, o el JSON falta, no se puede leer o no es válido, el work
 ## Cómo decide
 
 - **Modelos y esfuerzos:** de `.claude/factory.json`, nunca escritos en `run.js` (`optsOf`, `run.js:279-285`); el
-  `reviewer` con `agentType: 'reviewer'` y sin modelo, así que usa el de su definición, Opus (`factory.json:7`). Solo
+  `reviewer` con `agentType: 'reviewer'` y sin modelo, así que usa el de su definición, Opus (`factory.json:15`). Solo
   la lectura del propio JSON va sin modelo, porque aún no se conoce (`run.js:287-290`).
 - ***Build* no comprueba:** cambia y hace commit (`run.js:149-151`). ***Verify*** ejecuta la comprobación en la copia
   de *Build* y sobre su commit, y el guion lee el resultado literal (`run.js:166-192`): si falla, el ticket va adonde

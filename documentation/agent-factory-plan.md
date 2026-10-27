@@ -252,10 +252,11 @@ las copias de trabajo (investigación §3.3).
 **Issues de GitHub** en el repositorio privado de la factoría, y después en el del proyecto real: lista, tablero (Projects), relación «blocked by»
 y enlace a los PR, sin construir nada. Solo GitHub hasta que haga falta otra cosa (regla 2).
 
-**Tablero:** https://github.com/users/SergioLizana/projects/1, con los estados *Todo*, *In Progress* (Builder),
-*Verify* (comprobación automática), *In Review* (`reviewer`), *Needs Human* (ticket atascado) y *Done* (fusionado en
-`release/x.y.z`). **Siempre refleja el paso en el que está trabajando el agente**, también cuando un ticket vuelve de
-*In Review* a *In Progress* en otra vuelta. Un ticket atascado acaba en *Needs Human*, con un comentario que dice qué
+**Tablero:** https://github.com/users/SergioLizana/projects/1, con las columnas *Todo*, *Build* (Builder, Sonnet),
+*Verify* (comprobación automática, Haiku), *Review* (`reviewer`, con el modelo de su definición), *Needs Human* (ticket
+atascado) y *Done* (fusionado en `release/x.y.z`, Haiku). Los nombres, los ids de sus opciones y el agente y el modelo de
+cada fase están en `.claude/factory.json`; nada más los copia. **Siempre refleja el paso en el que está trabajando el agente**, también cuando un ticket vuelve de
+*Review* a *Build* en otra vuelta. Un ticket atascado acaba en *Needs Human*, con un comentario que dice qué
 falló, en qué paso se paró, qué queda (rama o stash) y cómo relanzarlo. No lleva etiqueta: la columna es la señal. Sacarlo
 de *Needs Human* y relanzarlo está en `documentation/github-board.md`.
 
