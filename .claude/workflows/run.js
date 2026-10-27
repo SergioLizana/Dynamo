@@ -1,7 +1,7 @@
 export const meta = {
-  name: 'run-list',
+  name: 'run',
   description: 'Build a list of tickets: read the board, build each ready ticket in its own copy, review it, merge one at a time into the working branch, block or skip the rest',
-  whenToUse: 'The human runs /run-list with ticket numbers (or none, for every open ticket not done or blocked)',
+  whenToUse: 'The human runs /run with ticket numbers (or none, for every open ticket not done or blocked)',
   phases: [
     { title: 'Frontier', detail: 'read project data, tickets, labels and native blockers' },
     { title: 'Build', detail: 'one agent per ticket and round, in its own worktree' },
@@ -13,7 +13,7 @@ export const meta = {
 // A dumb orchestrator: the script only decides what runs next. State comes from GitHub and from what the agents
 // return. Project data (repo, branches, board, labels, check, language) comes from .claude/factory.md.
 
-const NAME = 'run-list' // the same as meta.name
+const NAME = 'run' // the same as meta.name
 const FAST = { model: 'haiku', effort: 'high' }
 const MAX_ROUNDS = 2
 

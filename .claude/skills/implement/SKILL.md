@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Build one GitHub ticket end to end without the human - branch from the release branch, implement, run the automatic check, get the reviewer's verdict, retry at most once, then merge into the release branch or mark the ticket blocked. Use when the human (or /run) launches /implement with a ticket number.
+description: Build one GitHub ticket end to end without the human - branch from the release branch, implement, run the automatic check, get the reviewer's verdict, retry at most once, then merge into the release branch or mark the ticket blocked. Use when the human, or the /run workflow, launches /implement with a ticket number.
 argument-hint: <ticket number> [base branch]
 disable-model-invocation: true
 ---
