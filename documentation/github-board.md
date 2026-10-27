@@ -1,7 +1,8 @@
 # Tickets en GitHub: bloqueos, «hecho» y tablero
 
 Probado el 2026-10-26 sobre `SergioLizana/Dynamo` (ticket #1). Plantilla: `.claude/templates/ticket.md`.
-Estados y significado: plan §6.5. Los datos del proyecto (repositorio, tablero, ids de estados, etiquetas) están en
+Estados y significado: plan §6.5. Los nombres de las columnas y los ids de sus opciones están en
+`.claude/factory.json` (no se copian aquí). Los demás datos del proyecto (repositorio, tablero, etiquetas) están en
 `.claude/factory.md`; aquí van entre `<…>`: `<repo>`, `<owner>`, `<número>` del proyecto, `<project-id>`,
 `<status-field-id>`, `<option-id>` de un estado, `<done>` (etiqueta de hecho).
 
@@ -49,7 +50,7 @@ etiqueta. **«Bloqueado por» no cambia:** sigue siendo la relación nativa de G
 Para sacar un ticket de *Needs Human*:
 
 1. Resolver lo que lo paró, o decidir que no se hace.
-2. Mover la tarjeta a *Todo*, con el comando de un solo paso (la opción de *Todo* está en `.claude/factory.md`):
+2. Mover la tarjeta a *Todo*, con el comando de un solo paso (la opción de *Todo* está en `.claude/factory.json`):
 
 ```bash
 gh project item-edit <número> --owner <owner> --url https://github.com/<repo>/issues/<n> --field "Status" --value "Todo"
@@ -90,10 +91,26 @@ move_card() { # $1 = nº de issue, $2 = id de la opción
 }
 ```
 
-Los ids del proyecto, del campo Status y de cada estado están en `.claude/factory.md`.
+Los ids del proyecto y del campo Status están en `.claude/factory.md`; los de cada estado, en `options` de
+`.claude/factory.json`.
 
 Probado el 2026-10-26 sobre el issue de prueba #6 (ya borrado, así que no queda historial): Todo → In Progress → Verify → In Review → In Progress → In Review → Done. Si se renombra o recrea un estado,
 se vuelven a leer con `gh project field-list <número> --owner <owner> --format json`.
+
+## Renombrar una columna
+
+Lo hace el humano en la web de GitHub, no la API (no se ha comprobado que renombrar conserve los ids de las opciones).
+Para pasar de *In Progress* a *Build* y de *In Review* a *Review*:
+
+1. Fusionar el ticket que cambia `.claude/factory.json` (#41) en la release.
+2. Justo después, antes de la siguiente ejecución, en el tablero: *Settings* → campo *Status* → renombrar la opción.
+3. Comprobar que los ids siguen siendo los de `options` de `.claude/factory.json`:
+
+```bash
+gh project field-list <número> --owner <owner> --format json
+```
+
+   Si algún id ha cambiado, corregir `options` en el JSON. Hasta renombrar, mover una tarjeta a *Build* o *Review* falla.
 
 ## Comprobar por qué estados ha pasado una tarjeta
 

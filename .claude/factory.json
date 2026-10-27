@@ -1,10 +1,18 @@
 {
   "columns": { "todo": "Todo", "needsHuman": "Needs Human", "done": "Done" },
+  "options": {
+    "Todo": "7e5c5ff3",
+    "Build": "a41ae146",
+    "Verify": "a243ce09",
+    "Review": "7eccea7a",
+    "Needs Human": "40dfd960",
+    "Done": "e617f390"
+  },
   "start": { "name": "Frontier", "model": "haiku", "effort": "high" },
   "phases": [
-    { "name": "Build", "column": "In Progress", "moveCard": "start", "model": "sonnet", "effort": "high", "agentType": null, "onFail": "Needs Human" },
+    { "name": "Build", "column": "Build", "moveCard": "start", "model": "sonnet", "effort": "high", "agentType": null, "onFail": "Needs Human" },
     { "name": "Verify", "column": "Verify", "moveCard": "start", "model": "haiku", "effort": "high", "agentType": null, "onFail": "Build" },
-    { "name": "Review", "column": "In Review", "moveCard": "start", "model": null, "effort": null, "agentType": "reviewer", "onFail": "Build" },
+    { "name": "Review", "column": "Review", "moveCard": "start", "model": null, "effort": null, "agentType": "reviewer", "onFail": "Build" },
     { "name": "Merge", "column": "Done", "moveCard": "end", "model": "haiku", "effort": "high", "agentType": null, "onFail": "Needs Human" }
   ]
 }

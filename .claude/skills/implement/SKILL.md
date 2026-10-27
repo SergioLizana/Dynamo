@@ -10,10 +10,13 @@ disable-model-invocation: true
 One ticket in, one checked and reviewed change out, merged into the release branch. Nobody is watching: never
 ask the human anything. When something is missing or unclear, stop as blocked (step 7) with the reason.
 
-Ticket: `$0`. Project data is in `.claude/factory.md`: repo, main and working branch, board and its states,
+Ticket: `$0`. Project data is in `.claude/factory.md`: repo, main and working branch, board,
 labels, automatic check, documents language and where the backlog goes. The board commands (`move_card`, labels,
 history) are in the file it names: use them from there. Base branch: `$1` if given, else the working branch.
 Write GitHub comments in the documents language; code, commits and files follow `CLAUDE.md`.
+Column names and option ids come only from `.claude/factory.json`: the `column` of the phases *Build*, *Verify*,
+*Review* and *Merge*, and `columns.needsHuman` and `columns.done`. Below, «the Build column» is the `column` of the
+phase *Build*, and so on; the option id of a column is in `options`.
 
 ## Hard limits
 
@@ -34,7 +37,7 @@ Write GitHub comments in the documents language; code, commits and files follow 
 
 ## 1. Branch
 
-`git checkout -b ticket/$0-<short-slug> <base>`. Move the card to *In Progress*.
+`git checkout -b ticket/$0-<short-slug> <base>`. Move the card to the Build column.
 
 ## 2. Build (you are the Builder)
 
@@ -47,17 +50,17 @@ Write GitHub comments in the documents language; code, commits and files follow 
 
 ## 3. Automatic check
 
-Move the card to *Verify*. Run every command of the automatic check with `<base>` replaced.
+Move the card to the Verify column. Run every command of the automatic check with `<base>` replaced.
 - All exit 0: go to step 4.
-- Any fails: no commit and no reviewer. If `round = 1`: `round = 2`, card to *In Progress*, back to step 2 with the
+- Any fails: no commit and no reviewer. If `round = 1`: `round = 2`, card to the Build column, back to step 2 with the
   failing output. If `round = 2`: blocked (step 7) with the failing command and its output.
 
 ## 4. Review
 
-Move the card to *In Review*. Launch the `reviewer` subagent with: ticket `$0`, the repo, base `<base>`, the
+Move the card to the Review column. Launch the `reviewer` subagent with: ticket `$0`, the repo, base `<base>`, the
 uncommitted change in the current directory, and from round 2 its previous verdict word for word.
 - `VEREDICTO: PASA`: go to step 5.
-- `VEREDICTO: FALLA`: if `round = 1`: `round = 2`, card to *In Progress*, back to step 2 with «Para el Builder».
+- `VEREDICTO: FALLA`: if `round = 1`: `round = 2`, card to the Build column, back to step 2 with «Para el Builder».
   If `round = 2`: blocked (step 7) with the verdict.
 
 ## 5. Commit and merge
@@ -65,9 +68,9 @@ uncommitted change in the current directory, and from round 2 its previous verdi
 1. Stage only the files of the change (`git add <paths>`, never `-A`). Commit on the ticket branch: subject in
    the documents language ending in `(#$0)`, plus the attribution line Claude Code gives you.
 2. `git checkout <base>`, `git merge --no-ff ticket/$0-<slug> -m "Fusiona ticket/$0-<slug> en <base> (#$0)"`.
-3. Move the card to *Verify* and run the automatic check again on the base. If it fails:
+3. Move the card to the Verify column and run the automatic check again on the base. If it fails:
    `git revert -m 1 --no-edit HEAD` and blocked (step 7).
-4. Add the done label and move the card to *Done*.
+4. Add the done label and move the card to the Done column.
 
 ## 6. Report on the ticket
 
@@ -85,7 +88,7 @@ Fuera del ticket (para el backlog): <lo visto> | nada
 
 ## 7. Blocked
 
-- Move the card to *Needs Human* (state id in `.claude/factory.md`, by URL as the board commands file says).
+- Move the card to the Needs Human column (option id in `.claude/factory.json`, by URL as the board commands file says).
 - Post the step 6 comment with the reason (the literal failing output or verdict), and these three lines after
   `Revisor:`:
 

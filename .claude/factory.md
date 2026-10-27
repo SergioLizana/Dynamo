@@ -15,24 +15,18 @@ project, fill in this file and leave the skills alone.
 - Status field: `PVTSSF_lAHOAbB1zs4BoyYkzhnQ1FA`.
 - Board commands (`move_card`, dependencies, status history): `documentation/github-board.md`.
 
-| State | Option id |
-|---|---|
-| Todo | `7e5c5ff3` |
-| In Progress | `a41ae146` |
-| Verify | `a243ce09` |
-| In Review | `7eccea7a` |
-| Needs Human | `40dfd960` |
-| Done | `e617f390` |
+The columns (*Todo*, *Build*, *Verify*, *Review*, *Needs Human*, *Done*) with their option ids are in
+`.claude/factory.json` (`options`); skills and agents take every column name from there.
 
 *Needs Human* is where a stuck ticket ends: `/implement` and the `run` workflow move its card there, with a comment that
 says what failed. A person takes it out (see `documentation/github-board.md`).
 
-The board columns the `run` workflow uses (*Todo*, *Needs Human*, *Done*) and its phases (order, column, model, effort,
+The phases of the `run` workflow (order, column, model, effort,
 agent type and where a failure goes) are in `.claude/factory.json`. How to change them or add a phase:
 `documentation/launch-list.md`, «Las fases».
 
-If a state is renamed or recreated, read them again with
-`gh project field-list 1 --owner SergioLizana --format json`.
+If a state is renamed or recreated, read the ids again with
+`gh project field-list 1 --owner SergioLizana --format json` and update `options` (`documentation/github-board.md`).
 
 ## Labels
 
