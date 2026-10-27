@@ -2,8 +2,8 @@
 
 Tested on 2026-10-26 on `SergioLizana/Dynamo` (ticket #1). Template: `.claude/templates/ticket.md`.
 States and meaning: plan §6.5. The column names and the ids of their options are in
-`.claude/factory.json` (not copied here). The other project data (repository, board, labels) are in
-`.claude/factory.md`; here they go between `<…>`: `<repo>`, `<owner>`, `<number>` of the project, `<project-id>`, `<status-field-id>`,
+`.claude/factory.json` (not copied here). The other project data (repository, board, labels) are in the `project`
+block of the same file (`.claude/factory.md` explains each value); here they go between `<…>`: `<repo>`, `<owner>`, `<number>` of the project, `<project-id>`, `<status-field-id>`,
 `<option-id>` of a state, `<done>` (done label).
 
 ## Blocked by
@@ -93,7 +93,7 @@ move_card() { # $1 = issue number, $2 = option id
 }
 ```
 
-The project and Status field ids are in `.claude/factory.md`; those of each state, in `options` of
+The project and Status field ids are in `project` of `.claude/factory.json`; those of each state, in `options` of
 `.claude/factory.json`.
 
 Tested 2026-10-26 on test issue #6 (since deleted, so no history remains): Todo → In Progress → Verify → In Review →

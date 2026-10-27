@@ -1,4 +1,25 @@
 {
+  "project": {
+    "repo": "SergioLizana/Dynamo",
+    "mainBranch": "main",
+    "workingBranch": "release/0.1.0",
+    "boardOwner": "SergioLizana",
+    "boardNumber": 1,
+    "boardId": "PVT_kwHOAbB1zs4BoyYk",
+    "boardName": "Dynamo",
+    "statusFieldId": "PVTSSF_lAHOAbB1zs4BoyYkzhnQ1FA",
+    "boardCommands": "documentation/github-board.md",
+    "doneLabel": "in-release",
+    "checks": [
+      "claude plugin validate . --strict",
+      "git diff --check <base>"
+    ],
+    "documentsLanguage": "English",
+    "plan": "documentation/agent-factory-plan.md",
+    "backlog": "documentation/backlog.md",
+    "specifications": "documentation/spec-<slug>.md",
+    "launchOneTicket": "documentation/launch-one-ticket.md"
+  },
   "columns": { "todo": "Todo", "needsHuman": "Needs Human", "done": "Done" },
   "options": {
     "Todo": "7e5c5ff3",

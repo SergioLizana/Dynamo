@@ -1,48 +1,46 @@
 # Factory data
 
-Project data the factory's skills and agents read. They name none of it themselves: to use the factory in another
-project, fill in this file and leave the skills alone.
+The values of the project data are in the `project` block of `.claude/factory.json`, where the `run` workflow reads
+them without an agent. This file keeps what the values mean and how to change them. The skills and agents name none of
+the values themselves: to use the factory in another project, fill in the JSON and leave the skills alone.
 
 ## Repository
 
-- Repository: `SergioLizana/Dynamo` (tickets are its GitHub issues).
-- Main branch: `main`.
-- Working branch: `release/0.1.0` (the `release/x.y.z` in progress; ticket branches start from it and merge into it).
+- `project.repo`: the repository (tickets are its GitHub issues).
+- `project.mainBranch`: the main branch.
+- `project.workingBranch`: the `release/x.y.z` in progress (ticket branches start from it and merge into it).
 
 ## Board
 
-- Project: owner `SergioLizana`, number `1`, id `PVT_kwHOAbB1zs4BoyYk`, name `Dynamo`.
-- Status field: `PVTSSF_lAHOAbB1zs4BoyYkzhnQ1FA`.
-- Board commands (`move_card`, dependencies, status history): `documentation/github-board.md`.
+- `project.boardOwner`, `project.boardNumber`, `project.boardId` and `project.boardName`: the GitHub project.
+- `project.statusFieldId`: its Status field.
+- `project.boardCommands`: the file with the board commands (`move_card`, dependencies, status history).
 
 The columns (*Todo*, *Build*, *Verify*, *Review*, *Needs Human*, *Done*) with their option ids are in
 `.claude/factory.json` (`options`); skills and agents take every column name from there.
 
 *Needs Human* is where a stuck ticket ends: `/implement` and the `run` workflow move its card there, with a comment that
-says what failed. A person takes it out (see `documentation/github-board.md`).
+says what failed. A person takes it out (see the board commands file).
 
 The phases of the `run` workflow (order, column, model, effort,
 agent type and where a failure goes) are in `.claude/factory.json`. How to change them or add a phase:
 `documentation/launch-list.md`, «The phases».
 
-If a state is renamed or recreated, read the ids again with
-`gh project field-list 1 --owner SergioLizana --format json` and update `options` (`documentation/github-board.md`).
+If a state is renamed or recreated, read the ids again with `gh project field-list <number> --owner <owner> --format json`
+(`project.boardNumber`, `project.boardOwner`) and update `options` (board commands file).
 
 ## Labels
 
-- Done in the working branch (the issue stays open until it reaches the main branch): `in-release`.
+- `project.doneLabel`: done in the working branch (the issue stays open until it reaches the main branch).
 
 ## Automatic check
 
-All must exit 0. `<base>` is the working branch.
-
-- `claude plugin validate . --strict`
-- `git diff --check <base>`
+`project.checks`: the commands of the check. All must exit 0. `<base>` in a command is the working branch.
 
 ## Documents
 
-- Language of documents, commits, GitHub comments and verdicts: English.
-- Plan: `documentation/agent-factory-plan.md`.
-- Backlog: `documentation/backlog.md`.
-- Specifications: `documentation/spec-<slug>.md`.
-- Launching one ticket by hand: `documentation/launch-one-ticket.md`.
+- `project.documentsLanguage`: the language of documents, commits, GitHub comments and verdicts.
+- `project.plan`: the plan.
+- `project.backlog`: the backlog.
+- `project.specifications`: where specifications go, with `<slug>` filled in.
+- `project.launchOneTicket`: how to launch one ticket by hand.

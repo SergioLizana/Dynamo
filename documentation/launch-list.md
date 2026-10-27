@@ -2,8 +2,8 @@
 
 The `run` workflow (`.claude/workflows/run.js`) builds a list of tickets without intervention: it reads the state in
 GitHub, builds each ready ticket in its own copy, reviews it with the `reviewer`, merges them one at a time into the
-working branch, and blocks or skips whatever gets in the way. It reads the project data from `.claude/factory.md`; the
-board columns and the phases, from `.claude/factory.json` (see «The phases»). It is the design of
+working branch, and blocks or skips whatever gets in the way. It reads the project data (`project`), the
+board columns and the phases from `.claude/factory.json`, with the script and no agent (see «The phases»). It is the design of
 `documentation/workflow-trial.md`. It is launched with `/run`.
 
 ## Before launching
@@ -73,7 +73,7 @@ The human fills in the `/cost` of the session and decides about the backlog line
 
 ## The phases
 
-`.claude/factory.json` gives the columns *Todo*, *Needs Human* and *Done* (`columns`), the starting step (`start`: name,
+`.claude/factory.json` gives the project data (`project`; the file is rejected without it), the columns *Todo*, *Needs Human* and *Done* (`columns`), the starting step (`start`: name,
 model and effort of *Frontier* and of the script's small agents) and the phases, in order (`phases`). One phase = one
 column = one agent. Each phase carries:
 
