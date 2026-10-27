@@ -613,7 +613,8 @@ if (!pr && onRemote === null) notes.push('the remote (origin) could not be read:
 let body = report
 if (pr) {
   const old = norm(pr.body || '')
-  body = [old, report.split('\n').filter(l => !(l.startsWith('Closes #') && old.includes(l))).join('\n').trim()]
+  const oldLines = new Set(old.split('\n').map(l => l.trim()))
+  body = [old, report.split('\n').filter(l => !(l.startsWith('Closes #') && oldLines.has(l.trim()))).join('\n').trim()]
     .filter(Boolean).join('\n\n')
 }
 const wrote = await agent(`${COMMON}
