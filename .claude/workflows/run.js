@@ -48,36 +48,36 @@ const FRONTIER_SCHEMA = {
     stopReason: { type: 'string' },
     project: {
       type: 'object',
-      required: ['repo', 'mainBranch', 'workingBranch', 'doneLabel', 'blockedLabel', 'checks'],
+      required: ['repo', 'mainBranch', 'workingBranch', 'doneLabel', 'blockedLabel', 'checks', 'boardOwner',
+        'boardNumber', 'boardName', 'verifyState', 'inReviewState'],
       properties: {
         repo: { type: 'string' }, mainBranch: { type: 'string' }, workingBranch: { type: 'string' },
         doneLabel: { type: 'string' }, blockedLabel: { type: 'string' },
         checks: { type: 'array', items: { type: 'string' } },
+        boardOwner: { type: 'string' }, boardNumber: { type: 'integer' }, boardName: { type: 'string' },
+        verifyState: { type: 'string' }, inReviewState: { type: 'string' },
       },
     },
     tickets: {
       type: 'array',
       items: {
         type: 'object',
-        required: ['number', 'title', 'state', 'labels', 'blockers'],
+        required: ['number', 'title', 'state', 'labels'],
         properties: {
           number: { type: 'integer' }, title: { type: 'string' }, state: { type: 'string' },
           labels: { type: 'array', items: { type: 'string' } },
-          blockers: {
-            type: 'array',
-            items: {
-              type: 'object',
-              required: ['number', 'state', 'labels'],
-              properties: {
-                number: { type: 'integer' }, state: { type: 'string' },
-                labels: { type: 'array', items: { type: 'string' } },
-              },
-            },
-          },
         },
       },
     },
   },
+}
+
+// Run wf_41e0b269-ab2: an agent's summary of a command is not the command. A raw read returns the literal output
+// and the script parses it.
+const RAW_SCHEMA = {
+  type: 'object',
+  required: ['exitCode', 'stdout'],
+  properties: { exitCode: { type: 'integer' }, stdout: { type: 'string' } },
 }
 
 const BUILD_SCHEMA = {
@@ -97,9 +97,10 @@ const BUILD_SCHEMA = {
 
 const MERGE_SCHEMA = {
   type: 'object',
-  required: ['outcome', 'mergeCommit', 'reason', 'checks'],
+  required: ['outcome', 'stoppedAt', 'mergeCommit', 'reason', 'checks'],
   properties: {
     outcome: { type: 'string', enum: ['merged', 'blocked'] },
+    stoppedAt: { type: 'string', enum: ['none', 'start', 'merge', 'check'] },
     mergeCommit: { anyOf: [SHA, { type: 'null' }] },
     reason: { type: 'string' }, checks: CHECKS,
   },
@@ -124,14 +125,13 @@ phase('Frontier')
 const front = await agent(`${COMMON}
 
 Read the state of the tickets for a run. Change nothing.
-1. From \`.claude/factory.md\`: repo, main branch, working branch, done label, blocked label and every command of
-   the automatic check. Base branch: ${input.base ? `\`${input.base}\`` : 'the working branch'}; return it as
-   workingBranch.
+1. From \`.claude/factory.md\`: repo, main branch, working branch, done label, blocked label, every command of
+   the automatic check, the board's owner, number and name, and the exact names of the *Verify* and *In Review*
+   states. Base branch: ${input.base ? `\`${input.base}\`` : 'the working branch'}; return it as workingBranch.
 2. In this folder: \`git status --porcelain --untracked-files=no\` must be empty and \`git branch --show-current\` must be the base branch.
    If not, ok = false and stopReason says which.
 3. Tickets: ${wanted.length ? wanted.map(n => `#${n}`).join(', ') : 'every open issue that has neither the done label nor the blocked label'}.
-   For each: \`gh issue view <n> -R <repo> --json number,title,state,labels\`, and its native blockers from
-   \`gh api repos/<repo>/issues/<n>/dependencies/blocked_by --jq '.[]|{number,state,labels:[.labels[].name]}'\`.
+   For each: \`gh issue view <n> -R <repo> --json number,title,state,labels\`. Do not read its blockers.
 4. ok = false too if the base branch is the main branch. Otherwise ok = true and stopReason = "".`,
   { ...FAST, label: 'frontier', phase: 'Frontier', schema: FRONTIER_SCHEMA })
 
@@ -145,6 +145,46 @@ if (base === P.mainBranch) return { stopped: `the base is the main branch (${bas
 const byNum = {}
 for (const t of front.tickets) byNum[t.number] = t
 const doneOnBoard = t => t.state.toLowerCase() === 'closed' || t.labels.includes(P.doneLabel)
+
+// One command, its literal output, parsed here. null if it failed or is not JSON.
+async function readJson(label, command, phase) {
+  const r = await agent(`Run exactly this one command and nothing else, then return its exit code and its standard
+output character for character: no summary, no reformatting, nothing left out.
+${command}`, { ...FAST, label, phase, schema: RAW_SCHEMA })
+  if (!r || r.exitCode !== 0) return null
+  try { return JSON.parse(r.stdout.trim()) } catch (e) { return null }
+}
+
+// Native blockers, from GitHub's output and not from an agent's summary. null if they cannot be read.
+async function readBlockers(n) {
+  const list = await readJson(`blockers:#${n}`,
+    `gh api repos/${P.repo}/issues/${n}/dependencies/blocked_by --jq '[.[]|{number,state,labels:[.labels[].name]}]'`, 'Frontier')
+  if (!Array.isArray(list)) return null
+  if (!list.every(b => b && Number.isInteger(b.number) && typeof b.state === 'string' && Array.isArray(b.labels))) return null
+  return list
+}
+
+// A stopped ticket ends visibly stuck: the script sets the exact label and state and checks them on GitHub. With
+// state = null the card stays where it is and only the label is checked.
+async function markStuck(n, state) {
+  const url = `https://github.com/${P.repo}/issues/${n}`
+  let seen = null
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await agent(`${COMMON}
+
+Mark ticket #${n} as stuck. Run exactly these commands, one per call, and nothing else:
+1. \`gh issue edit ${n} -R ${P.repo} --add-label "${P.blockedLabel}"\`${state ? `
+2. \`gh project item-edit ${P.boardNumber} --owner ${P.boardOwner} --url ${url} --field "Status" --value "${state}"\`` : ''}`,
+      { ...FAST, label: `mark:#${n}:${attempt}`, phase: 'Merge' })
+    seen = await readJson(`check:#${n}:${attempt}`, `gh issue view ${n} -R ${P.repo} --json labels,projectItems`, 'Merge')
+    const labels = seen && Array.isArray(seen.labels) ? seen.labels.map(l => l.name) : []
+    const item = seen && Array.isArray(seen.projectItems) ? seen.projectItems.find(i => i.title === P.boardName) : null
+    const status = item && item.status ? item.status.name : null
+    if (labels.includes(P.blockedLabel) && (!state || status === state)) return { marked: true }
+  }
+  log(`#${n} could not be marked as stuck: check it by hand`)
+  return { marked: false, seen }
+}
 
 // ---------- One ticket ----------
 
@@ -204,11 +244,12 @@ Fuera del ticket (para el backlog): <lo visto> | nada
 \`\`\``
 }
 
-function block(t, round, reason, b, verdict) {
+// state: where the card stopped, or null if not known.
+function block(t, round, reason, b, verdict, state) {
   return serial(() => agent(`${COMMON}
 
 Ticket #${t.number} in repo \`${P.repo}\` stops as blocked: it is not merged.
-1. Add the blocked label. Do not move the card: it stays where it stopped.
+1. Change no label and do not move the card: the script marks it.
 2. Check where its work is: \`git branch --list "ticket/${t.number}-*"\` and \`git worktree list\`.
 3. One \`gh issue comment ${t.number} -R ${P.repo}\` with this shape, and the reason as a literal quote plus where the
    work is (only what step 2 showed):
@@ -217,7 +258,8 @@ Reason: ${reason}
 Round: ${round}. Builder: ${JSON.stringify(b || {})}
 Verdict: ${verdict || 'sin revisión'}`,
     { ...FAST, label: `block:#${t.number}`, phase: 'Merge' }))
-    .then(() => ({ number: t.number, status: 'blocked', rounds: round, reason }))
+    .then(() => markStuck(t.number, state))
+    .then(mark => ({ number: t.number, status: 'blocked', rounds: round, reason, ...mark }))
 }
 
 function skip(t, reason) {
@@ -234,12 +276,14 @@ async function runTicket(t) {
   if (t.labels.includes(P.blockedLabel)) return { number: t.number, status: 'blocked', note: 'ya estaba bloqueado' }
 
   // Wait for blockers in this run; a blocker outside the run must already be done.
-  for (const bl of t.blockers) {
+  const blockers = blockersOf[t.number]
+  if (!blockers) return skip(t, 'no se pudieron leer sus bloqueadores en GitHub')
+  for (const bl of blockers) {
     if (!byNum[bl.number] && bl.state.toLowerCase() !== 'closed' && !bl.labels.includes(P.doneLabel)) {
       return skip(t, `depende de #${bl.number}, que no está en la release`)
     }
   }
-  const inRun = t.blockers.filter(bl => byNum[bl.number])
+  const inRun = blockers.filter(bl => byNum[bl.number])
   const results = await Promise.all(inRun.map(bl => start(bl.number)))
   const failed = inRun.filter((bl, i) => !results[i] || results[i].status !== 'done')
   if (failed.length) {
@@ -251,26 +295,26 @@ async function runTicket(t) {
   for (let round = 1; round <= MAX_ROUNDS; round++) {
     const b = await agent(buildPrompt(t, round, prev),
       { ...FAST, label: `build:#${t.number}:r${round}`, phase: 'Build', isolation: 'worktree', schema: BUILD_SCHEMA })
-    if (!b) return block(t, round, 'el agente Build no devolvió nada', null, null)
+    if (!b) return block(t, round, 'el agente Build no devolvió nada', null, null, null)
     builds.push({ number: t.number, round, worktreePath: b.worktreePath, worktreeBranch: b.worktreeBranch, branch: b.branch })
 
     // Trial failure 3: a second round cannot fix a ticket that needs the human.
-    if (b.needsHuman) return block(t, round, `necesita al humano: ${b.needsHumanReason}`, b, null)
+    if (b.needsHuman) return block(t, round, `necesita al humano: ${b.needsHumanReason}`, b, null, null)
 
     if (!b.checkPassed || !b.commit) {
       const failure = b.checks.filter(c => c.exitCode !== 0).map(c => `\`${c.command}\` → ${c.exitCode}\n${c.output}`).join('\n')
         || 'no commit was made'
-      if (round === MAX_ROUNDS) return block(t, round, `comprobación: ${failure}`, b, null)
+      if (round === MAX_ROUNDS) return block(t, round, `comprobación: ${failure}`, b, null, P.verifyState)
       prev = { branch: b.branch, commit: b.commit, failure: `The automatic check failed:\n${failure}` }
       continue
     }
 
     const verdict = await agent(reviewPrompt(t, round, b, prevVerdict),
       { label: `review:#${t.number}:r${round}`, phase: 'Review', agentType: 'reviewer' })
-    if (!verdict) return block(t, round, 'el revisor no devolvió nada', b, null)
+    if (!verdict) return block(t, round, 'el revisor no devolvió nada', b, null, P.inReviewState)
     const pass = /VEREDICTO:\s*PASA/.test(verdict)
     if (!pass) {
-      if (round === MAX_ROUNDS) return block(t, round, 'el revisor dice FALLA', b, verdict)
+      if (round === MAX_ROUNDS) return block(t, round, 'el revisor dice FALLA', b, verdict, P.inReviewState)
       const forBuilder = (verdict.match(/Para el Builder:[\s\S]*?(?=\nNotas|$)/) || [verdict])[0]
       prev = { branch: b.branch, commit: b.commit, failure: `The reviewer said FALLA. ${forBuilder}` }
       prevVerdict = verdict
@@ -281,13 +325,14 @@ async function runTicket(t) {
 
 Merge ticket #${t.number} in repo \`${P.repo}\` into \`${base}\`, in this folder (the main one).
 1. \`git status --porcelain --untracked-files=no\` must be empty and \`git branch --show-current\` must be \`${base}\`. If not, outcome =
-   blocked and say why; change nothing.
+   blocked, stoppedAt = start, and say why; change nothing.
 2. \`git merge --no-ff ${b.branch} -m "Fusiona ${b.branch} en ${base} (#${t.number})"\`. On a conflict:
-   \`git merge --abort\`, outcome = blocked, reason = the conflicting files.
+   \`git merge --abort\`, outcome = blocked, stoppedAt = merge, reason = the conflicting files.
 3. Move the card to *Verify* and run every command of the automatic check with \`<base>\` = \`${base}\`. If any fails:
-   \`git revert -m 1 --no-edit HEAD\`, outcome = blocked, reason = the failing command and its output.
-4. If blocked: add the blocked label and leave the card where it stopped. If merged: mergeCommit is what
-   \`git rev-parse --short HEAD\` prints after the merge; add the done label and move the card to *Done*.
+   \`git revert -m 1 --no-edit HEAD\`, outcome = blocked, stoppedAt = check, reason = the failing command and its output.
+4. If blocked: change no label and do not move the card, the script marks it. If merged: stoppedAt = none,
+   mergeCommit is what \`git rev-parse --short HEAD\` prints after the merge; add the done label and move the card
+   to *Done*.
 5. One \`gh issue comment ${t.number} -R ${P.repo}\`, the only report of this ticket, with this shape:
 ${reportShape(`<PASA y fusionado en ${base} (<mergeCommit>) | no fusionado: <motivo>>`)}
    Do not repeat what the Builder already published: ${JSON.stringify(b.published)}.
@@ -296,10 +341,11 @@ Out of the ticket: ${JSON.stringify(b.outOfTicket)}.
 Verdict:
 ${verdict}`,
       { ...FAST, label: `merge:#${t.number}`, phase: 'Merge', schema: MERGE_SCHEMA }))
-    if (!m) return { number: t.number, status: 'blocked', rounds: round, reason: 'el agente Merge no devolvió nada' }
-    return m.outcome === 'merged'
-      ? { number: t.number, status: 'done', rounds: round, mergeCommit: m.mergeCommit }
-      : { number: t.number, status: 'blocked', rounds: round, reason: m.reason }
+    // Run wf_41e0b269-ab2: whatever Merge says, a ticket it stops ends with the label and state set here.
+    if (!m) return block(t, round, 'el agente Merge no devolvió nada', b, verdict, null)
+    if (m.outcome === 'merged') return { number: t.number, status: 'done', rounds: round, mergeCommit: m.mergeCommit }
+    const mark = await markStuck(t.number, m.stoppedAt === 'check' ? P.verifyState : P.inReviewState)
+    return { number: t.number, status: 'blocked', rounds: round, reason: m.reason, ...mark }
   }
 }
 
@@ -315,6 +361,9 @@ function start(n) {
 }
 
 const order = front.tickets.map(t => t.number).sort((a, b) => a - b)
+// All blockers before any ticket starts: start() finds cycles only while runTicket has not awaited yet.
+const blockersOf = {}
+await parallel(order.map(n => async () => { blockersOf[n] = await readBlockers(n) }))
 log(`${order.length} tickets on ${base}: ${order.map(n => `#${n}`).join(', ')}`)
 const results = await Promise.all(order.map(start))
 await queue
