@@ -162,6 +162,7 @@ copy (a git worktree) that starts at the tip of the base.
     read: b => {
       builds.push({ number: t.number, round: ctx.round, worktreePath: b.worktreePath, worktreeBranch: b.worktreeBranch, branch: b.branch })
       ctx.build = b
+      outOf[t.number] = b.outOfTicket // the latest round's, for the report of the list
       // Trial failure 3: a second round cannot fix a ticket that needs the human.
       if (b.needsHuman) return { pass: false, stop: true, failure: `needs the human: ${b.needsHumanReason}` }
       if (!b.commit) return { pass: false, failure: 'the Builder made no commit' }
@@ -413,6 +414,7 @@ function serial(fn) {
 }
 
 const builds = [] // every Build result, for the cleanup
+const outOf = {} // ticket number → the «Out of the ticket» lines of its latest Build, for the report of the list
 
 // A stuck ticket's comment also says where it stopped, what is left and how to relaunch it (stuck = its number).
 function reportShape(head, stuck) {
@@ -559,10 +561,101 @@ Tickets: ${JSON.stringify(results)}
 3. removed and kept are the paths, as \`git worktree list\` showed them.`,
   { ...SMALL, label: 'cleanup', phase: LAST, schema: CLEANUP_SCHEMA }) : null
 
+// ---------- Report of the list ----------
+
+// The end of a list: the report, built here from the results (not from what an agent remembers), goes into the body
+// of the PR from the base to the main branch if one exists. The run never pushes and never opens a PR: with no PR it
+// returns the report and the commands the human runs (documentation/launch-list.md, «The end of a list»).
+
+const REPORT_FILE = '.claude/worktrees/run-report.md' // ignored by git; the body that `gh` reads
+const oneLine = (s, max = 300) => {
+  const x = String(s).replace(/\s+/g, ' ').trim()
+  return x.length > max ? `${x.slice(0, max - 1)}…` : x
+}
+const norm = s => String(s).replace(/\r\n/g, '\n').trim()
+
+function listReport(list, out) {
+  const title = n => (byNum[n] ? ` «${byNum[n].title}»` : '')
+  const rounds = r => (r.rounds ? `${r.rounds}/${MAX_ROUNDS}` : 'n/a')
+  const merged = list.filter(r => r.status === 'done' && r.mergeCommit)
+  const blocked = list.filter(r => r.status === 'blocked')
+  const skipped = list.filter(r => r.status === 'skipped')
+  const ticketLine = r => {
+    if (r.status === 'done' && r.mergeCommit) return `- #${r.number}${title(r.number)}: merged into ${base} (${r.mergeCommit}), rounds ${rounds(r)}`
+    if (r.status === 'done') return `- #${r.number}${title(r.number)}: ${r.note || 'done'}`
+    if (r.status === 'blocked') return `- #${r.number}${title(r.number)}: blocked, rounds ${rounds(r)}${r.marked === false ? `; its card could not be moved to *${C.needsHuman}*: check it by hand` : ''}`
+    return `- #${r.number}${title(r.number)}: ${r.status}`
+  }
+  const why = r => `- #${r.number}: ${oneLine(r.reason || r.note || 'no reason given')}`
+  const seen = list.flatMap(r => (out[r.number] || []).map(l => `- #${r.number}: ${oneLine(l, 600)}`))
+  return [
+    `## ${NAME} report · ${base}`, '',
+    '### Tickets', '', ...(list.length ? list.map(ticketLine) : ['- none']), '',
+    '### Blocked', '', ...(blocked.length ? blocked.map(why) : ['- none']), '',
+    '### Skipped', '', ...(skipped.length ? skipped.map(why) : ['- none']), '',
+    '### Out of the ticket (for the backlog)', '', ...(seen.length ? seen : ['- nothing']), '',
+    '### Cost', '', '- `/cost` of the session: <the human fills it in>', '',
+    ...merged.map(r => `Closes #${r.number}`),
+  ].join('\n').trim()
+}
+
+const report = listReport(results, outOf)
+const prs = await readJson('pr', `gh pr list -R ${P.repo} --head ${base} --base ${P.mainBranch} --state open --json number,url,body`, LAST)
+const pr = Array.isArray(prs) && prs.length ? prs[0] : null
+const remote = await readRaw('remote', `git ls-remote --heads origin ${base}`, LAST)
+const onRemote = !remote || remote.exitCode !== 0 ? null : remote.stdout.trim() !== ''
+const notes = []
+if (!Array.isArray(prs)) notes.push(`the pull requests of ${P.repo} could not be read: if one from ${base} exists, put the report in its body by hand`)
+if (!pr && onRemote === false) notes.push(`${base} is not on the remote (origin): the push creates it`)
+if (!pr && onRemote === null) notes.push('the remote (origin) could not be read: check that it has the base before the push')
+
+// With a PR: its body plus the report, with a Closes line only for a ticket the body does not close already.
+let body = report
+if (pr) {
+  const old = norm(pr.body || '')
+  const oldLines = new Set(old.split('\n').map(l => l.trim()))
+  body = [old, report.split('\n').filter(l => !(l.startsWith('Closes #') && oldLines.has(l.trim()))).join('\n').trim()]
+    .filter(Boolean).join('\n\n')
+}
+const wrote = await agent(`${COMMON}
+
+Leave the report of the list. Do not push, do not create a pull request, do not change a label or a card.
+1. With the Write tool (no shell redirection), write the text between the two marker lines to \`${REPORT_FILE}\`,
+   character for character, without the marker lines.
+${pr ? `2. Run exactly this one command and return its exit code in editExitCode:
+   \`gh pr edit ${pr.number} -R ${P.repo} --body-file ${REPORT_FILE}\`` : '2. Run nothing else: editExitCode = null.'}
+-----BEGIN REPORT-----
+${body}
+-----END REPORT-----`,
+{ ...SMALL, label: 'report', phase: LAST, schema: { type: 'object', required: ['fileWritten', 'editExitCode'],
+  properties: { fileWritten: { type: 'boolean' }, editExitCode: { anyOf: [{ type: 'integer' }, { type: 'null' }] } } } })
+
+// What was left is read back, not taken from the agent's word.
+const file = await readRaw('report-file', `cat ${REPORT_FILE}`, LAST)
+const fileOk = !!file && file.exitCode === 0 && norm(file.stdout) === norm(body)
+let prUpdated = false
+if (pr) {
+  const now = await readJson('pr-after', `gh pr view ${pr.number} -R ${P.repo} --json body`, LAST)
+  prUpdated = !!now && norm(now.body || '') === norm(body)
+  if (!prUpdated) notes.push(`the body of PR #${pr.number} could not be confirmed: the report is in ${REPORT_FILE} and below`)
+} else if (!fileOk) {
+  notes.push(`${REPORT_FILE} was not written as it should: the create command below needs it, so paste the report as the body`)
+}
+const commands = pr ? [] : [
+  ...(onRemote === true ? [] : [`git push -u origin ${base}`]),
+  `gh pr create -R ${P.repo} --base ${P.mainBranch} --head ${base} --title "Release ${base.replace(/^release\//, '')}" --body-file ${REPORT_FILE}`,
+]
+
 return {
   base,
   tickets: results,
   copiesRemoved: clean ? clean.removed : [],
   copiesKept: clean ? clean.kept : [],
   branchesForTheHuman: clean ? clean.branchesLeft : [],
+  report,
+  pullRequest: pr ? { number: pr.number, url: pr.url, updated: prUpdated } : null,
+  baseOnRemote: onRemote,
+  reportFile: fileOk ? REPORT_FILE : null,
+  commandsForTheHuman: commands,
+  notes,
 }
