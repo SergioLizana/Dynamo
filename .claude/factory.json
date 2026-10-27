@@ -1,0 +1,10 @@
+{
+  "columns": { "todo": "Todo", "needsHuman": "Needs Human", "done": "Done" },
+  "start": { "name": "Frontier", "model": "haiku", "effort": "high" },
+  "phases": [
+    { "name": "Build", "column": "In Progress", "moveCard": "start", "model": "sonnet", "effort": "high", "agentType": null, "onFail": "Needs Human" },
+    { "name": "Verify", "column": "Verify", "moveCard": "start", "model": "haiku", "effort": "high", "agentType": null, "onFail": "Build" },
+    { "name": "Review", "column": "In Review", "moveCard": "start", "model": null, "effort": null, "agentType": "reviewer", "onFail": "Build" },
+    { "name": "Merge", "column": "Done", "moveCard": "end", "model": "haiku", "effort": "high", "agentType": null, "onFail": "Needs Human" }
+  ]
+}

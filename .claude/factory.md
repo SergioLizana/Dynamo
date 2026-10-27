@@ -27,6 +27,10 @@ project, fill in this file and leave the skills alone.
 *Needs Human* is where a stuck ticket ends: `/implement` and the `run` workflow move its card there, with a comment that
 says what failed. A person takes it out (see `documentation/github-board.md`).
 
+The board columns the `run` workflow uses (*Todo*, *Needs Human*, *Done*) and its phases (order, column, model, effort,
+agent type and where a failure goes) are in `.claude/factory.json`. How to change them or add a phase:
+`documentation/launch-list.md`, «Las fases».
+
 If a state is renamed or recreated, read them again with
 `gh project field-list 1 --owner SergioLizana --format json`.
 
