@@ -59,6 +59,8 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
   es lo que recomienda `documentation/fontaneria-paralelo.md`. El desfase se cierra solo cuando la release llegue a
   `main`.
 - **Cuándo:** solo si `/run` acaba usando subagentes aislados o `--bg`.
+- **Resuelto el 2026-10-27:** `worktree.baseRef: "head"` en `.claude/settings.json` (`d4a1a26`). Probado en los
+  ensayos de `documentation/ensayo-workflow.md`: las copias salieron de la punta de la base, con `.claude/`.
 
 ## `.claude/worktrees/` fuera de `.gitignore`
 
