@@ -20,7 +20,7 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
   agente necesita hacer push: fusionan en local. El corte de verdad está en las credenciales de la ejecución
   desatendida:
   - `gh`: el token de grano fino de arriba, pasado como `GH_TOKEN` solo en el comando de lanzamiento;
-  - `git push`: usa el gestor de credenciales de Windows, no `GH_TOKEN`; quitárselo a esa ejecución vaciando
+  - `git push`: usa el gestor de credenciales del sistema, no `GH_TOKEN`; quitárselo a esa ejecución vaciando
     `credential.helper` con variables de entorno (`GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_0`, `GIT_CONFIG_VALUE_0`).
   - Sin comprobar ninguna de las dos. Tampoco es aislamiento completo (un agente con Bash en el mismo usuario podría
     llegar al gestor de credenciales): eso solo lo da un contenedor (plan §7 y §10.4).
