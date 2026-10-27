@@ -26,6 +26,16 @@ phase *Build*, and so on; the option id of a column is in `options`.
 - Do not delete evidence of a test (a temporary issue, branch or file) before the reviewer passes.
 - The board always shows the real step: move the card at every step below, and never skip one.
 
+## Moving the card
+
+Every «move the card to X» below means two things, in this order:
+
+1. Move it with `move_card` (the board commands file).
+2. Check it: `gh issue view $0 --json projectItems` and read the status of the card. If it is not the column X, run the
+   move once more and check again. If it is still not X, stop as blocked (step 7) with «card did not move to X» and
+   the literal output of the check. In step 7 itself the move to *Needs Human* is checked the same way, but a second
+   failure there only goes in the comment and in the final summary.
+
 ## 0. Start
 
 1. `git status --porcelain` must be empty. If not, stop as blocked («working tree not clean»).
@@ -34,10 +44,12 @@ phase *Build*, and so on; the option id of a column is in `options`.
 3. `gh issue view $0 --json projectItems`: stop as blocked if its status on the board is *Needs Human*. Then
    `.../dependencies/blocked_by`: stop as blocked if any blocker is neither closed nor has the done label.
 4. Set `round = 1`. The limit is 2 rounds in total, counting failures of both the check and the reviewer.
+5. Move the card to the Build column. This is the last action of step 0: no branch and no code before the card is
+   there and checked.
 
 ## 1. Branch
 
-`git checkout -b ticket/$0-<short-slug> <base>`. Move the card to the Build column.
+`git checkout -b ticket/$0-<short-slug> <base>`.
 
 ## 2. Build (you are the Builder)
 
