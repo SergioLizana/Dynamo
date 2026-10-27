@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Build one GitHub ticket end to end without the human - branch from the release branch, implement, run the automatic check, get the reviewer's verdict, retry at most once, then merge into the release branch or mark the ticket blocked. Use when the human, or the /run workflow, launches /implement with a ticket number.
+description: Build one GitHub ticket end to end without the human - branch from the release branch, implement, run the automatic check, get the reviewer's verdict, retry at most once, then merge into the release branch or send the ticket to *Needs Human*. Use when the human, or the /run workflow, launches /implement with a ticket number.
 argument-hint: <ticket number> [base branch]
 disable-model-invocation: true
 ---
@@ -28,8 +28,8 @@ Write GitHub comments in the documents language; code, commits and files follow 
 1. `git status --porcelain` must be empty. If not, stop as blocked («working tree not clean»).
 2. Read `.claude/factory.md` and `CLAUDE.md`. No automatic check defined: stop as blocked. Never treat a missing
    check as passed.
-3. `gh issue view $0`. Stop as blocked if it has the blocked label, or if any blocker from
-   `.../dependencies/blocked_by` is neither closed nor has the done label.
+3. `gh issue view $0 --json projectItems`: stop as blocked if its status on the board is *Needs Human*. Then
+   `.../dependencies/blocked_by`: stop as blocked if any blocker is neither closed nor has the done label.
 4. Set `round = 1`. The limit is 2 rounds in total, counting failures of both the check and the reviewer.
 
 ## 1. Branch
@@ -85,8 +85,18 @@ Fuera del ticket (para el backlog): <lo visto> | nada
 
 ## 7. Blocked
 
-- Add the blocked label and post the step 6 comment with the reason: the literal failing output or verdict.
-- Leave the card in the step where it stopped. No commit, no merge.
+- Move the card to *Needs Human* (state id in `.claude/factory.md`, by URL as the board commands file says).
+- Post the step 6 comment with the reason (the literal failing output or verdict), and these three lines after
+  `Revisor:`:
+
+  ```text
+  Parado en: <construcción | comprobación | revisor | fusión>
+  Queda: <rama y stash, por nombre | nada>
+  Para relanzar: sacar la tarjeta de *Needs Human* (documentation/github-board.md) y lanzar `/implement $0` a mano
+  (documentation/launch-one-ticket.md). Antes, el humano borra la rama de «Queda» o le pone otro nombre.
+  ```
+
+- No commit, no merge.
 - Keep the change for the human and leave the tree clean for the next launch:
   `git stash push -u -m "blocked #$0"`, then `git checkout <base>`. Name the stash in the comment.
 

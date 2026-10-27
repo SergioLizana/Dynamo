@@ -21,7 +21,11 @@ project, fill in this file and leave the skills alone.
 | In Progress | `a41ae146` |
 | Verify | `a243ce09` |
 | In Review | `7eccea7a` |
+| Needs Human | `40dfd960` |
 | Done | `e617f390` |
+
+*Needs Human* is where a stuck ticket ends: `/implement` and the `run` workflow move its card there, with a comment that
+says what failed. A person takes it out (see `documentation/github-board.md`).
 
 If a state is renamed or recreated, read them again with
 `gh project field-list 1 --owner SergioLizana --format json`.
@@ -29,7 +33,6 @@ If a state is renamed or recreated, read them again with
 ## Labels
 
 - Done in the working branch (the issue stays open until it reaches the main branch): `hecho-en-release`.
-- Blocked (a stuck ticket; it does not change the card's state): `bloqueado`.
 
 ## Automatic check
 

@@ -253,9 +253,11 @@ las copias de trabajo (investigación §3.3).
 y enlace a los PR, sin construir nada. Solo GitHub hasta que haga falta otra cosa (regla 2).
 
 **Tablero:** https://github.com/users/SergioLizana/projects/1, con los estados *Todo*, *In Progress* (Builder),
-*Verify* (comprobación automática), *In Review* (`reviewer`) y *Done* (fusionado en `release/x.y.z`). **Siempre refleja
-el paso en el que está trabajando el agente**, también cuando un ticket vuelve de *In Review* a *In Progress* en otra
-vuelta. Un ticket atascado lleva la etiqueta `bloqueado`, no un estado.
+*Verify* (comprobación automática), *In Review* (`reviewer`), *Needs Human* (ticket atascado) y *Done* (fusionado en
+`release/x.y.z`). **Siempre refleja el paso en el que está trabajando el agente**, también cuando un ticket vuelve de
+*In Review* a *In Progress* en otra vuelta. Un ticket atascado acaba en *Needs Human*, con un comentario que dice qué
+falló, en qué paso se paró, qué queda (rama o stash) y cómo relanzarlo. No lleva etiqueta: la columna es la señal. Sacarlo
+de *Needs Human* y relanzarlo está en `documentation/github-board.md`.
 
 Comprobado el 2026-10-26 (detalle y comandos en `documentation/github-board.md`, plantilla en
 `.claude/templates/ticket.md`):
