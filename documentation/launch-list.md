@@ -61,17 +61,21 @@ The report keeps one section per run, and the release PR body is complete:
 
 - Each run adds a section («run 1», «run 2», …) with: per ticket the result, the rounds and the merge commit; the
   blocked tickets and the skipped ones, each with its reason; the «Out of the ticket» lines the Builders noted; and a
-  `/cost` line for the human to fill in. The earlier sections stay: `.claude/worktrees/run-report.md` (ignored by git)
-  is read at the start and written back with the new section, not overwritten.
+  `/cost` line for the human to fill in. The earlier sections stay: the file is one per base,
+  `.claude/worktrees/run-report-<base>.md` (the base with `/` as `-`, ignored by git), read at the start and written
+  back with the new section, not overwritten. Only the sections whose header names this base count (also when the file
+  holds others): «run k» is the number of those plus one, and a report of another release never shows in this one.
 - Then comes one `Closes #n` line for every ticket merged into the base since the main branch (the first-parent log of
-  the base read at the start, where a merge that was reverted does not count, plus this run's merges).
+  the base read at the start, where a merge that was reverted does not count, plus this run's merges). The file's
+  `Closes` lines are used only when that log could not be read, and only from this base's sections: a merge reverted by
+  hand between two runs does not come back.
 
 - **A PR exists:** this run's section is added to the end of its body (what the body had stays, the earlier sections
   too), with a `Closes #n` line only for a ticket the body does not close already. The script reads the body back from
   GitHub and says in `pullRequest.updated` whether it matches. The human fills in the cost line in the PR, reads it, and
   decides when to merge it.
 - **No PR exists:** the run changes nothing on GitHub. It returns the report, also in the file, and
-  `commandsForTheHuman`: `gh pr create ... --body-file .claude/worktrees/run-report.md`.
+  `commandsForTheHuman`: `gh pr create ... --body-file .claude/worktrees/run-report-<base>.md`.
 - **The remote against the local base:** the script compares the tip `git ls-remote` printed with the local one and
   counts the commits not on `origin`. When the remote is behind (`remote.state: "behind"`) or does not have the base
   (`"missing"`), the **first** command for the human is the push (`git push -u origin <base>`), with a PR or without

@@ -16,7 +16,8 @@ export const meta = {
 
 const NAME = 'run' // the same as meta.name
 const FACTORY_JSON = '.claude/factory.json'
-const REPORT_FILE = '.claude/worktrees/run-report.md' // ignored by git; the body that `gh` reads
+// One report file per base, ignored by git; the body that `gh` reads. A release never sees another base's report.
+const reportFileOf = b => `.claude/worktrees/run-report-${b.replace(/[^A-Za-z0-9._-]+/g, '-')}.md`
 const MAX_ROUNDS = 2
 
 // Trial failure 4: a commit must be a sha, not «HEAD of …».
@@ -439,6 +440,7 @@ const wanted = tokens.map(Number)
 // The base is known from factory.json and the call: the main branch stops the run before any other agent.
 const base = input.base ? String(input.base) : P.workingBranch
 if (base === P.mainBranch) return { stopped: `the base is the main branch (${base})` }
+const REPORT_FILE = reportFileOf(base)
 
 // The reads of the start in one `runner` call, each with its literal output: the state of the main folder, the branch,
 // the report file the earlier runs of this release left, the tickets with their labels, card status and native blockers
@@ -816,18 +818,30 @@ function runSection(list, out, k) {
 
 const closesLine = n => `Closes #${n}`
 const notes = []
-if (!mergedBefore) notes.push(`the tickets already merged into ${base} could not be read: the Closes lines cover this run and the earlier reports only`)
+if (!mergedBefore) notes.push(`the tickets already merged into ${base} could not be read: the Closes lines cover this run and the earlier reports of ${base} only`)
 if (!startPrs) notes.push(`the pull requests of ${P.repo} could not be read at the start: if one from ${base} exists, put the report in its body by hand`)
 const pr = Array.isArray(startPrs) && startPrs.length ? startPrs[0] : null
 
-// The file: the earlier runs' sections stay, this run's is added, and the Closes lines (those the file had, the ones
-// merged before and this run's) go once at the end.
-const keptCloses = previousReport.split('\n').map(l => l.trim()).filter(l => /^Closes #\d+$/.test(l)).map(l => Number(l.slice(8)))
-const closes = [...new Set([...keptCloses, ...(mergedBefore || []), ...results.filter(r => r.status === 'done' && r.mergeCommit).map(r => r.number)])]
-  .sort((a, b) => a - b)
-const runNumber = (previousReport.match(/^## run report ·/gm) || []).length + 1
+// The file: the earlier runs' sections of THIS base stay, this run's is added, and the Closes lines go once at the end.
+// The file is keyed by base, and its sections are filtered by their header anyway: a section that names another base
+// is dropped, and `run k` counts only this base's sections. The Closes lines come from the first-parent log of the
+// base (merged before, minus the reverted ones, plus this run's merges); the file's lines are the fallback only when
+// the log could not be read, and only if every section of the file names this base.
+const headerBase = l => { const m = l.match(/^## .* report · (.+) · run \d+$/); return m ? m[1] : null }
+const fileSections = []
+for (const l of previousReport.split('\n')) {
+  const b = headerBase(l.trimEnd())
+  if (b !== null) fileSections.push({ base: b, lines: [l] })
+  else if (fileSections.length) fileSections[fileSections.length - 1].lines.push(l)
+}
+const ownSections = fileSections.filter(s => s.base === base)
+const onlyOwn = fileSections.length === ownSections.length
+const fileCloses = onlyOwn ? previousReport.split('\n').map(l => l.trim()).filter(l => /^Closes #\d+$/.test(l)).map(l => Number(l.slice(8))) : []
+const thisRunMerges = results.filter(r => r.status === 'done' && r.mergeCommit).map(r => r.number)
+const closes = [...new Set([...(mergedBefore ? [...mergedBefore] : fileCloses), ...thisRunMerges])].sort((a, b) => a - b)
+const runNumber = ownSections.length + 1
 const section = runSection(results, outOf, runNumber)
-const previousSections = previousReport.split('\n').filter(l => !/^Closes #\d+$/.test(l.trim())).join('\n').trim()
+const previousSections = ownSections.map(s => s.lines.filter(l => !/^Closes #\d+$/.test(l.trim())).join('\n').trim()).filter(Boolean).join('\n\n')
 const report = [previousSections, section, closes.map(closesLine).join('\n')].filter(Boolean).join('\n\n')
 
 // With a PR: its body plus this run's section, with a Closes line only for a ticket the body does not close already.
