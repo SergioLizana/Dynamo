@@ -1,128 +1,143 @@
-# Tickets en GitHub: bloqueos, «hecho» y tablero
+# Tickets on GitHub: blockers, "done" and the board
 
-Probado el 2026-10-26 sobre `SergioLizana/Dynamo` (ticket #1). Plantilla: `.claude/templates/ticket.md`.
-Estados y significado: plan §6.5. Los nombres de las columnas y los ids de sus opciones están en
-`.claude/factory.json` (no se copian aquí). Los demás datos del proyecto (repositorio, tablero, etiquetas) están en
-`.claude/factory.md`; aquí van entre `<…>`: `<repo>`, `<owner>`, `<número>` del proyecto, `<project-id>`,
-`<status-field-id>`, `<option-id>` de un estado, `<done>` (etiqueta de hecho).
+Tested on 2026-10-26 on `SergioLizana/Dynamo` (ticket #1). Template: `.claude/templates/ticket.md`.
+States and meaning: plan §6.5. The column names and the ids of their options are in
+`.claude/factory.json` (not copied here). The other project data (repository, board, labels) are in
+`.claude/factory.md`; here they go between `<…>`: `<repo>`, `<owner>`, `<number>` of the project, `<project-id>`, `<status-field-id>`,
+`<option-id>` of a state, `<done>` (done label).
 
-## Bloqueado por
+## Blocked by
 
-La relación **nativa** de GitHub es la fuente de verdad. La sección «Bloqueado por» del cuerpo es solo para leer.
+The **native** GitHub relation is the source of truth. The "Blocked by" section of the body is only for reading.
 
 ```bash
-# id interno (no el número) del bloqueador
-ID=$(gh api repos/<repo>/issues/<bloqueador> --jq .id)
+# internal id (not the number) of the blocker
+ID=$(gh api repos/<repo>/issues/<blocker> --jq .id)
 gh api repos/<repo>/issues/<n>/dependencies/blocked_by -F issue_id=$ID
 gh api repos/<repo>/issues/<n>/dependencies/blocked_by --jq '.[]|{number,state}'
 ```
 
-Este POST sin `-X` es el que permite `.claude/settings.json`; el riesgo de que deje escribir por la API está en
-`documentation/backlog.md`, «Proteger `main`».
+This POST without `-X` is the one `.claude/settings.json` allows; the risk that it lets the API write to `main` is in
+`documentation/backlog.md`, "Protect `main`".
 
-Comprobado:
-- Un bloqueador cerrado **sigue en la lista** con `state: closed`. `issueDependenciesSummary.blockedBy` (GraphQL)
-  cuenta solo los abiertos.
-- El proyecto no tiene un campo «Blocked by»: el bloqueo se ve en la página del issue, no como columna del tablero.
-  No he podido comprobar por la CLI si la interfaz web lo muestra en la tarjeta.
+Verified:
+- A closed blocker **stays in the list** with `state: closed`. `issueDependenciesSummary.blockedBy` (GraphQL) counts
+  only the open ones.
+- The project has no "Blocked by" field: the blocker is seen on the issue page, not as a board column. I have not been
+  able to check from the CLI whether the web interface shows it on the card.
 
-## Hecho en release
+## Done in release
 
-GitHub solo cierra issues al fusionar en `main`, y los tickets se fusionan en `release/x.y.z`. Decisión:
+GitHub only closes issues when merging into `main`, and tickets are merged into `release/x.y.z`. Decision:
 
-- Al fusionar el ticket en la release: etiqueta **`hecho-en-release`** y tarjeta en *Done*. El issue **sigue abierto**.
-- «Cerrado» significa «en `main`». El PR de la release lleva `Closes #n` por cada ticket para que GitHub los cierre solo.
-  *No probado*: exige fusionar en `main`, que no se hace sin tu autorización.
-- Frontera de `/run` (la define y prueba `/run`, etapa 3; aquí solo la regla de marcado): issues abiertos sin
-  `hecho-en-release`, cuya tarjeta no está en *Needs Human*, y cuyos bloqueadores la tengan o estén cerrados.
+- When the ticket is merged into the release: label **`in-release`** and card in *Done*. The issue **stays open**.
+- "Closed" means "in `main`". The release PR carries `Closes #n` for each ticket so that GitHub closes them by itself.
+  *Not tested*: it requires merging into `main`, which is not done without your authorization.
+- `/run` frontier (defined and tested by `/run`, stage 3; here only the marking rule): open issues without
+  `in-release`, whose card is not in *Needs Human*, and whose blockers have that label or are closed.
 
 ```bash
 gh issue edit <n> -R <repo> --add-label <done>
 ```
 
-## Needs Human (ticket atascado)
+### Renaming the done label (once, by the human)
 
-Un ticket que se para (`/implement`, o el workflow `run`) acaba con la tarjeta en *Needs Human* y un comentario que dice
-qué falló, en qué paso se paró, qué queda (rama, copia o stash) y cómo relanzarlo. Es un estado de la tarjeta, no una
-etiqueta. **«Bloqueado por» no cambia:** sigue siendo la relación nativa de GitHub (ver arriba), y un ticket en
-*Needs Human* no la toca.
-
-Para sacar un ticket de *Needs Human*:
-
-1. Resolver lo que lo paró, o decidir que no se hace.
-2. Mover la tarjeta a *Todo*, con el comando de un solo paso (la opción de *Todo* está en `.claude/factory.json`):
+The label used to be called `hecho-en-release`; `.claude/factory.md` now names it `in-release`. The human renames it on
+GitHub right after ticket #37 merges and before the next run (a run reads the label name when it starts, so the run that
+builds #37 is not affected). No agent renames it:
 
 ```bash
-gh project item-edit <número> --owner <owner> --url https://github.com/<repo>/issues/<n> --field "Status" --value "Todo"
+gh label edit hecho-en-release --name in-release -R <repo>
 ```
 
-3. Borrar o renombrar la rama y la copia que indica «Queda» en el comentario. Las borra el humano; los agentes no borran ramas.
-4. Relanzarlo: `/implement <n>` a mano (`documentation/launch-one-ticket.md`), o `/run <n>` (`documentation/launch-list.md`).
+Renaming keeps the label on the issues that already carry it.
 
-## Añadir un issue al tablero
+## Needs Human (stuck ticket)
 
-`gh issue create ... --project "Dynamo"` lo añade al tablero **sin estado** (probado el 2026-10-26 con el issue #8,
-ya borrado: solo hay evento `AddedToProjectV2Event`). Hay que moverlo a *Todo* con `move_card`.
+A ticket that stops (`/implement`, or the `run` workflow) ends with its card in *Needs Human* and a comment that says
+what failed, at which step it stopped, what is left (branch, copy or stash) and how to relaunch it. It is a state of the
+card, not a label. **"Blocked by" does not change:** it is still the native GitHub relation (see above), and a ticket in
+*Needs Human* does not touch it.
 
-En Git Bash, un argumento que empieza por `/` se reescribe como ruta de Windows: el issue #10 se creó con el título
-«C:/Program Files/Git/to-tasks…» (2026-10-26). Se evita anteponiendo `MSYS_NO_PATHCONV=1` al comando `gh`; el cuerpo
-por `--body-file -` no se ve afectado.
+To take a ticket out of *Needs Human*:
 
-Justo después de crear un issue, su tarjeta tarda unos segundos en salir en `gh project item-list`, y `move_card`
-falla con «specify the item to edit» (visto el 2026-10-26 con #13). Sin buscar el id de la tarjeta, por la URL del
-issue y los nombres del campo y del estado, funciona a la primera:
+1. Solve what stopped it, or decide that it is not done.
+2. Move the card to *Todo*, with the one-step command (the *Todo* option is in `.claude/factory.json`):
 
 ```bash
-gh project item-edit <número> --owner <owner> --url https://github.com/<repo>/issues/<n>   --field "Status" --value "Todo"
+gh project item-edit <number> --owner <owner> --url https://github.com/<repo>/issues/<n> --field "Status" --value "Todo"
 ```
 
-Al borrar un issue, su tarjeta queda un rato en el tablero vacía (`content` y `status` a `null` en
-`gh project item-list`) y `gh project item-delete` la rechaza por permisos. GitHub la quita sola al cabo de unos
-minutos (visto el 2026-10-26 con #9 y #10): no hay que hacer nada.
+3. Delete or rename the branch and the copy that the comment's "Left" line names. The human deletes them; the agents do
+   not delete branches.
+4. Relaunch it: `/implement <n>` by hand (`documentation/launch-one-ticket.md`), or `/run <n>`
+   (`documentation/launch-list.md`).
 
-## Mover una tarjeta
+## Adding an issue to the board
+
+`gh issue create ... --project "Dynamo"` adds it to the board **with no state** (tested 2026-10-26 with issue #8, since
+deleted: only the `AddedToProjectV2Event` event remains). It has to be moved to *Todo* with `move_card`.
+
+In Git Bash, an argument that starts with `/` is rewritten as a Windows path: issue #10 was created with the title
+"C:/Program Files/Git/to-tasks…" (2026-10-26). It is avoided by prefixing `MSYS_NO_PATHCONV=1` to the `gh` command; the
+body given by `--body-file -` is not affected.
+
+Right after creating an issue, its card takes a few seconds to appear in `gh project item-list`, and `move_card` fails
+with "specify the item to edit" (seen 2026-10-26 with #13). Without looking up the card's id, using the issue URL and
+the names of the field and the state, it works the first time:
 
 ```bash
-move_card() { # $1 = nº de issue, $2 = id de la opción
-  ITEM=$(gh project item-list <número> --owner <owner> --limit 100 --format json \
+gh project item-edit <number> --owner <owner> --url https://github.com/<repo>/issues/<n>   --field "Status" --value "Todo"
+```
+
+When an issue is deleted, its card stays on the board for a while, empty (`content` and `status` set to `null` in
+`gh project item-list`), and `gh project item-delete` rejects it for lack of permissions. GitHub removes it by itself
+after a few minutes (seen 2026-10-26 with #9 and #10): nothing to do.
+
+## Moving a card
+
+```bash
+move_card() { # $1 = issue number, $2 = option id
+  ITEM=$(gh project item-list <number> --owner <owner> --limit 100 --format json \
     --jq ".items[]|select(.content.number==$1)|.id")
   gh project item-edit --id "$ITEM" --project-id <project-id> \
     --field-id <status-field-id> --single-select-option-id "$2"
 }
 ```
 
-Los ids del proyecto y del campo Status están en `.claude/factory.md`; los de cada estado, en `options` de
+The project and Status field ids are in `.claude/factory.md`; those of each state, in `options` of
 `.claude/factory.json`.
 
-Probado el 2026-10-26 sobre el issue de prueba #6 (ya borrado, así que no queda historial): Todo → In Progress → Verify → In Review → In Progress → In Review → Done. Si se renombra o recrea un estado,
-se vuelven a leer con `gh project field-list <número> --owner <owner> --format json`.
+Tested 2026-10-26 on test issue #6 (since deleted, so no history remains): Todo → In Progress → Verify → In Review →
+In Progress → In Review → Done. If a state is renamed or recreated, read them again with
+`gh project field-list <number> --owner <owner> --format json`.
 
-## Renombrar una columna
+## Renaming a column
 
-Lo hace el humano en la web de GitHub, no la API (no se ha comprobado que renombrar conserve los ids de las opciones).
-Para pasar de *In Progress* a *Build* y de *In Review* a *Review*:
+The human does it on the GitHub website, not through the API (it has not been checked that renaming keeps the option
+ids). To go from *In Progress* to *Build* and from *In Review* to *Review*:
 
-1. Fusionar el ticket que cambia `.claude/factory.json` (#41) en la release.
-2. Justo después, antes de la siguiente ejecución, en el tablero: *Settings* → campo *Status* → renombrar la opción.
-3. Comprobar que los ids siguen siendo los de `options` de `.claude/factory.json`:
+1. Merge the ticket that changes `.claude/factory.json` (#41) into the release.
+2. Right after, before the next run, on the board: *Settings* → *Status* field → rename the option.
+3. Check that the ids are still those in `options` of `.claude/factory.json`:
 
 ```bash
-gh project field-list <número> --owner <owner> --format json
+gh project field-list <number> --owner <owner> --format json
 ```
 
-   Si algún id ha cambiado, corregir `options` en el JSON. Hasta renombrar, mover una tarjeta a *Build* o *Review* falla.
+   If an id has changed, fix `options` in the JSON. Until renamed, moving a card to *Build* or *Review* fails.
 
-## Comprobar por qué estados ha pasado una tarjeta
+## Checking which states a card has passed through
 
-Lo escribe GitHub, no el agente: es la evidencia de los cambios de estado. La API REST (`issues/<n>/timeline`) trae
-los eventos pero **no** los estados; hay que usar GraphQL.
+GitHub writes this, not the agent: it is the evidence of the state changes. The REST API (`issues/<n>/timeline`) returns
+the events but **not** the states; GraphQL has to be used.
 
 ```bash
-gh api graphql -f query='query{repository(owner:"<owner>",name:"<nombre del repo>"){issue(number:<n>){
+gh api graphql -f query='query{repository(owner:"<owner>",name:"<repo name>"){issue(number:<n>){
   timelineItems(first:50,itemTypes:[PROJECT_V2_ITEM_STATUS_CHANGED_EVENT]){nodes{
   ... on ProjectV2ItemStatusChangedEvent{createdAt previousStatus status}}}}}}' \
   --jq '.data.repository.issue.timelineItems.nodes[]|"\(.createdAt) \(.previousStatus) -> \(.status)"'
 ```
 
-Probado el 2026-10-26 sobre #1: `Todo -> In Progress`, `In Progress -> Done`, con fecha. Un issue borrado se lleva su
-historial.
+Tested 2026-10-26 on #1: `Todo -> In Progress`, `In Progress -> Done`, with date. A deleted issue takes its history
+with it.

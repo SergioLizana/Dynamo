@@ -8,7 +8,7 @@ export const meta = {
 // return. Project data (repo, branches, board, labels, check, language) comes from .claude/factory.md; the board
 // columns and the phases (order, column, model, effort, agent type, where a failure goes) from .claude/factory.json.
 // One phase = one column = one agent. To add one: an entry in factory.json and a function in PHASES
-// (documentation/launch-list.md, «Las fases»).
+// (documentation/launch-list.md, «The phases»).
 
 const NAME = 'run' // the same as meta.name
 const FACTORY_JSON = '.claude/factory.json'
@@ -134,7 +134,7 @@ This is round ${ctx.round}. Round ${ctx.round - 1} left its work on branch \`${p
 ${ctx.failure}
 - Whatever an earlier round already published on GitHub for a checkbox: edit that comment if it must change, never post it again.`
   return {
-    step: 'construcción',
+    step: 'build',
     schema: BUILD_SCHEMA,
     isolation: 'worktree',
     prompt: `${COMMON}
@@ -155,7 +155,7 @@ copy (a git worktree) that starts at the tip of the base.
       builds.push({ number: t.number, round: ctx.round, worktreePath: b.worktreePath, worktreeBranch: b.worktreeBranch, branch: b.branch })
       ctx.build = b
       // Trial failure 3: a second round cannot fix a ticket that needs the human.
-      if (b.needsHuman) return { pass: false, stop: true, failure: `necesita al humano: ${b.needsHumanReason}` }
+      if (b.needsHuman) return { pass: false, stop: true, failure: `needs the human: ${b.needsHumanReason}` }
       if (!b.commit) return { pass: false, failure: 'the Builder made no commit' }
       return { pass: true }
     },
@@ -166,7 +166,7 @@ copy (a git worktree) that starts at the tip of the base.
 function verifyPhase(t, ctx) {
   const b = ctx.build
   return {
-    step: 'comprobación',
+    step: 'check',
     schema: VERIFY_SCHEMA,
     prompt: `${COMMON}
 
@@ -195,7 +195,7 @@ ${P.checks.map(c => `   - \`${c.split('<base>').join(base)}\``).join('\n')}
 function reviewPhase(t, ctx) {
   const b = ctx.build
   return {
-    step: 'revisor',
+    step: 'review',
     prompt: `Review ticket ${t.number} of repo ${P.repo}. Base: ${base}.
 The change is committed on branch \`${b.branch}\` (commit ${b.commit}), which is not checked out here: read it with
 \`git diff ${base}...${b.branch}\`, \`git log ${base}..${b.branch}\` and \`git show ${b.branch}:<path>\`. Do not check it out.
@@ -203,10 +203,10 @@ The automatic check passed in the Builder's copy: ${ctx.checks.map(c => `\`${c.c
 Round ${ctx.round}.${ctx.prevVerdict ? `\nYour previous verdict, word for word:\n${ctx.prevVerdict}` : ''}`,
     read: verdict => {
       ctx.verdict = verdict
-      if (/VEREDICTO:\s*PASA/.test(verdict)) return { pass: true }
+      if (/VERDICT:\s*PASS/.test(verdict)) return { pass: true }
       ctx.prevVerdict = verdict
-      const forBuilder = (verdict.match(/Para el Builder:[\s\S]*?(?=\nNotas|$)/) || [verdict])[0]
-      return { pass: false, failure: `The reviewer said FALLA. ${forBuilder}` }
+      const forBuilder = (verdict.match(/For the Builder:[\s\S]*?(?=\nNotes|$)/) || [verdict])[0]
+      return { pass: false, failure: `The reviewer said FAIL. ${forBuilder}` }
     },
   }
 }
@@ -215,7 +215,7 @@ Round ${ctx.round}.${ctx.prevVerdict ? `\nYour previous verdict, word for word:\
 function mergePhase(t, ctx) {
   const b = ctx.build
   return {
-    step: 'fusión',
+    step: 'merge',
     schema: MERGE_SCHEMA,
     serial: true,
     prompt: `${COMMON}
@@ -223,16 +223,16 @@ function mergePhase(t, ctx) {
 Merge ticket #${t.number} in repo \`${P.repo}\` into \`${base}\`, in this folder (the main one).
 1. \`git status --porcelain --untracked-files=no\` must be empty and \`git branch --show-current\` must be \`${base}\`. If not, outcome =
    blocked, stoppedAt = start, and say why; change nothing.
-2. \`git merge --no-ff ${b.branch} -m "Fusiona ${b.branch} en ${base} (#${t.number})"\`. On a conflict:
+2. \`git merge --no-ff ${b.branch} -m "Merge ${b.branch} into ${base} (#${t.number})"\`. On a conflict:
    \`git merge --abort\`, outcome = blocked, stoppedAt = merge, reason = the conflicting files.
 3. Run every command of the automatic check with \`<base>\` = \`${base}\`. If any fails:
    \`git revert -m 1 --no-edit HEAD\`, outcome = blocked, stoppedAt = check, reason = the failing command and its output.
 4. If blocked: change no label. If merged: stoppedAt = none, mergeCommit is what \`git rev-parse --short HEAD\` prints
    after the merge, and add the done label.
 5. One \`gh issue comment ${t.number} -R ${P.repo}\`, the only report of this ticket, with this shape:
-${reportShape(`<PASA y fusionado en ${base} (<mergeCommit>) | no fusionado: <motivo>>`, t.number)}
-   If blocked, keep the three lines Parado en, Queda and Para relanzar: Parado en is «fusión» if stoppedAt is start
-   or merge, and «comprobación» if it is check; Queda is the branch \`${b.branch}\` and the copy \`${b.worktreePath}\`,
+${reportShape(`<PASS and merged into ${base} (<mergeCommit>) | not merged: <reason>>`, t.number)}
+   If blocked, keep the three lines Stopped at, Left and To relaunch: Stopped at is «merge» if stoppedAt is start
+   or merge, and «check» if it is check; Left is the branch \`${b.branch}\` and the copy \`${b.worktreePath}\`,
    each only if \`git branch --list\` or \`git worktree list\` still shows it. If merged, delete those three lines.
    Do not repeat what the Builder already published: ${JSON.stringify(b.published)}.
 Round: ${ctx.round}. Checks in the Builder's copy: ${JSON.stringify(ctx.checks)}. No trace: ${JSON.stringify(b.noTrace)}.
@@ -386,30 +386,30 @@ const builds = [] // every Build result, for the cleanup
 function reportShape(head, stuck) {
   return `\`\`\`text
 ${NAME} · ${head}
-Vueltas: <round>/${MAX_ROUNDS}
-Comprobación: <cada comando → resultado>
-Revisor: <veredicto final, una línea por casilla> | sin revisión
-Pruebas sin rastro en GitHub: <command → output> | ninguna
-Fuera del ticket (para el backlog): <lo visto> | nada${stuck ? `
-Parado en: <paso donde se paró>
-Queda: <rama y copia de trabajo, por nombre y ruta, de lo que muestra el paso 2 | nada>
-Para relanzar: sacar la tarjeta de *${C.needsHuman}* (documentation/github-board.md) y lanzar \`/run ${stuck}\` (documentation/launch-list.md). Antes, el humano borra la rama de «Queda» o le pone otro nombre.` : ''}
+Rounds: <round>/${MAX_ROUNDS}
+Checks: <each command → result>
+Reviewer: <final verdict, one line per checkbox> | no review
+No trace: <command → output> | none
+Out of the ticket (for the backlog): <what was seen> | nothing${stuck ? `
+Stopped at: <step where it stopped>
+Left: <branch and working copy, by name and path, from step 2 | nothing>
+To relaunch: take the card out of *${C.needsHuman}* (documentation/github-board.md) and launch \`/run ${stuck}\` (documentation/launch-list.md). First, the human deletes the branch in «Left» or renames it.` : ''}
 \`\`\``
 }
 
-// step: the step where the ticket stopped (construcción, comprobación, revisor or fusión).
+// step: the step where the ticket stopped (build, check, review or merge).
 function block(t, ctx, step, reason, group) {
   return serial(() => agent(`${COMMON}
 
 Ticket #${t.number} in repo \`${P.repo}\` stops as blocked: it is not merged.
 1. Change no label: the script moves the card.
 2. Check where its work is: \`git branch --list "ticket/${t.number}-*"\` and \`git worktree list\`.
-3. One \`gh issue comment ${t.number} -R ${P.repo}\` with this shape: the reason as a literal quote, «Parado en» is
-   \`${step}\`, and «Queda» is only what step 2 showed:
-${reportShape(`no fusionado: <motivo>`, t.number)}
+3. One \`gh issue comment ${t.number} -R ${P.repo}\` with this shape: the reason as a literal quote, «Stopped at» is
+   \`${step}\`, and «Left» is only what step 2 showed:
+${reportShape(`not merged: <reason>`, t.number)}
 Reason: ${reason}
 Round: ${ctx.round}. Builder: ${JSON.stringify(ctx.build || {})}. Check: ${JSON.stringify(ctx.checks)}
-Verdict: ${ctx.verdict || 'sin revisión'}`,
+Verdict: ${ctx.verdict || 'no review'}`,
     { ...SMALL, label: `block:#${t.number}`, phase: group }))
     .then(() => markStuck(t.number, group))
     .then(mark => ({ number: t.number, status: 'blocked', rounds: ctx.round, reason, ...mark }))
@@ -419,28 +419,28 @@ function skip(t, reason) {
   return serial(() => agent(`${COMMON}
 
 Ticket #${t.number} in repo \`${P.repo}\` is skipped in this run. Change no label.
-Post one \`gh issue comment ${t.number} -R ${P.repo}\`: «${NAME} · saltado: ${reason}».`,
+Post one \`gh issue comment ${t.number} -R ${P.repo}\`: «${NAME} · skipped: ${reason}».`,
     { ...SMALL, label: `skip:#${t.number}`, phase: START }))
     .then(() => ({ number: t.number, status: 'skipped', reason }))
 }
 
 async function runTicket(t) {
-  if (doneOnBoard(t)) return { number: t.number, status: 'done', note: 'ya estaba hecho' }
-  if (onNeedsHuman(t)) return { number: t.number, status: 'blocked', note: `ya estaba en ${C.needsHuman}` }
+  if (doneOnBoard(t)) return { number: t.number, status: 'done', note: 'already done' }
+  if (onNeedsHuman(t)) return { number: t.number, status: 'blocked', note: `already in ${C.needsHuman}` }
 
   // Wait for blockers in this run; a blocker outside the run must already be done.
   const blockers = blockersOf[t.number]
-  if (!blockers) return skip(t, 'no se pudieron leer sus bloqueadores en GitHub')
+  if (!blockers) return skip(t, 'its blockers could not be read on GitHub')
   for (const bl of blockers) {
     if (!byNum[bl.number] && bl.state.toLowerCase() !== 'closed' && !bl.labels.includes(P.doneLabel)) {
-      return skip(t, `depende de #${bl.number}, que no está en la release`)
+      return skip(t, `depends on #${bl.number}, which is not in the release`)
     }
   }
   const inRun = blockers.filter(bl => byNum[bl.number])
   const results = await Promise.all(inRun.map(bl => start(bl.number)))
   const failed = inRun.filter((bl, i) => !results[i] || results[i].status !== 'done')
   if (failed.length) {
-    return skip(t, `depende de ${failed.map(bl => `#${bl.number}`).join(', ')}, que no llegó a la release`)
+    return skip(t, `depends on ${failed.map(bl => `#${bl.number}`).join(', ')}, which did not reach the release`)
   }
 
   // The phases of factory.json, in order. The card enters a phase's column when the phase starts (moveCard
@@ -456,7 +456,7 @@ async function runTicket(t) {
     if (spec.isolation) opts.isolation = spec.isolation
     const call = () => agent(spec.prompt, opts)
     const r = spec.serial ? await serial(call) : await call()
-    const out = r ? spec.read(r) : { pass: false, stop: true, failure: `el agente ${ph.name} no devolvió nada` }
+    const out = r ? spec.read(r) : { pass: false, stop: true, failure: `the ${ph.name} agent returned nothing` }
     if (out.pass) {
       if (ph.moveCard === 'end') await moveCard(t.number, ph.column, ph.name)
       i++

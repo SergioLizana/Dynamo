@@ -1,151 +1,150 @@
 # Backlog
 
-Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientras no los pida un problema real
-(plan §8.1). Cada entrada dice de dónde sale y qué hay comprobado.
+Ideas and risks that come up along the way and do not become a ticket unless a real problem asks for them (plan §8.1).
+Each entry says where it comes from and what has been verified.
 
-## Proteger `main`
+## Protect `main`
 
-- **Origen:** revisión del #4 (2026-10-26). La lista negra de `.claude/settings.json` frena `git push` y los
-  `gh api -X/--method`, pero `gh api <ruta> -f …` hace un POST implícito y `gh api graphql` admite mutaciones: una
-  ejecución desatendida podría escribir en `main` por la API.
-- **Comprobado:** con el plan Free y el repositorio privado, GitHub no deja proteger ramas ni crear reglas:
+- **Origin:** review of #4 (2026-10-26). The deny list in `.claude/settings.json` stops `git push` and `gh api -X/--method`,
+  but `gh api <path> -f …` makes an implicit POST, and `gh api graphql` accepts mutations: an unattended run could write
+  to `main` through the API.
+- **Verified:** with the Free plan and a private repository, GitHub does not allow protecting branches or creating rules:
   `gh api repos/SergioLizana/Dynamo/branches/main/protection` → `403 Upgrade to GitHub Pro or make this repository
-  public`; `.../rulesets` da lo mismo.
-- **Opciones:** GitHub Pro; o que los agentes usen un token de grano fino con *Contents* en solo lectura (los agentes
-  no necesitan escribir código en GitHub: fusionan en local), y *Issues* y *Projects* en escritura. Sin comprobar si
-  un token de grano fino puede escribir en un Project de usuario.
-- **Por qué no un agente `git-ops` aparte con más permisos** (pensado el 2026-10-26): las reglas `deny` valen para toda
-  la sesión, subagentes incluidos, así que no se puede negar algo al Builder y permitírselo a otro agente sin un hook
-  propio; las reglas sobre Bash no son una barrera (el Builder puede llamar a `git` desde otro programa), y ningún
-  agente necesita hacer push: fusionan en local. El corte de verdad está en las credenciales de la ejecución
-  desatendida:
-  - `gh`: el token de grano fino de arriba, pasado como `GH_TOKEN` solo en el comando de lanzamiento;
-  - `git push`: usa el gestor de credenciales del sistema, no `GH_TOKEN`; quitárselo a esa ejecución vaciando
-    `credential.helper` con variables de entorno (`GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_0`, `GIT_CONFIG_VALUE_0`).
-  - Sin comprobar ninguna de las dos. Tampoco es aislamiento completo (un agente con Bash en el mismo usuario podría
-    llegar al gestor de credenciales): eso solo lo da un contenedor (plan §7 y §10.4).
-- **Cuándo:** antes de dejar listas desatendidas (etapa 3).
-- **Permisos distintos por agente** (consultado en `code.claude.com/docs/en/sub-agents.md` el 2026-10-27): la
-  cabecera de un subagente admite `tools`, `disallowedTools`, `permissionMode` y `hooks`. No admite reglas `allow` ni
-  `deny` propias: las de `settings.json` valen para toda la sesión, subagentes incluidos. `disallowedTools` quita la
-  herramienta entera (`Bash(git push *)` quita todo Bash) y `permissionMode` se ignora si la sesión está en `auto`,
-  como nuestras `-p`. Lo único que filtra comandos agente por agente es un hook `PreToolUse` en su cabecera, que
-  solo corre mientras ese agente está activo. Sirve para recortar (un Builder sin push), nunca para dar a un agente
-  más que a la sesión. Es una barrera de buena fe, como `deny`, y sería un comando propio que tiene que funcionar en
-  Linux, macOS y Windows. Probarlo solo cuando un ticket necesite separar permisos entre agentes.
-- **Push a `release/x.y.z`** (pensado el 2026-10-26): hoy `git push` está en `ask` (en sesión normal pregunta;
-  en `-p` se deniega). No se pasa a `allow` porque ningún ticket lo necesita (se fusiona en local) y una regla como
-  `Bash(git push origin release/*)` también deja pasar `git push origin release/0.1.0:main`, sin nada en GitHub que lo
-  pare. Hará falta en la etapa 3b, cuando `/run` suba la release para abrir el PR contra `main`: decidirlo entonces
-  junto con las credenciales (un token que solo empuje `release/*`) o GitHub Pro.
+  public`; `.../rulesets` gives the same.
+- **Options:** GitHub Pro; or the agents use a fine-grained token with *Contents* read-only (the agents do not need to
+  write code to GitHub: they merge locally), and *Issues* and *Projects* with write access. Not checked whether a
+  fine-grained token can write to a user Project.
+- **Why not a separate `git-ops` agent with more permissions** (considered 2026-10-26): the `deny` rules apply to the whole
+  session, subagents included, so one cannot deny something to the Builder and allow it to another agent without a
+  custom hook; the rules on Bash are not a barrier (the Builder can call `git` from another program), and no agent needs
+  to push: they merge locally. The real cut is in the credentials of the unattended run:
+  - `gh`: the fine-grained token above, passed as `GH_TOKEN` only in the launch command;
+  - `git push`: uses the system credential manager, not `GH_TOKEN`; to remove it from that run, empty `credential.helper`
+    with environment variables (`GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_0`, `GIT_CONFIG_VALUE_0`).
+  - Neither one is checked. It is not complete isolation either (an agent with Bash in the same user could reach the
+    credential manager): only a container gives that (plan §7 and §10.4).
+- **When:** before leaving unattended lists running (stage 3).
+- **Different permissions per agent** (checked in `code.claude.com/docs/en/sub-agents.md` on 2026-10-27): the header of a
+  subagent accepts `tools`, `disallowedTools`, `permissionMode` and `hooks`. It does not accept its own `allow` or `deny`
+  rules: the ones in `settings.json` apply to the whole session, subagents included. `disallowedTools` removes the whole
+  tool (`Bash(git push *)` removes all of Bash) and `permissionMode` is ignored if the session is in `auto`, like our
+  `-p`. The only thing that filters commands agent by agent is a `PreToolUse` hook in its header, which only runs while
+  that agent is active. It works to trim (a Builder without push), never to give an agent more than the session has. It is
+  a good-faith barrier, like `deny`, and it would be a custom command that has to work on Linux, macOS and Windows. Try it
+  only when a ticket needs to split permissions between agents.
+- **Push to `release/x.y.z`** (considered 2026-10-26): today `git push` is in `ask` (in a normal session it asks; in `-p`
+  it is denied). It is not moved to `allow` because no ticket needs it (it merges locally), and a rule such as
+  `Bash(git push origin release/*)` would also let through `git push origin release/0.1.0:main`, with nothing in GitHub to
+  stop it. It will be needed in stage 3b, when `/run` uploads the release to open the PR against `main`: decide it then,
+  together with the credentials (a token that only pushes `release/*`) or GitHub Pro.
 
-## Una identidad propia para los agentes
+## A separate identity for the agents
 
-- **Origen:** revisión del #4. Todo lo que hacen los agentes (comentarios, etiquetas, edición de tickets) sale a
-  nombre de `SergioLizana`: GitHub no distingue lo que hizo el humano de lo que hizo un agente.
-- **Opciones:** una cuenta de máquina (sin comprobar las condiciones de GitHub para cuentas de este tipo) o una GitHub
-  App. Un token de grano fino de la cuenta propia limita lo que puede hacer el agente, pero no cambia el autor.
+- **Origin:** review of #4. Everything the agents do (comments, labels, ticket edits) goes out under the name
+  `SergioLizana`: GitHub does not distinguish what the human did from what an agent did.
+- **Options:** a machine account (conditions for this type of account on GitHub not checked) or a GitHub App. A
+  fine-grained token of the own account limits what the agent can do, but does not change the author.
 
-## Copias de trabajo que salen de `main`
+## Working copies that start from `main`
 
-- **Origen:** pruebas del #17 (2026-10-26). `main` está en `cc2dc46` y no tiene `.claude/`
-  (`git ls-tree main .claude` sale vacío). Las copias de un subagente con `isolation: worktree` y de `claude --bg`
-  salen de ahí: trabajan sin skills, sin `settings.json` en la copia y sin el `reviewer`, y sobre código viejo.
-- **Comprobado:** las tres copias de prueba de esas dos opciones estaban en `cc2dc46`. Los permisos sí se aplicaron,
-  pero los de la sesión que las lanzó, no los de la copia.
-- **Por qué `main`:** es el valor por defecto de `worktree.baseRef` (`"fresh"`, la rama principal del remoto), no
-  el checkout actual (investigación §3.3). El humano esperaba que salieran de la rama sacada (2026-10-27).
-- **Opciones:** `worktree.baseRef: "head"` (sin probar); o no usarlas y crear las copias con `git worktree add`, que
-  es lo que recomienda `documentation/parallel-launch-trial.md`. El desfase se cierra solo cuando la release llegue a
+- **Origin:** tests of #17 (2026-10-26). `main` is at `cc2dc46` and has no `.claude/` (`git ls-tree main .claude` comes out
+  empty). The copies of a subagent with `isolation: worktree` and of `claude --bg` start there: they work without skills,
+  without `settings.json` in the copy and without the `reviewer`, and on old code.
+- **Verified:** the three test copies of those two options were at `cc2dc46`. The permissions did apply, but those of the
+  session that launched them, not those of the copy.
+- **Why `main`:** it is the default of `worktree.baseRef` (`"fresh"`, the main branch of the remote), not the current
+  checkout (research §3.3). The human expected them to start from the branch checked out (2026-10-27).
+- **Options:** `worktree.baseRef: "head"` (not tested); or not use them and create the copies with `git worktree add`, which
+  is what `documentation/parallel-launch-trial.md` recommends. The mismatch closes by itself when the release reaches
   `main`.
-- **Cuándo:** solo si `/run` acaba usando subagentes aislados o `--bg`.
-- **Resuelto el 2026-10-27:** `worktree.baseRef: "head"` en `.claude/settings.json` (`d4a1a26`). Probado en los
-  ensayos de `documentation/workflow-trial.md`: las copias salieron de la punta de la base, con `.claude/`.
+- **When:** only if `/run` ends up using isolated subagents or `--bg`.
+- **Resolved 2026-10-27:** `worktree.baseRef: "head"` in `.claude/settings.json` (`d4a1a26`). Tested in the trials of
+  `documentation/workflow-trial.md`: the copies started from the tip of the base, with `.claude/`.
 
-## `.claude/worktrees/` fuera de `.gitignore`
+## `.claude/worktrees/` outside `.gitignore`
 
-- **Origen:** pruebas del #17. Las copias que crea Claude Code salen como `?? .claude/worktrees/` en
+- **Origin:** tests of #17. The copies that Claude Code creates show up as `?? .claude/worktrees/` in
   `git status --porcelain`.
-- **Riesgo:** un `git add -A` las metería en un commit. `/implement` ya prohíbe `-A`, y un `git status` sucio lo
-  bloquea en el paso 0.
-- **Cuándo:** si una copia acaba en un commit o bloquea un lanzamiento.
+- **Risk:** a `git add -A` would put them in a commit. `/implement` already forbids `-A`, and a dirty `git status` blocks
+  it in step 0.
+- **When:** if a copy ends up in a commit or blocks a launch.
 
-## Permisos de `git worktree` para `/run`
+## `git worktree` permissions for `/run`
 
-- **Origen:** pruebas del #17. `git worktree add` y `git worktree remove` no están en `.claude/settings.json`; en la
-  sesión normal los decidió el modo `auto`. Con `claude -p --permission-prompts none` se denegarían si el modo no los
-  aprueba.
-- **Cuándo:** al escribir `/run` (#18), que los necesita para crear y borrar las copias.
+- **Origin:** tests of #17. `git worktree add` and `git worktree remove` are not in `.claude/settings.json`; in a normal
+  session the `auto` mode decided them. With `claude -p --permission-prompts none` they would be denied if the mode does
+  not approve them.
+- **When:** when writing `/run` (#18), which needs them to create and delete the copies.
 
-## Borrado automático de las copias de subagente, sin ver
+## Automatic deletion of subagent copies, unseen
 
-- **Origen:** revisión del #17. La tabla de `documentation/parallel-launch-trial.md` dice que la copia de un subagente
-  se borra sola «si no cambia nada, ni de rama». Viene de la documentación (investigación §3.2): en las pruebas
-  ninguna copia se borró sola, porque las dos tenían cambios o habían cambiado de rama.
-- **Cuándo:** si `/run` llega a depender de esa limpieza.
+- **Origin:** review of #17. The table in `documentation/parallel-launch-trial.md` says that a subagent's copy is deleted by
+  itself "if nothing changes, not even the branch". It comes from the documentation (research §3.2): in the tests no copy
+  was deleted by itself, because both had changes or had changed branch.
+- **When:** if `/run` ends up depending on that cleanup.
 
-## Etiqueta con la versión en lugar de `hecho-en-release`
+## Label with the version instead of `hecho-en-release`
 
-- **Origen:** el humano, el 2026-10-27. `hecho-en-release` no dice en qué versión está el ticket.
-- **Opciones:**
-  - a) Renombrarla a `in-release`.
-  - b) Una etiqueta por versión, `release-x.y.z` (GitHub admite puntos en el nombre). `/implement` y la frontera de
-    `/run` tendrían que buscar un patrón (`release-*`) y no un nombre fijo, y hay que crear la etiqueta al abrir cada
-    versión.
-  - c) Un *milestone* `0.1.0`, lo que GitHub trae para esto: uno por issue, con barra de progreso y filtro en el
-    tablero. Pero «está en la versión» no es «ya está fusionado»: seguiría haciendo falta la tarjeta en *Done* o una
-    etiqueta para lo segundo.
-- **Dónde se usa hoy:** `.claude/skills/implement/SKILL.md` (pasos 0 y 5), `.claude/skills/run/SKILL.md`, plan §6.5 y
-  `documentation/github-board.md`.
-- **Sin comprobar:** cómo filtra el tablero por milestone.
+- **Origin:** the human, 2026-10-27. `hecho-en-release` does not say which version the ticket is in.
+- **Options:**
+  - a) Rename it to `in-release`.
+  - b) One label per version, `release-x.y.z` (GitHub allows dots in the name). `/implement` and the `/run` frontier would
+    have to search for a pattern (`release-*`) and not a fixed name, and the label has to be created when each version
+    opens.
+  - c) A *milestone* `0.1.0`, which GitHub provides for this: one per issue, with a progress bar and a filter on the
+    board. But "is in the version" is not "already merged": the card in *Done* or a label would still be needed for the
+    latter.
+- **Where it is used today:** `.claude/skills/implement/SKILL.md` (steps 0 and 5), `.claude/skills/run/SKILL.md`, plan §6.5
+  and `documentation/github-board.md`.
+- **Not checked:** how the board filters by milestone.
 
-## Columnas *Blocked* y *Closed* en el tablero
+## *Blocked* and *Closed* columns on the board
 
-- **Origen:** el humano, el 2026-10-27, al encontrar el #21 (ticket de prueba del #18) cerrado pero con la tarjeta en
-  *Todo*. Quiere ver en el tablero, sin abrir cada ticket, cuándo le toca intervenir.
-- **Resuelto (la parte de *Blocked*):** el #36 añade la columna *Needs Human*: un ticket atascado acaba ahí, y
-  `/implement` y el workflow `run` mueven la tarjeta. Queda abierta la columna *Closed*, que no está en este ticket.
-- **Qué chocaba (ya resuelto):** el plan §6.5 decía que un ticket atascado lleva la etiqueta `bloqueado`, y `/implement`
-  (paso 7) dejaba la tarjeta en el paso donde se paró.
-- **Sin comprobar:** si el flujo integrado del proyecto («Item closed») puede mover sola la tarjeta a *Closed* al
-  cerrar el issue. En el historial del #21 hay un `Todo -> Closed` y un `Closed -> Todo` el 2026-10-26 a las 23:46
-  que nadie ha explicado, sin que exista una opción *Closed*.
+- **Origin:** the human, 2026-10-27, on finding #21 (test ticket of #18) closed but with its card in *Todo*. He wants to
+  see on the board, without opening each ticket, when he has to step in.
+- **Resolved (the *Blocked* part):** #36 adds the *Needs Human* column: a stuck ticket ends there, and `/implement` and the
+  `run` workflow move the card. The *Closed* column stays open; it is not part of this ticket.
+- **What clashed (already resolved):** plan §6.5 said that a stuck ticket carries the `bloqueado` label, and `/implement`
+  (step 7) left the card at the step where it stopped.
+- **Not checked:** whether the project's built-in flow ("Item closed") can move the card to *Closed* by itself when the
+  issue is closed. In the history of #21 there is a `Todo -> Closed` and a `Closed -> Todo` on 2026-10-26 at 23:46 that
+  nobody has explained, with no *Closed* option existing.
 
-## Dividir `/implement` en varios agentes
+## Splitting `/implement` into several agents
 
-- **Origen:** el humano, el 2026-10-27: se suele leer que cada fase de una factoría lleva su agente, y hay
-  orquestadores que son una skill que lanza subagentes (como `implement-spec` de Pocock).
-- **Cómo está:** el Builder es la propia sesión de `/implement` (con `-p`, una sesión nueva por ticket); *Verify* son
-  los comandos de «Comprobación automática», sin modelo, para que no dependa de lo que responda uno; *Review* es el
-  subagente `reviewer`, con contexto aparte y solo lectura. `/run` es el orquestador y lanza un `claude -p` por
-  ticket (recomendación del #17: da coste por ticket y no espera permisos).
-- **Comprobado:** un subagente puede lanzar los suyos hasta tres niveles por debajo de la sesión principal
-  (documentación de subagentes, 2026-10-27).
-- **Datos:** del #14 al #16, 13-17 turnos y 0,49-0,86 USD por ticket. La única vuelta de más (#15) vino del orden de
-  los pasos, no de mezclar fases.
-- **Señal para hacerlo:** el Builder se queda sin contexto en tickets grandes, o hay vueltas porque el Builder se
-  juzga a sí mismo. Antes, leer la investigación §3 y §7 sobre separar fases.
+- **Origin:** the human, 2026-10-27: it is often read that each phase of a factory has its own agent, and there are
+  orchestrators that are a skill launching subagents (like Pocock's `implement-spec`).
+- **How it is now:** the Builder is the `/implement` session itself (with `-p`, a new session per ticket); *Verify* is the
+  commands of "Automatic check", with no model, so that it does not depend on what one answers; *Review* is the `reviewer`
+  subagent, with its own context and read-only. `/run` is the orchestrator and launches one `claude -p` per ticket
+  (recommendation of #17: it gives cost per ticket and does not wait for permissions).
+- **Verified:** a subagent can launch its own up to three levels below the main session (subagent documentation,
+  2026-10-27).
+- **Data:** from #14 to #16, 13-17 turns and 0.49-0.86 USD per ticket. The only extra round (#15) came from the order of
+  the steps, not from mixing phases.
+- **Signal to do it:** the Builder runs out of context on large tickets, or there are rounds because the Builder judges
+  itself. Before that, read research §3 and §7 on separating phases.
 
-## Referencias a ficheros de este repositorio al pasar a plugin
+## File references in this repository when it becomes a plugin
 
-- **Origen:** conversación del 2026-10-26. Las skills nombran ficheros que solo existen aquí:
-  `documentation/launch-one-ticket.md` (`/implement`, solo como referencia), `CLAUDE.md` (comprobación automática) y
-  `documentation/github-board.md` (ids y comandos del tablero).
-- **Cuándo:** en la etapa 4, al sacar las skills a un plugin para otro proyecto.
-- **Resuelto el 2026-10-27:** los datos del proyecto están en `.claude/factory.md` y las skills y el `reviewer` los
-  leen de ahí (#30 y #31).
+- **Origin:** conversation of 2026-10-26. The skills name files that exist only here:
+  `documentation/launch-one-ticket.md` (`/implement`, only as a reference), `CLAUDE.md` (automatic check) and
+  `documentation/github-board.md` (board ids and commands).
+- **When:** in stage 4, when the skills are taken out into a plugin for another project.
+- **Resolved 2026-10-27:** the project data is in `.claude/factory.md`, and the skills and the `reviewer` read it from there
+  (#30 and #31).
 
-## `/to-request` toma texto libre como nombre del fichero
+## `/to-request` takes free text as the file name
 
-- **Origen:** uso del 2026-10-27. `/to-request` espera un nombre corto como argumento (`$0`). Se le pasó una lista
-  de pendientes y `$0` quedó en «Sigue»: el fichero se habría llamado `spec-Sigue.md`. Se sacó el nombre de la
-  idea a mano.
-- **Cuándo:** la próxima vez que se toque `/to-request`.
+- **Origin:** use on 2026-10-27. `/to-request` expects a short name as an argument (`$0`). A list of pending items was
+  passed to it and `$0` became "Sigue": the file would have been called `spec-Sigue.md`. The name was taken from the idea
+  by hand.
+- **When:** the next time `/to-request` is touched.
 
-## Notas de los tickets #15 y #16
+## Notes from tickets #15 and #16
 
-- **Origen:** comentarios finales del #15 y del #16 (2026-10-26).
-- `/to-tasks` sin argumento acepta el resumen de `/discover` como especificación: sin probar en uso real.
-- `/to-request` escribe «Nada acordado» en una sección vacía y la plantilla `request.md` usa «Nada».
-- El #16 añadió dos cosas que no pedía ninguna casilla (mandar ideas a `backlog.md` y el límite de ~70 caracteres
-  por línea) y el revisor dio PASA: vigilar si el revisor deja pasar lo que se sale del ticket.
+- **Origin:** final comments of #15 and #16 (2026-10-26).
+- `/to-tasks` without an argument accepts the `/discover` summary as the specification: not tested in real use.
+- `/to-request` writes "Nothing agreed" in an empty section, and the `request.md` template uses "None".
+- #16 added two things that no checkbox asked for (sending ideas to `backlog.md` and the limit of ~70 characters per
+  line), and the reviewer said PASS: watch whether the reviewer lets through what goes beyond the ticket.

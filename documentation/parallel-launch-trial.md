@@ -1,140 +1,139 @@
-# Fontanería local para dos `/implement` a la vez
+# Local plumbing for two `/implement` at once
 
-Probado el 2026-10-26 con Claude Code 2.1.310 en Windows 11 (Git Bash), desde la rama del ticket #17
-(que sale de `release/0.1.0`, `7297184`), para el ticket #17. Opciones de plan §6.3; la decisión es para `/run`
-(etapa 3a). Las sondas usaron Haiku y tareas mínimas: los costes valen para comparar, no para presupuestar.
+Tested on 2026-10-26 with Claude Code 2.1.310 on Windows 11 (Git Bash), from the branch of ticket #17
+(which starts from `release/0.1.0`, `7297184`), for ticket #17. Options of plan §6.3; the decision is for `/run`
+(stage 3a). The probes used Haiku and minimal tasks: the costs are useful to compare, not to budget with.
 
-Dato de partida que lo cambia todo: `main` está en `cc2dc46`, 30 commits por detrás de `release/0.1.0`, y **no tiene
-`.claude/`** (ni `settings.json`, ni skills, ni el `reviewer`).
+Starting fact that changes everything: `main` is at `cc2dc46`, 30 commits behind `release/0.1.0`, and **it has no
+`.claude/`** (no `settings.json`, no skills, no `reviewer`).
 
-## 1. Subagente con `isolation: worktree`
+## 1. Subagent with `isolation: worktree`
 
-Comando: la herramienta `Agent` con `isolation: "worktree"` (la misma opción que `isolation: worktree` en la cabecera
-de `.claude/agents/<nombre>.md`; no se creó un agente nuevo porque exige reiniciar la sesión). Dos a la vez, en segundo
-plano, desde la sesión principal en modo `auto`: uno sin cambios y otro que crea un fichero.
+Command: the `Agent` tool with `isolation: "worktree"` (the same option as `isolation: worktree` in the header of
+`.claude/agents/<name>.md`; a new agent was not created because it requires restarting the session). Two at once, in the
+background, from the main session in `auto` mode: one with no changes and one that creates a file.
 
-Lo que salió:
+What came out:
 
-- Copias en `.claude/worktrees/agent-<id>/`, rama `worktree-agent-<id>`, ambas en `cc2dc46`: **salen de `main`**.
-- El de sin cambios hizo `git checkout release/0.1.0` y **git le dejó** (la carpeta principal estaba en la rama del
-  ticket). Desde ese momento, ni otra copia ni la carpeta principal podían sacarla:
+- Copies in `.claude/worktrees/agent-<id>/`, branch `worktree-agent-<id>`, both at `cc2dc46`: **they start from `main`**.
+- The one with no changes did `git checkout release/0.1.0` and **git let it** (the main folder was on the ticket's branch).
+  From that moment, neither another copy nor the main folder could check it out:
   `fatal: 'release/0.1.0' is already used by worktree at 'E:/Proyectos/Dynamo/.claude/worktrees/agent-abc7798c4809b0bdb'`
-  (salida 128).
-- Esa copia **no se borró sola** al terminar: había cambiado de rama, aunque no tocó ningún fichero.
-- La copia no tiene `.claude/` (`ls: cannot access '.claude'`), pero el subagente aplica los permisos de la sesión
-  principal: su `git branch -D` (lista «ask») **subió como aviso a la sesión principal**, que `claude agents --json`
-  marcaba `"waitingFor": "permission prompt"`. El subagente esperó hasta que se contestó: 581 s, frente a 15 s el
-  que no lo pedía. Él no lo notó: informó «no permission prompt appeared».
-- La copia del que creó `probe-subagent-a.txt` **se queda** en disco al terminar, como dice la investigación §3.2.
-- Coste: el aviso de fin da tokens (`subagent_tokens` 34406 y 35954), duración y nº de herramientas; **no da
-  `total_cost_usd`**. Va dentro del coste de la sesión principal.
+  (exit 128).
+- That copy **was not deleted by itself** when it finished: it had changed branch, although it did not touch any file.
+- The copy has no `.claude/` (`ls: cannot access '.claude'`), but the subagent applies the main session's permissions: its
+  `git branch -D` (on the «ask» list) **surfaced as a prompt in the main session**, which `claude agents --json` showed as
+  `"waitingFor": "permission prompt"`. The subagent waited until it was answered: 581 s, against 15 s for the one that did not
+  ask for it. It did not notice: it reported «no permission prompt appeared».
+- The copy of the one that created `probe-subagent-a.txt` **stays** on disk when it finishes, as research §3.2 says.
+- Cost: the end notice gives tokens (`subagent_tokens` 34406 and 35954), duration and number of tools; **it does not give
+  `total_cost_usd`**. It is included in the main session's cost.
 
 ## 2. `claude --bg`
 
-Comando, desde `E:\Proyectos\Dynamo`:
+Command, from `E:\Proyectos\Dynamo`:
 
 ```bash
-claude --bg "<sonda: pwd, crear probe-bg.txt, ls .claude/settings.json, git branch -D <rama inexistente>>" --model haiku
-claude agents --json        # estado
-claude logs e1302cf7        # salida
+claude --bg "<probe: pwd, create probe-bg.txt, ls .claude/settings.json, git branch -D <nonexistent branch>>" --model haiku
+claude agents --json        # status
+claude logs e1302cf7        # output
 claude stop e1302cf7
 ```
 
-Lo que salió:
+What came out:
 
-- Antes de escribir, la sesión entró sola en una copia: `.claude/worktrees/probe-bg`, rama `worktree-probe-bg`, en
-  `cc2dc46`: **sale de `main`**, y la copia no tiene `.claude/settings.json`.
-- Aun así aplicó los permisos del proyecto, porque los leyó al arrancar en la carpeta principal: «Ask rule
-  `Bash(git branch -D*)` overrides auto mode for this command».
-- **Se quedó esperando**: `"status": "waiting", "waitingFor": "permission prompt", "state": "blocked"` hasta que la
-  paré. Nadie más se entera salvo que mire `claude agents`.
-- Coste: ni `claude agents --json` ni `claude logs` dan `total_cost_usd`.
-- `claude stop` dice `worktree retained at ...\probe-bg` y `run 'claude rm e1302cf7' to remove worktree and job
-  state`: **no se borra sola**; la quita `claude rm` (si es seguro).
-- No se probó su commit, push y PR en borrador del final: la sonda lo prohibía y aquí no se hace push sin
-  autorización.
+- Before writing, the session entered a copy by itself: `.claude/worktrees/probe-bg`, branch `worktree-probe-bg`, at
+  `cc2dc46`: **it starts from `main`**, and the copy has no `.claude/settings.json`.
+- Even so, it applied the project's permissions, because it read them at startup in the main folder: "Ask rule
+  `Bash(git branch -D*)` overrides auto mode for this command".
+- **It was left waiting**: `"status": "waiting", "waitingFor": "permission prompt", "state": "blocked"` until I stopped it.
+  Nobody else finds out unless they look at `claude agents`.
+- Cost: neither `claude agents --json` nor `claude logs` gives `total_cost_usd`.
+- `claude stop` says `worktree retained at ...\probe-bg` and `run 'claude rm e1302cf7' to remove worktree and job state`:
+  **it is not deleted by itself**; `claude rm` removes it (if it is safe).
+- Its commit, push and draft PR at the end were not tested: the probe prohibited it and no push is made here without
+  authorization.
 
 ## 3. `git worktree add` + `claude -p`
 
-Comandos (dos a la vez, en segundo plano):
+Commands (two at once, in the background):
 
 ```bash
 git worktree add -b exp/17-a ../Dynamo-wt/t17-a release/0.1.0
 git worktree add -b exp/17-b ../Dynamo-wt/t17-b release/0.1.0
-cd ../Dynamo-wt/t17-a && claude -p "<sonda>" --output-format json --model haiku --max-budget-usd 0.5 --permission-prompts none
+cd ../Dynamo-wt/t17-a && claude -p "<probe>" --output-format json --model haiku --max-budget-usd 0.5 --permission-prompts none
 ```
 
-Lo que salió:
+What came out:
 
-- Cada copia en su rama y en `7297184`: **sale de donde dices**, aquí `release/0.1.0`, con su `.claude/`.
-- Aplicó `.claude/settings.json`: escribir un fichero pasó por `Edit(/**)`; `git branch -D` (lista «ask») se
-  denegó al instante: «It requires approval, and this session has no approval surface … so it was denied
-  automatically». Sale en `permission_denials` del JSON. `git worktree list`, fuera de la lista, corrió (Claude Code
-  trata los comandos git de solo lectura como seguros).
-- **No se queda esperando**: con `--permission-prompts none` lo que preguntaría se deniega.
-- Coste: **sí**, `total_cost_usd` 0.0055 y 0.0056, `num_turns` 7, `subtype: success`.
-- La copia **no se borra sola**: hay que hacer `git worktree remove` (como dice la investigación §3.3).
+- Each copy on its branch and at `7297184`: **it starts from where you say**, here `release/0.1.0`, with its own `.claude/`.
+- It applied `.claude/settings.json`: writing a file went through `Edit(/**)`; `git branch -D` (on the «ask» list) was denied
+  instantly: "It requires approval, and this session has no approval surface … so it was denied automatically". It appears in
+  `permission_denials` of the JSON. `git worktree list`, outside the list, ran (Claude Code treats read-only git commands as
+  safe).
+- **It does not wait**: with `--permission-prompts none` whatever would ask is denied.
+- Cost: **yes**, `total_cost_usd` 0.0055 and 0.0056, `num_turns` 7, `subtype: success`.
+- The copy is **not deleted by itself**: `git worktree remove` has to be run (as research §3.3 says).
 
-## Resumen
+## Summary
 
-| | Subagente `isolation: worktree` | `claude --bg` | `git worktree add` + `claude -p` |
+| | Subagent `isolation: worktree` | `claude --bg` | `git worktree add` + `claude -p` |
 |---|---|---|---|
-| Rama de la copia | `main` (`fresh`) | `main` (`fresh`) | la que se le pase (`release/x.y.z`) |
-| `.claude/settings.json` | el de la sesión principal | sí, el de la carpeta de lanzamiento; la copia no lo tiene | sí, el de la copia |
-| Espera un permiso | sí, en la sesión principal | sí, «Needs input» hasta que alguien conteste | no: se deniega |
-| `total_cost_usd` | no (solo tokens) | no | sí |
-| Se borra sola | solo si no cambia nada, ni de rama | no (`claude rm`) | no (`git worktree remove`) |
+| Copy's branch | `main` (`fresh`) | `main` (`fresh`) | the one given (`release/x.y.z`) |
+| `.claude/settings.json` | the main session's | yes, that of the launch folder; the copy does not have it | yes, the copy's own |
+| Waits for a permission | yes, in the main session | yes, "Needs input" until someone answers | no: it is denied |
+| `total_cost_usd` | no (tokens only) | no | yes |
+| Deleted by itself | only if nothing changes, not even the branch | no (`claude rm`) | no (`git worktree remove`) |
 
-`worktree.baseRef: "head"` haría salir las dos primeras de la rama actual (investigación §3.3); no se probó aquí. Aun
-con eso, seguirían sin dar el coste por ticket y esperando permisos.
+`worktree.baseRef: "head"` would make the first two start from the current branch (research §3.3); it was not tested here.
+Even so, they would still not give the cost per ticket and would still wait for permissions.
 
-## Cómo fusionan dos copias en la misma `release/x.y.z`
+## How two copies merge into the same `release/x.y.z`
 
-`/implement` hace `git checkout <base>` para fusionar (paso 5). Git no deja sacar una rama en dos copias de trabajo a
-la vez, y basta con que una la tenga para que las demás, **incluida la carpeta principal**, fallen con salida 128
-(probado arriba). Con dos `/implement` tal cual, el segundo en llegar al paso 5 se bloquearía.
+`/implement` does `git checkout <base>` to merge (step 5). Git does not let one branch be checked out in two working copies
+at once, and it is enough for one of them to have it for the others, **including the main folder**, to fail with exit 128
+(tested above). With two `/implement` as they are, the second one to reach step 5 would be blocked.
 
-Cómo se resuelve sin inventar nada:
+How it is resolved without inventing anything:
 
-- Las copias **nunca** sacan la base. Las ramas viven en el mismo repositorio, así que cada copia ve la base sin
-  `fetch`: antes de terminar, `git merge <base>` en su rama del ticket y vuelve a pasar la comprobación (plan §7).
-- Solo un sitio tiene la base sacada y fusiona: la carpeta principal, donde corre `/run`. Fusiona **de una en una**
-  (`git merge --no-ff ticket/<n>-<slug>`) y pasa la comprobación tras cada fusión.
-- Si choca, `git merge --abort` y el ticket queda bloqueado. Probado en `exp/17-base`: `exp/17-a` entró
-  (salida 0); `exp/17-b` dio `CONFLICT (add/add): Merge conflict in probe-p.txt` (salida 1) y `git merge --abort`
-  dejó la base limpia.
+- The copies **never** check out the base. The branches live in the same repository, so each copy sees the base without
+  `fetch`: before finishing, `git merge <base>` into its ticket branch and the check is run again (plan §7).
+- Only one place has the base checked out and merges: the main folder, where `/run` runs. It merges **one at a time**
+  (`git merge --no-ff ticket/<n>-<slug>`) and runs the check after each merge.
+- If it clashes, `git merge --abort` and the ticket is blocked. Tested in `exp/17-base`: `exp/17-a` went in (exit 0);
+  `exp/17-b` gave `CONFLICT (add/add): Merge conflict in probe-p.txt` (exit 1) and `git merge --abort` left the base clean.
 
-Para eso, `/implement` dentro de una copia tiene que acabar en el commit de su rama y no fusionar. Cambiarlo es
-trabajo de `/run` (#18), no de este ticket.
+For that, `/implement` inside a copy has to end at the commit on its branch and not merge. Changing that is work for `/run`
+(#18), not for this ticket.
 
-## `implement-spec` de Pocock
+## Pocock's `implement-spec`
 
-Leído en `raw.githubusercontent.com/mattpocock/skills/main/skills/engineering/implement-spec/SKILL.md` el 2026-10-26.
+Read at `raw.githubusercontent.com/mattpocock/skills/main/skills/engineering/implement-spec/SKILL.md` on 2026-10-26.
 
-Qué resuelve:
+What it solves:
 
-- El mismo reparto que arriba: cada implementador en su copia y su rama; **antes de terminar fusiona la punta de
-  la rama de integración en la suya**; un *merger subagent* aparte mete cada resultado en la integración.
-- Que la copia salga de `main`: el implementador «confirms its worktree is based on the integration branch before
-  starting, and resets onto it if not».
-- La frontera: lanza implementadores nuevos cuando una fusión la cambia. Limpia las copias al final.
+- The same split as above: each implementer in its copy and its branch; **before finishing it merges the tip of the
+  integration branch into its own**; a separate *merger subagent* puts each result into the integration branch.
+- That the copy starts from `main`: the implementer "confirms its worktree is based on the integration branch before
+  starting, and resets onto it if not".
+- The frontier: it launches new implementers when a merge changes it. It cleans up the copies at the end.
 
-Qué no resuelve:
+What it does not solve:
 
-- Choques al fusionar ni tickets que fallan: no dice qué hacer (ya lo anotaba plan §4).
-- Comprobación tras cada fusión: solo hay un `code-review` al final.
-- Coste por ticket: usa subagentes, que no dan `total_cost_usd`.
-- Permisos desatendidos: los subagentes en segundo plano esperan en la sesión principal.
-- Que el *merger* no saque la base en una copia: no dice dónde corre.
+- Clashes when merging or tickets that fail: it does not say what to do (plan §4 already noted it).
+- Check after each merge: there is only one `code-review` at the end.
+- Cost per ticket: it uses subagents, which do not give `total_cost_usd`.
+- Unattended permissions: background subagents wait in the main session.
+- That the merger does not check out the base in a copy: it does not say where it runs.
 
-## Recomendación para `/run`
+## Recommendation for `/run`
 
-**`git worktree add <copia> <base>` + `claude -p`**, una por ticket, y la fusión en serie en la carpeta principal.
+**`git worktree add <copy> <base>` + `claude -p`**, one per ticket, and the merge in series in the main folder.
 
-- Es la única que sale de `release/x.y.z` sin configurar nada y trae el `.claude/` de esa rama.
-- Es la única que no se queda esperando (`--permission-prompts none`) y da `total_cost_usd` por ticket, que ya usa
-  `documentation/launch-one-ticket.md`.
-- Lo que cuesta: `/run` crea y borra las copias (`git worktree add` / `git worktree remove`) y espera a dos procesos.
-  Son dos comandos de git, no un script propio.
-- Las otras dos: los subagentes salen de `main`, no dan coste y esperan en la sesión principal; `--bg` sale de
-  `main`, se queda en «Needs input» y su final pide push y PR, que aquí no se hacen sin autorización.
+- It is the only one that starts from `release/x.y.z` without configuring anything and brings in that branch's `.claude/`.
+- It is the only one that does not wait (`--permission-prompts none`) and gives `total_cost_usd` per ticket, which
+  `documentation/launch-one-ticket.md` already uses.
+- The cost: `/run` creates and deletes the copies (`git worktree add` / `git worktree remove`) and waits for two processes.
+  They are two git commands, not a custom script.
+- The other two: subagents start from `main`, give no cost and wait in the main session; `--bg` starts from `main`, is left
+  at "Needs input", and its end asks for a push and a PR, which are not done here without authorization.

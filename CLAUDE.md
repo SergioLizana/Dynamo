@@ -1,38 +1,41 @@
 # CLAUDE.md — Dynamo
 
-Dynamo es una factoría de agentes personal para Claude Code: convierte ideas en tickets y deja que los agentes los
-construyan, prueben y revisen hasta abrir un PR que aprueba una persona. Repositorio privado.
+Dynamo is a personal agent factory for Claude Code: it turns ideas into tickets and lets agents build, test and review
+them until they open a PR that a person approves. Private repository.
 
-- Diseño: `documentation/agent-factory-plan.md` (léelo antes de proponer nada).
-- Investigación de apoyo: `documentation/agent-factory-research.md` (consultar por secciones, no entera).
-- Estado: etapa 2 (la unidad). Las etapas están en el plan, §8.
+- Design: `documentation/agent-factory-plan.md` (read it before proposing anything).
+- Supporting research: `documentation/agent-factory-research.md` (consult it by section, not in full).
+- Status: stage 2 (the unit). The stages are in the plan, §8.
 
-## Cómo trabajamos
+## How we work
 
-- La factoría se construye con la factoría: a mano solo `/to-tasks`, `/implement` y el `reviewer`; el resto, como
-  tickets (plan §8).
-- «Completo» está fijado en el plan §8.1 y no se mueve. Al llegar, se pasa a un proyecto real.
-- Nada se añade sin un problema real que lo pida. Las ideas que surjan van a `documentation/backlog.md`, no a un ticket.
-- Cada skill, como mucho unas 150 líneas, si una skill requiere mas, se crearan otros ficheros y se referenciaran a ellos desde la skill. Sin scripts propios mientras Claude Code lo resuelva con una opción.
-  Excepción: los guiones de workflow (`.claude/workflows/`), que ejecuta Claude Code.
-- Se mide desde el primer ticket: las vueltas, por ticket; el coste, por lista (al acabar una, `/cost` de la sesión
-  en el informe del PR). Al lanzar un ticket a mano no se anotan turnos ni coste.
+- The factory is built with the factory: by hand only `/to-tasks`, `/implement` and the `reviewer`; the rest, as tickets
+  (plan §8).
+- «Complete» is fixed in plan §8.1 and does not move. On reaching it, the factory moves to a real project.
+- Nothing is added without a real problem that asks for it. Ideas that come up go to `documentation/backlog.md`, not to
+  a ticket.
+- Each skill, at most about 150 lines. If a skill needs more, other files are created and the skill refers to them. No
+  own scripts while Claude Code can solve it with an option.
+  Exception: workflow scripts (`.claude/workflows/`), which Claude Code runs.
+- Measured from the first ticket: turns per ticket, and cost per list (when a list ends, the session's `/cost` goes in
+  the PR report). When a ticket is launched by hand, no turns or cost are recorded.
 
-## Convenciones
+## Conventions
 
-- Con el humano se habla en español. Skills, agentes y código, en inglés; la documentación de trabajo, en español.
-- Los ficheros de `documentation/` llevan nombre en inglés y contenido en español.
-- Los datos del proyecto (repositorio, tablero y sus estados, etiquetas, rama principal y de trabajo, comprobación
-  automática, idioma de los documentos, dónde van backlog y especificaciones) van en `.claude/factory.md`. Skills y
-  agentes los leen de ahí y no nombran ninguno.
-- Skills en `.claude/skills/<nombre>/SKILL.md`; subagentes en `.claude/agents/<nombre>.md`.
-- Finales de línea LF (`.gitattributes`).
+- Replies to the human are in the language set in their own `~/.claude/CLAUDE.md`, outside the repository. Everything
+  in the repository is in English: skills, agents, code, documents, tickets, commits, GitHub comments and verdicts.
+  Exception: the research, `documentation/agent-factory-research.md`, stays in Spanish until its own ticket.
+- Files in `documentation/` are named in English and written in English (except the research, see above).
+- The project data (repository, board and its states, labels, main and working branch, automatic check, document
+  language, where the backlog and the specifications go) lives in `.claude/factory.md`. Skills and agents read it from
+  there and do not name any of it.
+- Skills in `.claude/skills/<name>/SKILL.md`; subagents in `.claude/agents/<name>.md`.
+- LF line endings (`.gitattributes`).
 
-## Límites
+## Limits
 
-- Se puede hacer merge en una rama `release/x.y.z` sin preguntar (las ramas de ticket y de integración se fusionan
-  ahí).
-- A `main` solo llega lo que aprueba el humano: nunca merge ni push a `main` sin su autorización explícita.
-- Push de cualquier otra rama, solo con autorización del humano.
-- Nunca secretos en git (claves, tokens, `.env`).
-- Cadenza (`E:\Proyectos\cadenza`) es solo referencia de textos: no se copia su código ni su estructura.
+- Merging into a `release/x.y.z` branch is allowed without asking (ticket and integration branches are merged there).
+- Only what the human approves reaches `main`: never merge or push to `main` without their explicit authorization.
+- Pushing any other branch only with the human's authorization.
+- Never secrets in git (keys, tokens, `.env`).
+- Cadenza (`E:\Proyectos\cadenza`) is only a reference for texts: its code and structure are not copied.

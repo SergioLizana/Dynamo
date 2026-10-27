@@ -23,14 +23,15 @@ says what failed. A person takes it out (see `documentation/github-board.md`).
 
 The phases of the `run` workflow (order, column, model, effort,
 agent type and where a failure goes) are in `.claude/factory.json`. How to change them or add a phase:
-`documentation/launch-list.md`, «Las fases».
+`documentation/launch-list.md`, «The phases».
 
 If a state is renamed or recreated, read the ids again with
 `gh project field-list 1 --owner SergioLizana --format json` and update `options` (`documentation/github-board.md`).
 
 ## Labels
 
-- Done in the working branch (the issue stays open until it reaches the main branch): `hecho-en-release`.
+- Done in the working branch (the issue stays open until it reaches the main branch): `in-release`. The human renames the label on GitHub right after the merge of ticket #37, before the next run
+  (`documentation/github-board.md`); until then the label that exists there is still `hecho-en-release`.
 
 ## Automatic check
 
@@ -41,7 +42,7 @@ All must exit 0. `<base>` is the working branch.
 
 ## Documents
 
-- Language of documents, commits, GitHub comments and verdicts: Spanish.
+- Language of documents, commits, GitHub comments and verdicts: English.
 - Plan: `documentation/agent-factory-plan.md`.
 - Backlog: `documentation/backlog.md`.
 - Specifications: `documentation/spec-<slug>.md`.
