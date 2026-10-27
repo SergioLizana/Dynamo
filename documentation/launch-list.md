@@ -12,6 +12,8 @@ board columns and the phases from `.claude/factory.json`, with the script and no
 - `"worktree": { "baseRef": "head" }` in `.claude/settings.json`: the copies start from the current checkout.
 - The main folder, on the working branch and with no changes in tracked files (the copies in `.claude/worktrees/` do not
   count): that is where the merges happen. Otherwise the workflow stops at the start and says why.
+- After merging a change to `.claude/agents/` (the `runner`, the `reviewer`), restart the session before the next run: a
+  definition is loaded only when the session starts, so a run in the same session uses the old one.
 
 ## Launching
 
