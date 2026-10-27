@@ -229,7 +229,10 @@ Merge ticket #${t.number} in repo \`${P.repo}\` into \`${base}\`, in this folder
    blocked, stoppedAt = start, and say why; change nothing.
 2. \`git merge --no-ff ${b.branch} -m "Merge ${b.branch} into ${base} (#${t.number})"\`. On a conflict:
    \`git merge --abort\`, outcome = blocked, stoppedAt = merge, reason = the conflicting files.
-3. Run every command of the automatic check with \`<base>\` = \`${base}\`. If any fails:
+3. Run every command of the automatic check, one per call, with \`<base>\` = \`HEAD~1\` (the base before the merge:
+   \`${base}\` itself would compare the branch with itself and miss what the merge brought in):
+${P.checks.map(c => `   - \`${c.split('<base>').join('HEAD~1')}\``).join('\n')}
+   If any fails:
    \`git revert -m 1 --no-edit HEAD\`, outcome = blocked, stoppedAt = check, reason = the failing command and its output.
 4. If blocked: change no label. If merged: stoppedAt = none, mergeCommit is what \`git rev-parse --short HEAD\` prints
    after the merge, and add the done label.
