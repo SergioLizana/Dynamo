@@ -1,6 +1,6 @@
 # Fontanería local para dos `/implement` a la vez
 
-Probado el 2026-10-26 con Claude Code 2.1.310 en Windows 11 (Git Bash), desde `ticket/17-fontaneria-paralelo`
+Probado el 2026-10-26 con Claude Code 2.1.310 en Windows 11 (Git Bash), desde la rama del ticket #17
 (que sale de `release/0.1.0`, `7297184`), para el ticket #17. Opciones de plan §6.3; la decisión es para `/run`
 (etapa 3a). Las sondas usaron Haiku y tareas mínimas: los costes valen para comparar, no para presupuestar.
 
@@ -133,7 +133,7 @@ Qué no resuelve:
 
 - Es la única que sale de `release/x.y.z` sin configurar nada y trae el `.claude/` de esa rama.
 - Es la única que no se queda esperando (`--permission-prompts none`) y da `total_cost_usd` por ticket, que ya usa
-  `documentation/lanzar-implement.md`.
+  `documentation/launch-one-ticket.md`.
 - Lo que cuesta: `/run` crea y borra las copias (`git worktree add` / `git worktree remove`) y espera a dos procesos.
   Son dos comandos de git, no un script propio.
 - Las otras dos: los subagentes salen de `main`, no dan coste y esperan en la sesión principal; `--bg` sale de

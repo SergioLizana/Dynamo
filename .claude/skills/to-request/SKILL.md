@@ -42,7 +42,7 @@ No code, no file layouts, no ticket split: that is `/to-tasks`'s job.
 
 ## 3. Save the file
 
-- Path: `documentation/peticion-<slug>.md`. The slug is `$0` if given, else 2-4 lowercase words from the idea,
+- Path: `documentation/spec-<slug>.md`. The slug is `$0` if given, else 2-4 lowercase words from the idea,
   joined with `-`.
 - If the file already exists, do not overwrite it: tell the human and stop.
 - Write only that file. Do not commit, create issues or touch other files.
@@ -52,4 +52,4 @@ No code, no file layouts, no ticket split: that is `/to-tasks`'s job.
 Tell the human, in at most 5 lines:
 - the path of the file;
 - how many items went to «Notas» as pending (if any, they should be closed before splitting);
-- the next step, literally: `/to-tasks documentation/peticion-<slug>.md`.
+- the next step, literally: `/to-tasks documentation/spec-<slug>.md`.

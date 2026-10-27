@@ -12,8 +12,8 @@ anything yourself and you do not read the implementers' transcripts: their state
 
 Base: `$1` if it starts with `release/`, else the `release/x.y.z` named in `CLAUDE.md`. If the base is `main`, stop.
 Candidates: the issue numbers given as arguments, else every open issue (`gh issue list --state open`). Repo, labels
-and board commands are in `documentation/tablero-github.md`. Why this plumbing and not another:
-`documentation/fontaneria-paralelo.md`. Talk to the human and on GitHub in Spanish.
+and board commands are in `documentation/github-board.md`. Why this plumbing and not another:
+`documentation/parallel-launch-trial.md`. Talk to the human and on GitHub in Spanish.
 
 ## 1. Pick
 
@@ -56,7 +56,7 @@ notifications. Do not poll and do not read the transcripts.
 
 Then, per ticket:
 - From `<dir>/<n>.json`: `num_turns`, `total_cost_usd`, `subtype`. Post them as `/implement` expects
-  (`documentation/lanzar-implement.md`):
+  (`documentation/launch-one-ticket.md`):
   `gh issue comment <n> --body "Métricas de /implement: <num_turns> turnos · <cost, 2 decimals> USD · <subtype>"`.
 - Rounds: the `Vueltas:` line of the last comment starting with `/implement ·`.
 - No JSON, invalid JSON, or no `hecho-en-release` and no `bloqueado` label: the session ended without finishing.

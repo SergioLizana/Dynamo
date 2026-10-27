@@ -11,7 +11,7 @@ One ticket in, one checked and reviewed change out, merged into the release bran
 ask the human anything. When something is missing or unclear, stop as blocked (step 7) with the reason.
 
 Ticket: `$0`. Base branch: `$1` if given, else the `release/x.y.z` named in `CLAUDE.md`. Repo, board ids and the
-board commands (`move_card`, labels, history) are in `documentation/tablero-github.md`: use them from there. Talk
+board commands (`move_card`, labels, history) are in `documentation/github-board.md`: use them from there. Talk
 in Spanish in GitHub comments; code, commits and files follow `CLAUDE.md`.
 
 ## Hard limits
@@ -79,7 +79,7 @@ Fuera del ticket (para backlog.md): <lo visto> | nada
 ```
 
 Turns and cost are not known inside the session: the launch command posts them (see
-`documentation/lanzar-implement.md`).
+`documentation/launch-one-ticket.md`).
 
 ## 7. Blocked
 

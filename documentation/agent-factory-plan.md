@@ -3,7 +3,7 @@
 Fecha: 2026-10-26. Origen: conversación sobre Cadenza, la investigación del enfoque de Matt Pocock y un esquema de
 factoría de otra persona. Estado: borrador de diseño; no hay nada construido.
 
-Revisado el 2026-10-26 contra `investigacion-factorias-de-agentes.md` (en adelante, «la investigación»). La idea no
+Revisado el 2026-10-26 contra `agent-factory-research.md` (en adelante, «la investigación»). La idea no
 cambia: la factoría la construimos nosotros, poco a poco, sobre un proyecto real. Lo que se añade son reglas que la
 evidencia da por imprescindibles: una comprobación automática antes del revisor, un tope de 2 vueltas, medir desde el
 primer ticket y listas cortas.
@@ -256,7 +256,7 @@ y enlace a los PR, sin construir nada. Solo GitHub hasta que haga falta otra cos
 el paso en el que está trabajando el agente**, también cuando un ticket vuelve de *In Review* a *In Progress* en otra
 vuelta. Un ticket atascado lleva la etiqueta `bloqueado`, no un estado.
 
-Comprobado el 2026-10-26 (detalle y comandos en `documentation/tablero-github.md`, plantilla en
+Comprobado el 2026-10-26 (detalle y comandos en `documentation/github-board.md`, plantilla en
 `.claude/templates/ticket.md`):
 - **Bloqueado por:** la relación nativa de GitHub (`.../dependencies/blocked_by`). Un bloqueador cerrado sigue listado
   con `state: closed`; el proyecto no tiene columna «Blocked by».

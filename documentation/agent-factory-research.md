@@ -1,7 +1,7 @@
 # Factorías de agentes: qué se usa de verdad (2025-2026)
 
 Fecha de consulta de todas las fuentes: **2026-10-26**. Documento de lectura para decidir el diseño de
-`plan-factoria-de-agentes.md`.
+`agent-factory-plan.md`.
 
 **Cómo leerlo:**
 

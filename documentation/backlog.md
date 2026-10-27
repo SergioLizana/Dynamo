@@ -56,11 +56,11 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
 - **Por qué `main`:** es el valor por defecto de `worktree.baseRef` (`"fresh"`, la rama principal del remoto), no
   el checkout actual (investigación §3.3). El humano esperaba que salieran de la rama sacada (2026-10-27).
 - **Opciones:** `worktree.baseRef: "head"` (sin probar); o no usarlas y crear las copias con `git worktree add`, que
-  es lo que recomienda `documentation/fontaneria-paralelo.md`. El desfase se cierra solo cuando la release llegue a
+  es lo que recomienda `documentation/parallel-launch-trial.md`. El desfase se cierra solo cuando la release llegue a
   `main`.
 - **Cuándo:** solo si `/run` acaba usando subagentes aislados o `--bg`.
 - **Resuelto el 2026-10-27:** `worktree.baseRef: "head"` en `.claude/settings.json` (`d4a1a26`). Probado en los
-  ensayos de `documentation/ensayo-workflow.md`: las copias salieron de la punta de la base, con `.claude/`.
+  ensayos de `documentation/workflow-trial.md`: las copias salieron de la punta de la base, con `.claude/`.
 
 ## `.claude/worktrees/` fuera de `.gitignore`
 
@@ -79,7 +79,7 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
 
 ## Borrado automático de las copias de subagente, sin ver
 
-- **Origen:** revisión del #17. La tabla de `documentation/fontaneria-paralelo.md` dice que la copia de un subagente
+- **Origen:** revisión del #17. La tabla de `documentation/parallel-launch-trial.md` dice que la copia de un subagente
   se borra sola «si no cambia nada, ni de rama». Viene de la documentación (investigación §3.2): en las pruebas
   ninguna copia se borró sola, porque las dos tenían cambios o habían cambiado de rama.
 - **Cuándo:** si `/run` llega a depender de esa limpieza.
@@ -96,7 +96,7 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
     tablero. Pero «está en la versión» no es «ya está fusionado»: seguiría haciendo falta la tarjeta en *Done* o una
     etiqueta para lo segundo.
 - **Dónde se usa hoy:** `.claude/skills/implement/SKILL.md` (pasos 0 y 5), `.claude/skills/run/SKILL.md`, plan §6.5 y
-  `documentation/tablero-github.md`.
+  `documentation/github-board.md`.
 - **Sin comprobar:** cómo filtra el tablero por milestone.
 
 ## Columnas *Blocked* y *Closed* en el tablero
@@ -128,14 +128,14 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
 ## Referencias a ficheros de este repositorio al pasar a plugin
 
 - **Origen:** conversación del 2026-10-26. Las skills nombran ficheros que solo existen aquí:
-  `documentation/lanzar-implement.md` (`/implement`, solo como referencia), `CLAUDE.md` (comprobación automática) y
-  `documentation/tablero-github.md` (ids y comandos del tablero).
+  `documentation/launch-one-ticket.md` (`/implement`, solo como referencia), `CLAUDE.md` (comprobación automática) y
+  `documentation/github-board.md` (ids y comandos del tablero).
 - **Cuándo:** en la etapa 4, al sacar las skills a un plugin para otro proyecto.
 
 ## `/to-request` toma texto libre como nombre del fichero
 
 - **Origen:** uso del 2026-10-27. `/to-request` espera un nombre corto como argumento (`$0`). Se le pasó una lista
-  de pendientes y `$0` quedó en «Sigue»: el fichero se habría llamado `peticion-Sigue.md`. Se sacó el nombre de la
+  de pendientes y `$0` quedó en «Sigue»: el fichero se habría llamado `spec-Sigue.md`. Se sacó el nombre de la
   idea a mano.
 - **Cuándo:** la próxima vez que se toque `/to-request`.
 

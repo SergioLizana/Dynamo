@@ -68,7 +68,7 @@ Ninguna ejecución pidió un permiso ni hizo push. `main` y `release/0.1.0` no s
    del sha.
 5. **Órdenes compuestas.** En una copia aislada, Claude Code rechaza órdenes encadenadas («too complex to verify that
    it stays inside the worktree»). Los agentes las partían y seguían, pero la función `move_card` de
-   `documentation/tablero-github.md` no sirve ahí: hay que darles la forma de una sola orden con `--url`.
+   `documentation/github-board.md` no sirve ahí: hay que darles la forma de una sola orden con `--url`.
 6. **El guion no ejecuta órdenes.** Leer el tablero, comprobar y fusionar lo hacen agentes que informan del código de
    salida. Las comprobaciones dejan de ser órdenes que nadie puede falsear: se fían de lo que diga el agente.
 
