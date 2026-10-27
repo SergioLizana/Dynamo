@@ -25,6 +25,11 @@ Or, in other words, "Launch /run with tickets 34 and 35". Claude passes the numb
 all open issues without the done label or the blocked one. For another base: "Launch /run with tickets 34 and 35 and
 base `release/0.0.0-prueba`" (`args = { tickets, base }`).
 
+`args` can be text (`"34"`, `"34 35"`, `"34,35"`: numbers separated by spaces or commas), an array (`["34", "35"]` or
+`[34, 35]`) or `{ tickets, base }`, where `tickets` is text or an array. No `args`, or empty text, means every ticket.
+If something is not a ticket number (`"34 abc"`, `"#34"`), the run stops before *Frontier* and says which part it could
+not read.
+
 If `/run` does not appear as a command, the session was opened before the workflow was saved (a workflow created or
 renamed after the session opened is not listed as `/run` until the session loads it). Then ask Claude to run it by its
 script path, with the same tickets: "Run the workflow `.claude/workflows/run.js` with tickets 34 and 35".
