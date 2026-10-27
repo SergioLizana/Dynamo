@@ -19,23 +19,23 @@ make them.
   `/discover`.
 - If the conversation has no idea to write down (no `/discover`, nothing agreed), say so and stop. Do not invent one.
 - If a fact the spec relies on can be checked in the repo (a file exists, a command works), check it before writing
-  it. A fact you cannot check goes to «Notas» as unverified.
+  it. A fact you cannot check goes to "Notes" as unverified.
 
 ## 2. Fill the template
 
 Read `.claude/templates/request.md` and fill every section, in its order, without adding or removing sections:
 
-- **Problema**, **Solución** and **Qué cambia para quien lo usa**: from the point of view of the person who uses it,
+- **Problem**, **Solution** and **What changes for the user**: from the point of view of the person who uses it,
   not of the code.
-- **Decisiones**: only the ones closed in the conversation, one per line with its reason. Do not add a decision
+- **Decisions**: only the ones closed in the conversation, one per line with its reason. Do not add a decision
   that was not taken, even if it looks obvious.
-- **Cómo se prueba**: commands or readings that show it works, as agreed. If none was agreed, write «Sin acordar»
-  and add it to «Notas» as pending.
-- **Fuera de alcance**: what the conversation left out. If nothing was said, «Nada acordado».
-- **Notas**: links, facts checked in the repo, and every open question.
+- **How it is tested**: commands or readings that show it works, as agreed. If none was agreed, write "Not agreed"
+  and add it to "Notes" as pending.
+- **Out of scope**: what the conversation left out. If nothing was said, "Nothing agreed".
+- **Notes**: links, facts checked in the repo, and every open question.
 
-Anything that was discussed but **not closed** goes to «Notas» as `Pendiente: <la duda>`, never into «Decisiones»
-or «Solución». If two things said in the conversation contradict each other, write both under «Notas» as pending;
+Anything that was discussed but **not closed** goes to "Notes" as `Pending: <the doubt>`, never into "Decisions"
+or "Solution". If two things said in the conversation contradict each other, write both under "Notes" as pending;
 do not pick one.
 
 No code, no file layouts, no ticket split: that is `/to-tasks`'s job.
@@ -51,5 +51,5 @@ No code, no file layouts, no ticket split: that is `/to-tasks`'s job.
 
 Tell the human, in at most 5 lines:
 - the path of the file;
-- how many items went to «Notas» as pending (if any, they should be closed before splitting);
+- how many items went to "Notes" as pending (if any, they should be closed before splitting);
 - the next step, literally: `/to-tasks <the path of the file>`.

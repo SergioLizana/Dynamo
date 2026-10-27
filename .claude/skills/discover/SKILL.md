@@ -7,8 +7,8 @@ disable-model-invocation: true
 
 # /discover
 
-Turn a loose idea into closed decisions that the next skill can write down. Talk to the human in the language
-their `CLAUDE.md` asks for. The plan and the backlog are where `.claude/factory.md` says.
+Turn a loose idea into closed decisions that the next skill can write down. Talk to the human in the language their
+`CLAUDE.md` asks for. The plan and the backlog are where `.claude/factory.md` says.
 
 You do not write the spec and you do not create tickets: that is `/to-request` and `/to-tasks`. Write no files,
 no issues and no commits; the result lives in this conversation.
@@ -37,20 +37,21 @@ Think of the idea as a tree of decisions: each one opens the ones that hang from
 
 - **Frontier:** the open decisions whose prerequisites are already settled. Ask the whole frontier in one round,
   and nothing that depends on a question still open in that round.
-- Number each question and give your recommended answer, worded so that «sí» accepts it:
+- Number each question and give your recommended answer, worded so that a «yes» accepts it. Write the labels in
+  the language you talk to the human in (the examples are in English):
 
   ```text
-  P1 · <título>: <la pregunta, con las opciones si las hay>
-  → Recomiendo: <respuesta>
+  P1 · <title>: <the question, with the options if there are any>
+  → Recommended: <answer>
   ```
 
 - Keep each line under ~70 characters: longer lines get cut in the terminal.
 - Wait for the answers. Then recompute the frontier and ask the next round.
-- Vague or overloaded words: propose one precise term and ask the human to confirm it («¿"tarea" es el ticket
-  o la casilla?»). Use the agreed term from then on.
-- Test the boundaries with a concrete scenario when a rule is unclear («si el revisor falla dos veces, ¿qué ve
-  el humano?»).
-- Keep scope tight: anything that appears on the way and is not needed for this idea goes to a «para el backlog»
+- Vague or overloaded words: propose one precise term and ask the human to confirm it («is "task" the ticket or
+  the checkbox?»). Use the agreed term from then on.
+- Test the boundaries with a concrete scenario when a rule is unclear («if the reviewer fails twice, what does the
+  human see?»).
+- Keep scope tight: anything that appears on the way and is not needed for this idea goes to a "for the backlog"
   list, not to the tree.
 
 The tree is done when the frontier is empty: every branch visited, nothing assumed in silence.
@@ -60,12 +61,12 @@ The tree is done when the frontier is empty: every branch visited, nothing assum
 Show, in the language you talk to the human in:
 
 ```text
-Idea: <dos o tres líneas>
-Hechos comprobados: <hecho → fuente>
-Decisiones: <una por línea, con su motivo>
-Pendiente: <duda> | nada
-Fuera de alcance: <lo que se dejó fuera> | nada
-Para el backlog: <lo visto por el camino> | nada
+Idea: <two or three lines>
+Facts checked: <fact → source>
+Decisions: <one per line, with its reason>
+Pending: <doubt> | none
+Out of scope: <what was left out> | none
+For the backlog: <what was seen on the way> | none
 ```
 
 Ask the human to confirm it is the shared understanding. Fix it until they confirm. Do not go on with anything
@@ -75,10 +76,10 @@ listed as pending: close it or move it out of scope first.
 
 Say exactly one of the two results, with its reason in one line:
 
-- **«Cabe en un ticket»** when the whole idea is one vertical slice: it works end to end, fits one fresh context
+- **"Fits in one ticket"** when the whole idea is one vertical slice: it works end to end, fits one fresh context
   window, every acceptance check is a command or a file read, and it needs no decision written down for later.
   Next step: `/to-tasks` with this conversation (no argument); the summary of step 4 is its source.
-- **«Necesita especificación»** in any other case: several slices, blockers between parts, or decisions that a
-  later session must read. Next step: `/to-request`, in this same session.
+- **"Needs a specification"** in any other case: several slices, blockers between parts, or decisions that a later
+  session must read. Next step: `/to-request`, in this same session.
 
-If in doubt, choose «necesita especificación». Do not run the next skill yourself: the human launches it.
+If in doubt, choose "needs a specification". Do not run the next skill yourself: the human launches it.

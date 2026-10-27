@@ -1,126 +1,128 @@
-# Lanzar una lista de tickets con el workflow
+# Launching a list of tickets with the workflow
 
-El workflow `run` (`.claude/workflows/run.js`) construye una lista de tickets sin intervenir: lee el
-estado en GitHub, construye cada ticket listo en su propia copia, lo revisa con el `reviewer`, fusiona de uno en uno
-en la rama de trabajo y bloquea o salta lo que toque. Los datos del proyecto los lee de `.claude/factory.md`; las
-columnas del tablero y las fases, de `.claude/factory.json` (ver «Las fases»). Es el diseño de
-`documentation/workflow-trial.md`. Se lanza con `/run`.
+The `run` workflow (`.claude/workflows/run.js`) builds a list of tickets without intervention: it reads the state in
+GitHub, builds each ready ticket in its own copy, reviews it with the `reviewer`, merges them one at a time into the
+working branch, and blocks or skips whatever gets in the way. It reads the project data from `.claude/factory.md`; the
+board columns and the phases, from `.claude/factory.json` (see «The phases»). It is the design of
+`documentation/workflow-trial.md`. It is launched with `/run`.
 
-## Antes de lanzar
+## Before launching
 
-- Workflows activados en `/config` (en el plan Pro vienen apagados).
-- `"worktree": { "baseRef": "head" }` en `.claude/settings.json`: las copias salen del checkout actual.
-- La carpeta principal, en la rama de trabajo y sin cambios en lo rastreado (las copias de `.claude/worktrees/` no
-  cuentan): ahí se fusiona. Si no, el workflow se para en *Frontier* y dice por qué.
+- Workflows enabled in `/config` (on the Pro plan they come off).
+- `"worktree": { "baseRef": "head" }` in `.claude/settings.json`: the copies start from the current checkout.
+- The main folder, on the working branch and with no changes in tracked files (the copies in `.claude/worktrees/` do not
+  count): that is where the merges happen. Otherwise the workflow stops at *Frontier* and says why.
 
-## Lanzar
+## Launching
 
-En una sesión normal de Claude Code, abierta en la raíz del repositorio:
+In a normal Claude Code session, opened at the root of the repository:
 
 ```text
 /run 34 35
 ```
 
-O, con otras palabras, «Lanza /run con los tickets 34 y 35». Claude le pasa los números como `args`. Sin
-números, toma todos los issues abiertos sin la etiqueta de hecho ni la de bloqueado. Para otra base:
-«Lanza /run con los tickets 34 y 35 y base `release/0.0.0-prueba`» (`args = { tickets, base }`).
+Or, in other words, "Launch /run with tickets 34 and 35". Claude passes the numbers as `args`. Without numbers, it takes
+all open issues without the done label or the blocked one. For another base: "Launch /run with tickets 34 and 35 and
+base `release/0.0.0-prueba`" (`args = { tickets, base }`).
 
-La primera vez, Claude Code pide permiso para lanzar el workflow (en modo `auto`, solo la primera vez). Una orden que
-necesite permiso a mitad de ejecución se le pregunta al humano, y ese agente espera.
+If `/run` does not appear as a command, the session was opened before the workflow was saved (a workflow created or
+renamed after the session opened is not listed as `/run` until the session loads it). Then ask Claude to run it by its
+script path, with the same tickets: "Run the workflow `.claude/workflows/run.js` with tickets 34 and 35".
 
-## Seguirla
+The first time, Claude Code asks for permission to launch the workflow (in `auto` mode, only the first time). A command
+that needs permission in the middle of the run is asked of the human, and that agent waits.
 
-`/workflows` abre la vista de la ejecución: *Frontier* y las fases de `.claude/factory.json` (hoy *Build*, *Verify*,
-*Review* y *Merge*), cada agente con sus
-llamadas, su resultado y sus tokens. `p` pausa o reanuda, `x` para un agente o la ejecución entera. También se ve una
-línea de progreso en el panel de tareas, debajo de la entrada.
+## Following it
 
-Al acabar, el workflow devuelve por ticket: hecho (con el commit de fusión), bloqueado (con el motivo) o saltado.
-También devuelve las copias quitadas, las que se quedan y las ramas que tiene que borrar el humano. El estado de
-verdad está en GitHub: la etiqueta, la tarjeta y el comentario de cada ticket.
+`/workflows` opens the view of the run: *Frontier* and the phases of `.claude/factory.json` (today *Build*, *Verify*,
+*Review* and *Merge*), each agent with its calls, its result and its tokens. `p` pauses or resumes, `x` stops one agent or the whole run. A progress line also appears in
+the task panel, below the entry.
 
-## Las fases
+At the end, the workflow returns, per ticket: done (with the merge commit), blocked (with the reason) or skipped. It also
+returns the copies removed, the ones kept and the branches the human has to delete. The source of truth is GitHub: the
+label, the card and the comment of each ticket.
 
-`.claude/factory.json` dice las columnas *Todo*, *Needs Human* y *Done* (`columns`), el paso previo (`start`: nombre,
-modelo y esfuerzo de *Frontier* y de los agentes pequeños del guion) y las fases, en orden (`phases`). Una fase = una
-columna = un agente. Cada fase lleva:
+## The phases
 
-- `name`: el nombre; elige su función en `PHASES` (`run.js:249`).
-- `column`: la columna del tablero en la que pone la tarjeta. `moveCard`: `"start"` la pone al empezar la fase, `"end"`
-  solo si la fase pasa (así *Merge* acaba en *Done* sin volver atrás).
-- `model`, `effort`, `agentType`: los del agente; `null` deja el suyo (el `reviewer`, el de su definición).
-- `onFail`: una fase anterior, a la que vuelve el ticket en otra vuelta, o la columna *Needs Human*, que lo para.
+`.claude/factory.json` gives the columns *Todo*, *Needs Human* and *Done* (`columns`), the starting step (`start`: name,
+model and effort of *Frontier* and of the script's small agents) and the phases, in order (`phases`). One phase = one
+column = one agent. Each phase carries:
 
-Hoy (`factory.json:13-16`): *Build* en Sonnet, *Verify* en Haiku, *Review* con el `reviewer` y *Merge* en Haiku. Una
-tarjeta fusionada pasa por *Todo* → *Build* → *Verify* → *Review* → *Done*.
+- `name`: the name; it picks its function in `PHASES` (`run.js:249`).
+- `column`: the board column where it puts the card. `moveCard`: `"start"` puts it there when the phase starts, `"end"`
+  only if the phase passes (so *Merge* ends in *Done* without going back).
+- `model`, `effort`, `agentType`: those of the agent; `null` leaves its own (the `reviewer`, the one in its
+  definition).
+- `onFail`: an earlier phase, where the ticket goes back for another round, or the *Needs Human* column, which stops it.
 
-Cambiar un modelo, un esfuerzo o el nombre de una columna es editar solo el JSON. **Añadir una fase:**
+Today (`factory.json:13-16`): *Build* on Sonnet, *Verify* on Haiku, *Review* with the `reviewer` and *Merge* on Haiku. A
+merged card goes *Todo* → *Build* → *Verify* → *Review* → *Done*.
 
-1. Una entrada en `phases` de `.claude/factory.json`, en su sitio del orden, con los siete campos.
-2. Una función en `run.js` junto a las otras (`buildPhase`, `run.js:127`, es la plantilla) que recibe el ticket y su
-   estado (`ctx`) y devuelve `prompt`, `step` (la palabra de «Parado en»), `schema`, `isolation` o `serial` si los
-   necesita, y `read(resultado)` → `{ pass: true }` o `{ pass: false, failure }` (`run.js:120-124`).
-3. Añadirla a `PHASES` con el mismo nombre (`run.js:249`). El bucle (`run.js:450-479`) no se toca.
+Changing a model, an effort or the name of a column means editing only the JSON. **Adding a phase:**
 
-Si falta la función, o el JSON falta, no se puede leer o no es válido, el workflow se para al empezar y dice por qué
-(`run.js:288-295`, comprobación en `:254-276`).
+1. An entry in `phases` of `.claude/factory.json`, in its place in the order, with the seven fields.
+2. A function in `run.js` next to the others (`buildPhase`, `run.js:127`, is the template) that receives the ticket and
+   its state (`ctx`) and returns `prompt`, `step` (the word for «Stopped at»), `schema`, `isolation` or `serial` if it
+   needs them, and `read(result)` → `{ pass: true }` or `{ pass: false, failure }` (`run.js:120-124`).
+3. Add it to `PHASES` with the same name (`run.js:249`). The loop (`run.js:450-479`) is not touched.
 
-## Cómo decide
+If the function is missing, or the JSON is missing, cannot be read or is not valid, the workflow stops at the start and
+says why (`run.js:288-295`, check at `:254-276`).
 
-- **Modelos y esfuerzos:** de `.claude/factory.json`, nunca escritos en `run.js` (`optsOf`, `run.js:279-285`); el
-  `reviewer` con `agentType: 'reviewer'` y sin modelo, así que usa el de su definición, Opus (`factory.json:15`). Solo
-  la lectura del propio JSON va sin modelo, porque aún no se conoce (`run.js:287-290`).
-- ***Build* no comprueba:** cambia y hace commit (`run.js:149-151`). ***Verify*** ejecuta la comprobación en la copia
-  de *Build* y sobre su commit, y el guion lee el resultado literal (`run.js:166-192`): si falla, el ticket va adonde
-  dice su `onFail`, con la salida literal para *Build*.
-- **Tope de 2 vueltas:** `run.js:15`; cada fallo que devuelve el ticket a una fase anterior cuenta una vuelta, sea de
-  *Verify* o del revisor (`run.js:465-472`). Agotadas, bloqueado (`:474-478`).
-- **El tablero lo mueve el guion:** cada fase pone la tarjeta en su columna, por la URL del issue, y lo comprueba con
-  `gh issue view` (`run.js:351-365`, llamadas en `:453` y `:461`). Los agentes de las fases no mueven tarjetas
-  (`run.js:21`).
-- **Bloqueadores, de GitHub:** un agente ejecuta `.../dependencies/blocked_by` y devuelve la salida literal; el
-  guion la analiza (`run.js:334-349`), para todos los tickets antes de arrancar ninguno (`:497`). Si no se puede
-  leer, el ticket se salta (`:433`).
-- **Espera a los bloqueadores:** cada ticket espera a los de la lista (`run.js:440`). Un bloqueador de fuera de
-  la lista tiene que estar ya cerrado o hecho; si no, el ticket se salta (`:436`).
-- **Salto de los dependientes de un bloqueado:** «saltado: depende de #n, que no llegó a la release» (`:443`), sin
-  etiqueta y con la tarjeta donde estaba.
-- **Un ticket parado siempre se ve atascado:** el guion lo pasa a la columna *Needs Human* del JSON y lo comprueba
-  (`run.js:368-371`). Si *Merge* se para, ya ha publicado su informe y el guion solo mueve la tarjeta (`:474-477`); si
-  una fase no devuelve nada, se bloquea igual (`:459`). Si tras dos intentos no queda movida, el resultado dice
-  `marked: false` y lo avisa (`:363`).
-- **Lo que pide una casilla fuera del código:** lo publica *Build* durante su paso (`run.js:147`); *Merge*
-  publica solo el informe final y no lo repite (`:237`).
+## How it decides
 
-## Fallos del ensayo, arreglados
+- **Models and efforts:** from `.claude/factory.json`, never written in `run.js` (`optsOf`, `run.js:279-285`); the
+  `reviewer` with `agentType: 'reviewer'` and no model, so it uses the one in its definition, Opus (`factory.json:15`).
+  Only the reading of the JSON itself runs without a model, because it is not known yet (`run.js:287-290`).
+- ***Build* does not check:** it changes and commits (`run.js:149-151`). ***Verify*** runs the check in the *Build* copy
+  and on its commit, and the script reads the literal result (`run.js:166-192`): if it fails, the ticket goes where its
+  `onFail` says, with the literal output for *Build*.
+- **Cap of 2 rounds:** `run.js:15`; each failure that sends the ticket back to an earlier phase counts one round,
+  whether from *Verify* or from the reviewer (`run.js:465-472`). When they run out, blocked (`:474-478`).
+- **The script moves the board:** each phase puts the card in its column, by the issue URL, and checks it with
+  `gh issue view` (`run.js:351-365`, calls at `:453` and `:461`). The phase agents do not move cards (`run.js:21`).
+- **Blockers, from GitHub:** an agent runs `.../dependencies/blocked_by` and returns the literal output; the script
+  parses it (`run.js:334-349`), for all tickets before starting any (`:497`). If it cannot be read, the ticket is
+  skipped (`:433`).
+- **Waiting for blockers:** each ticket waits for the ones in the list (`run.js:440`). A blocker outside the list has to
+  be already closed or done; if not, the ticket is skipped (`:436`).
+- **Skipping the dependents of a blocked ticket:** "skipped: depends on #n, which did not reach the release" (`:443`),
+  with no label and the card where it was.
+- **A stopped ticket always shows as stuck:** the script moves it to the *Needs Human* column of the JSON and checks it
+  (`run.js:368-371`). If *Merge* stops, it has already published its report and the script only moves the card
+  (`:474-477`); if a phase returns nothing, it is blocked anyway (`:459`). If after two attempts it is still not moved,
+  the result says `marked: false` and warns about it (`:363`).
+- **What a checkbox asks for outside the code:** *Build* publishes it during its step (`run.js:147`); *Merge* publishes
+  only the final report and does not repeat it (`:237`).
 
-Los fallos 1-5 de `documentation/workflow-trial.md`:
+## Failures from the trial, fixed
 
-1. **No limpia todo:** al acabar, un agente quita todas las copias de la ejecución, de todas las vueltas (salvo la de
-   un ticket bloqueado sin commit, que guarda el único trabajo) y lista las ramas que quedan para que las borre el
-   humano, porque borrar ramas pide permiso (`run.js:155` y `:504-515`).
-2. **Historial sucio en la segunda vuelta:** la vuelta 2 trae la vuelta 1 con `git cherry-pick`, y solo si
-   `git log <base>..<rama>` lista commits (`run.js:126` y `:131-132`).
-3. **Una segunda vuelta que no sirve:** si *Build* dice que el ticket necesita al humano, se bloquea sin segunda
-   vuelta (`run.js:157-158`).
-4. **Afirmaciones sin comprobar:** todo hecho sale de una orden ejecutada en ese paso, nunca «HEAD of …»
-   (`run.js:18` y `:22-24`), y un commit tiene que ser un sha (`:27-28`).
-5. **Órdenes compuestas:** una orden por llamada y tarjetas movidas por la URL del issue, sin `move_card`
-   (`run.js:17` y `:21`, `:351-358`).
+Failures 1-5 of `documentation/workflow-trial.md`:
 
-## Ejecución `wf_41e0b269-ab2`
+1. **It did not clean up everything:** at the end, an agent removes all the copies of the run, from every round (except
+   the copy of a blocked ticket with no commit, which keeps the only copy of the work), and lists the branches left for
+   the human to delete, because deleting branches asks for permission (`run.js:155` and `:504-515`).
+2. **Dirty history in the second round:** round 2 brings round 1's work with `git cherry-pick`, and only if
+   `git log <base>..<branch>` lists commits (`run.js:126` and `:131-132`).
+3. **A second round that does no good:** if *Build* says the ticket needs the human, it is blocked without a second round
+   (`run.js:157-158`).
+4. **Unchecked claims:** everything done comes from a command run in that step, never "HEAD of …" (`run.js:18` and
+   `:22-24`), and a commit has to be a sha (`:27-28`).
+5. **Compound commands:** one command per call and cards moved by the issue URL, without `move_card` (`run.js:17` and
+   `:21`, `:351-358`).
 
-Primera con tickets reales: 2026-10-27, tickets #35-#38. #35 se fusionó (`49829bd`). Dos fallos, ambos del fallo 6
-del ensayo (el guion se fiaba de lo que decían sus agentes), arreglados en el #39:
+## Execution `wf_41e0b269-ab2`
 
-- *Frontier* devolvió #38 con `"blockers": []`, pero en GitHub #38 está bloqueado por #37. #38 se construyó con #37
-  saltado; solo lo paró el revisor.
-- Tras un conflicto al fusionar, el agente *Merge* dijo que `.claude/factory.md` «ya no define» la etiqueta de
-  bloqueado (falso: seguía ahí) y dejó #36 sin etiqueta y con la tarjeta en *In Review*: nada mostraba que estaba
-  atascado.
+The first one with real tickets: 2026-10-27, tickets #35-#38. #35 was merged (`49829bd`). Two failures, both from failure
+6 of the trial (the script trusted what its agents said), fixed in #39:
 
-## Sin probar
+- *Frontier* returned #38 with `"blockers": []`, but in GitHub #38 is blocked by #37. #38 was built with #37 skipped; only
+  the reviewer stopped it.
+- After a merge conflict, the *Merge* agent said that `.claude/factory.md` "no longer defines" the blocked label (false:
+  it was still there) and left #36 with no label and its card in *In Review*: nothing showed that it was stuck.
 
-Siguen sin probar lo que el ensayo dejó pendiente (comprobación que falla tras fusionar, permiso a mitad de
-ejecución, pausa por límite de uso), que *Frontier* reciba bien `args` desde `/run` y los cambios del #39 con tickets
-reales (solo en seco, con agentes simulados).
+## Not tested yet
+
+Still untested: what the trial left pending (a check that fails after merging, a permission asked in the middle of the
+run, a pause at the usage limit); that *Frontier* receives `args` correctly from `/run`; and the #39 changes with real
+tickets (only dry-run, with simulated agents).

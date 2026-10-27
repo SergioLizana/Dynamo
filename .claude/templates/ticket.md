@@ -1,17 +1,17 @@
-## Problema
-<Qué falla o falta, en 1-3 frases.>
+## Problem
+<What fails or is missing, in 1-3 sentences.>
 
-## Qué entrega
-- <Resultado concreto y comprobable>
+## What it delivers
+- <Concrete, checkable result>
 
-## Criterios de aceptación
-- [ ] <Casilla que se comprueba con un comando o una lectura>
+## Acceptance criteria
+- [ ] <Checkbox checked with a command or a reading>
 
-## Bloqueado por
-<Nada. | #n, #m>
-<!-- La relación nativa de GitHub es la que cuenta; esta sección es solo para leer. -->
+## Blocked by
+<None. | #n, #m>
+<!-- The native GitHub relation is the one that counts; this section is only for reading. -->
 
-## Fuera de alcance
-<Lo que no se toca.>
+## Out of scope
+<What is not touched.>
 
 Plan: `documentation/agent-factory-plan.md` §x

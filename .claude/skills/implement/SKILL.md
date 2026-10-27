@@ -46,7 +46,7 @@ phase *Build*, and so on; the option id of a column is in `options`.
 - For a checkbox that leaves no trace in git or GitHub, note `command → output` for the final comment.
 - If a checkbox asks for something written outside the code (a comment on the ticket, a note), produce it now,
   during the build, so the reviewer can find it.
-- From round 2: fix exactly what failed (the check output or the reviewer's «Para el Builder»), nothing more.
+- From round 2: fix exactly what failed (the check output or the reviewer's «For the Builder»), nothing more.
 
 ## 3. Automatic check
 
@@ -59,15 +59,15 @@ Move the card to the Verify column. Run every command of the automatic check wit
 
 Move the card to the Review column. Launch the `reviewer` subagent with: ticket `$0`, the repo, base `<base>`, the
 uncommitted change in the current directory, and from round 2 its previous verdict word for word.
-- `VEREDICTO: PASA`: go to step 5.
-- `VEREDICTO: FALLA`: if `round = 1`: `round = 2`, card to the Build column, back to step 2 with «Para el Builder».
+- `VERDICT: PASS`: go to step 5.
+- `VERDICT: FAIL`: if `round = 1`: `round = 2`, card to the Build column, back to step 2 with «For the Builder».
   If `round = 2`: blocked (step 7) with the verdict.
 
 ## 5. Commit and merge
 
 1. Stage only the files of the change (`git add <paths>`, never `-A`). Commit on the ticket branch: subject in
-   the documents language ending in `(#$0)`, plus the attribution line Claude Code gives you.
-2. `git checkout <base>`, `git merge --no-ff ticket/$0-<slug> -m "Fusiona ticket/$0-<slug> en <base> (#$0)"`.
+   the documents language, ending in `(#$0)`, plus the attribution line Claude Code gives you.
+2. `git checkout <base>`, `git merge --no-ff ticket/$0-<slug> -m "Merge ticket/$0-<slug> into <base> (#$0)"`.
 3. Move the card to the Verify column and run the automatic check again on the base. If it fails:
    `git revert -m 1 --no-edit HEAD` and blocked (step 7).
 4. Add the done label and move the card to the Done column.
@@ -78,25 +78,25 @@ One `gh issue comment $0`, in the documents language, with this shape. It does n
 published for a checkbox:
 
 ```text
-/implement · <PASA y fusionado en <base> | no fusionado>
-Vueltas: <round>/2
-Comprobación: <cada comando → resultado>
-Revisor: <veredicto final, una línea por casilla>
-Pruebas sin rastro en GitHub: <command → output> | ninguna
-Fuera del ticket (para el backlog): <lo visto> | nada
+/implement · <PASS and merged into <base> | not merged>
+Rounds: <round>/2
+Checks: <each command → result>
+Reviewer: <final verdict, one line per checkbox>
+No trace: <command → output> | none
+Out of the ticket (for the backlog): <what was seen> | nothing
 ```
 
 ## 7. Blocked
 
 - Move the card to the Needs Human column (option id in `.claude/factory.json`, by URL as the board commands file says).
 - Post the step 6 comment with the reason (the literal failing output or verdict), and these three lines after
-  `Revisor:`:
+  `Reviewer:`:
 
   ```text
-  Parado en: <construcción | comprobación | revisor | fusión>
-  Queda: <rama y stash, por nombre | nada>
-  Para relanzar: sacar la tarjeta de *Needs Human* (documentation/github-board.md) y lanzar `/implement $0` a mano
-  (documentation/launch-one-ticket.md). Antes, el humano borra la rama de «Queda» o le pone otro nombre.
+  Stopped at: <build | check | review | merge>
+  Left: <branch and stash, by name | nothing>
+  To relaunch: take the card out of *Needs Human* (documentation/github-board.md) and launch `/implement $0` by hand
+  (documentation/launch-one-ticket.md). First, the human deletes the branch in «Left» or renames it.
   ```
 
 - No commit, no merge.

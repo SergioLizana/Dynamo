@@ -1,20 +1,20 @@
-## Problema
-<Qué falla o falta y a quién le afecta, en 1-3 frases.>
+## Problem
+<What fails or is missing, and who is affected, in 1-3 sentences.>
 
-## Solución
-<Qué se va a hacer, a grandes rasgos, sin entrar en cómo se programa.>
+## Solution
+<What will be done, in broad strokes, without going into how it is coded.>
 
-## Qué cambia para quien lo usa
-<Lo que la persona ve o hace distinto cuando esté hecho.>
+## What changes for the user
+<What the person sees or does differently when it is done.>
 
-## Decisiones
-- <Decisión cerrada en `/discover` y su porqué, una por línea.>
+## Decisions
+- <Decision closed in `/discover` and its reason, one per line.>
 
-## Cómo se prueba
-- <Comando o lectura que demuestra que funciona.>
+## How it is tested
+- <Command or reading that shows it works.>
 
-## Fuera de alcance
-<Lo que no se toca, aunque esté cerca.>
+## Out of scope
+<What is not touched, even if it is close.>
 
-## Notas
-<Enlaces, hechos comprobados en el repositorio y dudas abiertas; si no hay, «Nada».>
+## Notes
+<Links, facts checked in the repository and open doubts; if there are none, "None".>
