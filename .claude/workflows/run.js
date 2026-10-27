@@ -46,6 +46,9 @@ const RAW_SCHEMA = {
   properties: { exitCode: { type: 'integer' }, stdout: { type: 'string' } },
 }
 
+// What the `runner` returns: each command it ran, in order, up to the first that failed.
+const RUN_SCHEMA = { type: 'object', required: ['results'], properties: { results: CHECKS } }
+
 // The only read of the start besides factory.json: three commands, each with its literal output.
 const START_SCHEMA = {
   type: 'object',
@@ -397,11 +400,20 @@ if (read.tickets.exitCode !== 0 && !(answer.errors || []).length) return { stopp
 const byNum = {}
 for (const t of tickets) byNum[t.number] = t
 
+// A list of commands in one `runner` agent (.claude/agents/runner.md): it runs them in order, literally, stops at the
+// first that fails and returns each one it ran with its exit code and output. The runner names no project data; the
+// commands come from here. The results it ran, or null if it returned nothing.
+async function runList(label, commands, phase) {
+  const r = await agent(`Run these commands, in this order:
+${commands.map((c, i) => `${i + 1}. ${c}`).join('\n')}`,
+  { ...SMALL, agentType: 'runner', label, phase, schema: RUN_SCHEMA })
+  return r && Array.isArray(r.results) ? r.results : null
+}
+
 // One command and its literal output, as the agent got them. null if the agent returned nothing.
-function readRaw(label, command, phase) {
-  return agent(`Run exactly this one command and nothing else, then return its exit code and its standard
-output character for character: no summary, no reformatting, nothing left out.
-${command}`, { ...SMALL, label, phase, schema: RAW_SCHEMA })
+async function readRaw(label, command, phase) {
+  const results = await runList(label, [command], phase)
+  return results && results.length ? { exitCode: results[0].exitCode, stdout: results[0].output } : null
 }
 
 // The same, parsed here. null if it failed or is not JSON.
@@ -416,10 +428,14 @@ async function moveCard(n, column, group) {
   const url = `https://github.com/${P.repo}/issues/${n}`
   let seen = null
   for (let attempt = 1; attempt <= 2; attempt++) {
-    await agent(`Move the card of ticket #${n}. Run exactly this command and nothing else:
-\`gh project item-edit ${P.boardNumber} --owner ${P.boardOwner} --url ${url} --field "Status" --value "${column}"\``,
-      { ...SMALL, label: `card:#${n}:${column}:${attempt}`, phase: group })
-    seen = await readJson(`card-check:#${n}:${attempt}`, `gh issue view ${n} -R ${P.repo} --json projectItems`, group)
+    // One agent edits the card and reads it back; the script decides from the read-back, not from the edit.
+    const results = await runList(`card:#${n}:${column}:${attempt}`, [
+      `gh project item-edit ${P.boardNumber} --owner ${P.boardOwner} --url ${url} --field "Status" --value "${column}"`,
+      `gh issue view ${n} -R ${P.repo} --json projectItems`,
+    ], group)
+    seen = null
+    const back = results && results.length === 2 && results[1].exitCode === 0 ? results[1] : null
+    if (back) { try { seen = JSON.parse(back.output.trim()) } catch (e) { /* not JSON: not moved */ } }
     const items = seen && Array.isArray(seen.projectItems) ? seen.projectItems : []
     if (items.some(i => i && i.status && i.status.name === column)) return { moved: true }
   }
