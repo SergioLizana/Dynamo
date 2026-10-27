@@ -25,6 +25,14 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
   - Sin comprobar ninguna de las dos. Tampoco es aislamiento completo (un agente con Bash en el mismo usuario podría
     llegar al gestor de credenciales): eso solo lo da un contenedor (plan §7 y §10.4).
 - **Cuándo:** antes de dejar listas desatendidas (etapa 3).
+- **Permisos distintos por agente** (consultado en `code.claude.com/docs/en/sub-agents.md` el 2026-10-27): la
+  cabecera de un subagente admite `tools`, `disallowedTools`, `permissionMode` y `hooks`. No admite reglas `allow` ni
+  `deny` propias: las de `settings.json` valen para toda la sesión, subagentes incluidos. `disallowedTools` quita la
+  herramienta entera (`Bash(git push *)` quita todo Bash) y `permissionMode` se ignora si la sesión está en `auto`,
+  como nuestras `-p`. Lo único que filtra comandos agente por agente es un hook `PreToolUse` en su cabecera, que
+  solo corre mientras ese agente está activo. Sirve para recortar (un Builder sin push), nunca para dar a un agente
+  más que a la sesión. Es una barrera de buena fe, como `deny`, y sería un comando propio que tiene que funcionar en
+  Linux, macOS y Windows. Probarlo solo cuando un ticket necesite separar permisos entre agentes.
 - **Push a `release/x.y.z`** (pensado el 2026-10-26): hoy `git push` está en `ask` (en sesión normal pregunta;
   en `-p` se deniega). No se pasa a `allow` porque ningún ticket lo necesita (se fusiona en local) y una regla como
   `Bash(git push origin release/*)` también deja pasar `git push origin release/0.1.0:main`, sin nada en GitHub que lo
@@ -45,6 +53,8 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
   salen de ahí: trabajan sin skills, sin `settings.json` en la copia y sin el `reviewer`, y sobre código viejo.
 - **Comprobado:** las tres copias de prueba de esas dos opciones estaban en `cc2dc46`. Los permisos sí se aplicaron,
   pero los de la sesión que las lanzó, no los de la copia.
+- **Por qué `main`:** es el valor por defecto de `worktree.baseRef` (`"fresh"`, la rama principal del remoto), no
+  el checkout actual (investigación §3.3). El humano esperaba que salieran de la rama sacada (2026-10-27).
 - **Opciones:** `worktree.baseRef: "head"` (sin probar); o no usarlas y crear las copias con `git worktree add`, que
   es lo que recomienda `documentation/fontaneria-paralelo.md`. El desfase se cierra solo cuando la release llegue a
   `main`.
@@ -97,3 +107,40 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
 - **Sin comprobar:** si el flujo integrado del proyecto («Item closed») puede mover sola la tarjeta a *Closed* al
   cerrar el issue. En el historial del #21 hay un `Todo -> Closed` y un `Closed -> Todo` el 2026-10-26 a las 23:46
   que nadie ha explicado, sin que exista una opción *Closed*.
+
+## Dividir `/implement` en varios agentes
+
+- **Origen:** el humano, el 2026-10-27: se suele leer que cada fase de una factoría lleva su agente, y hay
+  orquestadores que son una skill que lanza subagentes (como `implement-spec` de Pocock).
+- **Cómo está:** el Builder es la propia sesión de `/implement` (con `-p`, una sesión nueva por ticket); *Verify* son
+  los comandos de «Comprobación automática», sin modelo, para que no dependa de lo que responda uno; *Review* es el
+  subagente `reviewer`, con contexto aparte y solo lectura. `/run` es el orquestador y lanza un `claude -p` por
+  ticket (recomendación del #17: da coste por ticket y no espera permisos).
+- **Comprobado:** un subagente puede lanzar los suyos hasta tres niveles por debajo de la sesión principal
+  (documentación de subagentes, 2026-10-27).
+- **Datos:** del #14 al #16, 13-17 turnos y 0,49-0,86 USD por ticket. La única vuelta de más (#15) vino del orden de
+  los pasos, no de mezclar fases.
+- **Señal para hacerlo:** el Builder se queda sin contexto en tickets grandes, o hay vueltas porque el Builder se
+  juzga a sí mismo. Antes, leer la investigación §3 y §7 sobre separar fases.
+
+## Referencias a ficheros de este repositorio al pasar a plugin
+
+- **Origen:** conversación del 2026-10-26. Las skills nombran ficheros que solo existen aquí:
+  `documentation/lanzar-implement.md` (`/implement`, solo como referencia), `CLAUDE.md` (comprobación automática) y
+  `documentation/tablero-github.md` (ids y comandos del tablero).
+- **Cuándo:** en la etapa 4, al sacar las skills a un plugin para otro proyecto.
+
+## `/to-request` toma texto libre como nombre del fichero
+
+- **Origen:** uso del 2026-10-27. `/to-request` espera un nombre corto como argumento (`$0`). Se le pasó una lista
+  de pendientes y `$0` quedó en «Sigue»: el fichero se habría llamado `peticion-Sigue.md`. Se sacó el nombre de la
+  idea a mano.
+- **Cuándo:** la próxima vez que se toque `/to-request`.
+
+## Notas de los tickets #15 y #16
+
+- **Origen:** comentarios finales del #15 y del #16 (2026-10-26).
+- `/to-tasks` sin argumento acepta el resumen de `/discover` como especificación: sin probar en uso real.
+- `/to-request` escribe «Nada acordado» en una sección vacía y la plantilla `request.md` usa «Nada».
+- El #16 añadió dos cosas que no pedía ninguna casilla (mandar ideas a `backlog.md` y el límite de ~70 caracteres
+  por línea) y el revisor dio PASA: vigilar si el revisor deja pasar lo que se sale del ticket.
