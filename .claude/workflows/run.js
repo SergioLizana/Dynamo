@@ -34,6 +34,12 @@ const CHECKS = {
 // What the `runner` returns: each command it ran, in order, up to the first that failed. Run wf_41e0b269-ab2: an
 // agent's summary of a command is not the command, so the runner returns the literal output and the script parses it.
 const RUN_SCHEMA = { type: 'object', required: ['results'], properties: { results: CHECKS } }
+// Run wf_fb8329e5-d57: for a command that printed nothing the runner sometimes returned the Bash tool's placeholder,
+// and a clean `git status` read as changes. Every runner result comes through here, so every check sees "".
+const NO_OUTPUT = '(Bash completed with no output)'
+const resultsOf = r => r && Array.isArray(r.results)
+  ? r.results.map(x => x && String(x.output).trim() === NO_OUTPUT ? { ...x, output: '' } : x)
+  : null
 
 const BUILD_SCHEMA = {
   type: 'object',
@@ -413,7 +419,7 @@ function optsOf(step) {
 // Without a valid factory.json nothing runs. No model here: it is not read yet, so the runner's own (its definition's).
 const rawFactory = await agent(`Run these commands, in this order:
 1. cat ${FACTORY_JSON}`, { agentType: 'runner', label: 'factory.json', schema: RUN_SCHEMA })
-const factoryRead = rawFactory && Array.isArray(rawFactory.results) ? rawFactory.results[0] : null
+const factoryRead = (resultsOf(rawFactory) || [])[0] || null
 if (!factoryRead || factoryRead.exitCode !== 0) return { stopped: `${FACTORY_JSON} is missing or cannot be read` }
 let F
 try { F = JSON.parse(factoryRead.output.trim()) } catch (e) { return { stopped: `${FACTORY_JSON} is not valid JSON: ${e.message}` } }
@@ -551,7 +557,7 @@ async function runList(label, commands, phase, own = {}) {
   const r = await agent(`Run these commands, in this order:
 ${commands.map((c, i) => `${i + 1}. ${c}`).join('\n')}`,
   { ...SMALL, ...own, agentType: 'runner', label, phase, schema: RUN_SCHEMA })
-  return r && Array.isArray(r.results) ? r.results : null
+  return resultsOf(r)
 }
 
 // A null read is plumbing, not the ticket's fault: it is asked once more; null again means nothing could be read.

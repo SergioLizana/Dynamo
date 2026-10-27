@@ -18,7 +18,8 @@ The caller gives you a list of commands, in order.
    its own quotes (`sh -c 'cd <folder> && <command>'`) is one command, and you run it as given. The folder does not
    carry over between Bash calls, so never rely on a `cd` from an earlier call.
 2. Record its exit code and its standard output and error character for character: no summary, no reformatting,
-   nothing left out.
+   nothing left out. A command that prints nothing has `output` `""`: never the tool's placeholder text, such as
+   `(Bash completed with no output)`.
 3. If a command exits with a non-zero code, stop there. Do not run the commands after it, do not retry, do not fix it.
    The non-zero code is a result, not an error for you to solve.
 4. Return one result per command you ran, in order: `command`, `exitCode`, `output`. A command you did not run has
