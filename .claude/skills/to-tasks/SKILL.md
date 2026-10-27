@@ -7,11 +7,13 @@ disable-model-invocation: true
 
 # /to-tasks
 
-Turn a spec into tickets the human approves once. Talk to the human in Spanish; ticket text in Spanish too
-(working documentation). You plan the split, not the implementation: no designs, no code, no file layouts.
+Turn a spec into tickets the human approves once. Talk to the human in the language their `CLAUDE.md` asks for;
+ticket text in the documents language of `.claude/factory.md`. You plan the split, not the implementation: no
+designs, no code, no file layouts.
 
-GitHub commands, project ids and board states live in `documentation/github-board.md`. Read it before step 5 and
-use the commands from there; do not copy ids into tickets. The ticket body is `.claude/templates/ticket.md`.
+Project data (repo, board and its states, where the backlog goes) is in `.claude/factory.md`; the GitHub and board
+commands are in the board commands file it names. Read both before step 5 and use the commands from there; do not
+copy ids into tickets. The ticket body is `.claude/templates/ticket.md`.
 
 ## 1. Read the source
 
@@ -43,7 +45,7 @@ Size: 5-8 tickets per list. If the spec needs more, propose only the **first lis
 rest) and name the remaining work in one line per item as «siguiente lista», without creating it.
 
 Scope: only what the spec asks. Anything else you notice is not a ticket: mention it so the human can put it in
-`documentation/backlog.md`.
+the backlog.
 
 ## 4. Propose and iterate
 
@@ -74,8 +76,8 @@ not cover a changed list.
 Only after approval. First check that no open issue already has the same title (a rerun after a failure must not
 duplicate). Then, in dependency order (blockers first), for each ticket:
 
-1. `gh issue create --title "<título>" --body-file - --project "Dynamo"` (in Git Bash, a title starting with `/`
-   needs `MSYS_NO_PATHCONV=1`; see the note), with the body filled from the template:
+1. `gh issue create --title "<título>" --body-file - --project "<project name>"`
+   (if the shell rewrites a title that starts with `/`, see the note), with the body filled from the template:
    Problema, Qué entrega, Criterios de aceptación as checkboxes, Bloqueado por with real numbers (each `Nk`
    replaced by the `#n` it got, or «Nada.»),
    Fuera de alcance, and the spec reference. No labels unless the human gave one on approval.
