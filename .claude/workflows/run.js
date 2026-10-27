@@ -304,11 +304,13 @@ const LAST = F.phases[F.phases.length - 1].name
 
 // ---------- Frontier ----------
 
-// /run passes the tickets as text («38», «38 43», «38,43»); a call by script path, as an array or { tickets, base }.
+// /run passes the tickets as text («38», «38 43», «38,43»); a call by script path, as a number, an array or { tickets, base }.
+// Any args that is not an object is the ticket list, and a single value is a list of one.
 // Something that is not a ticket number stops the run: an empty list would take every ticket.
-const input = Array.isArray(args) || typeof args === 'string' ? { tickets: args } : (args || {})
-const given = typeof input.tickets === 'string' ? input.tickets.split(/[\s,]+/) : (input.tickets || [])
-const tokens = given.map(t => String(t).trim()).filter(t => t !== '')
+const isObject = args !== null && typeof args === 'object' && !Array.isArray(args)
+const input = isObject ? args : args == null ? {} : { tickets: args }
+const given = input.tickets == null ? [] : [].concat(input.tickets)
+const tokens = given.flatMap(t => String(t).split(/[\s,]+/)).filter(t => t !== '')
 const unreadable = tokens.filter(t => !/^\d+$/.test(t))
 if (unreadable.length) return { stopped: `these are not ticket numbers: ${unreadable.join(', ')}` }
 const wanted = tokens.map(Number)

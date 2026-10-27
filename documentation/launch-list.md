@@ -22,11 +22,13 @@ In a normal Claude Code session, opened at the root of the repository:
 ```
 
 Or, in other words, "Launch /run with tickets 34 and 35". Claude passes the numbers as `args`. Without numbers, it takes
-all open issues without the done label or the blocked one. For another base: "Launch /run with tickets 34 and 35 and
+all open issues that have neither the done label nor a card in *Needs Human*. For another base: "Launch /run with tickets 34 and 35 and
 base `release/0.0.0-prueba`" (`args = { tickets, base }`).
 
-`args` can be text (`"34"`, `"34 35"`, `"34,35"`: numbers separated by spaces or commas), an array (`["34", "35"]` or
-`[34, 35]`) or `{ tickets, base }`, where `tickets` is text or an array. No `args`, or empty text, means every ticket.
+`args` can be a number (`34`), text (`"34"`, `"34 35"`, `"34,35"`: numbers separated by spaces or commas), an array
+(`["34", "35"]`, `[34, 35]` or `[34]`) or `{ tickets, base }`, where `tickets` is a number, text or an array
+(`{ tickets: 34 }`, `{ tickets: "34 35" }`). Anything that is not an object is the list of tickets, and a single value
+is a list of one. No `args`, or empty text, means every ticket.
 If something is not a ticket number (`"34 abc"`, `"#34"`), the run stops before *Frontier* and says which part it could
 not read.
 
