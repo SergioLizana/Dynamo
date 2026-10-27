@@ -1,7 +1,9 @@
 # Tickets en GitHub: bloqueos, «hecho» y tablero
 
 Probado el 2026-10-26 sobre `SergioLizana/Dynamo` (ticket #1). Plantilla: `.claude/templates/ticket.md`.
-Estados y significado: plan §6.5.
+Estados y significado: plan §6.5. Los datos del proyecto (repositorio, tablero, ids de estados, etiquetas) están en
+`.claude/factory.md`; aquí van entre `<…>`: `<repo>`, `<owner>`, `<número>` del proyecto, `<project-id>`,
+`<status-field-id>`, `<option-id>` de un estado, `<done>` (etiqueta de hecho).
 
 ## Bloqueado por
 
@@ -9,9 +11,9 @@ La relación **nativa** de GitHub es la fuente de verdad. La sección «Bloquead
 
 ```bash
 # id interno (no el número) del bloqueador
-ID=$(gh api repos/SergioLizana/Dynamo/issues/<bloqueador> --jq .id)
-gh api repos/SergioLizana/Dynamo/issues/<n>/dependencies/blocked_by -F issue_id=$ID
-gh api repos/SergioLizana/Dynamo/issues/<n>/dependencies/blocked_by --jq '.[]|{number,state}'
+ID=$(gh api repos/<repo>/issues/<bloqueador> --jq .id)
+gh api repos/<repo>/issues/<n>/dependencies/blocked_by -F issue_id=$ID
+gh api repos/<repo>/issues/<n>/dependencies/blocked_by --jq '.[]|{number,state}'
 ```
 
 Este POST sin `-X` es el que permite `.claude/settings.json`; el riesgo de que deje escribir por la API está en
@@ -35,7 +37,7 @@ GitHub solo cierra issues al fusionar en `main`, y los tickets se fusionan en `r
 - `bloqueado` (ticket atascado) es otra etiqueta y no cambia el estado de la tarjeta.
 
 ```bash
-gh issue edit <n> -R SergioLizana/Dynamo --add-label hecho-en-release
+gh issue edit <n> -R <repo> --add-label <done>
 ```
 
 ## Añadir un issue al tablero
@@ -52,7 +54,7 @@ falla con «specify the item to edit» (visto el 2026-10-26 con #13). Sin buscar
 issue y los nombres del campo y del estado, funciona a la primera:
 
 ```bash
-gh project item-edit 1 --owner SergioLizana --url https://github.com/SergioLizana/Dynamo/issues/<n>   --field "Status" --value "Todo"
+gh project item-edit <número> --owner <owner> --url https://github.com/<repo>/issues/<n>   --field "Status" --value "Todo"
 ```
 
 Al borrar un issue, su tarjeta queda un rato en el tablero vacía (`content` y `status` a `null` en
@@ -63,25 +65,17 @@ minutos (visto el 2026-10-26 con #9 y #10): no hay que hacer nada.
 
 ```bash
 move_card() { # $1 = nº de issue, $2 = id de la opción
-  ITEM=$(gh project item-list 1 --owner SergioLizana --limit 100 --format json \
+  ITEM=$(gh project item-list <número> --owner <owner> --limit 100 --format json \
     --jq ".items[]|select(.content.number==$1)|.id")
-  gh project item-edit --id "$ITEM" --project-id PVT_kwHOAbB1zs4BoyYk \
-    --field-id PVTSSF_lAHOAbB1zs4BoyYkzhnQ1FA --single-select-option-id "$2"
+  gh project item-edit --id "$ITEM" --project-id <project-id> \
+    --field-id <status-field-id> --single-select-option-id "$2"
 }
 ```
 
-| Dato | Identificador |
-|---|---|
-| Proyecto (`SergioLizana`, nº 1) | `PVT_kwHOAbB1zs4BoyYk` |
-| Campo Status | `PVTSSF_lAHOAbB1zs4BoyYkzhnQ1FA` |
-| Todo | `7e5c5ff3` |
-| In Progress | `a41ae146` |
-| Verify | `a243ce09` |
-| In Review | `7eccea7a` |
-| Done | `e617f390` |
+Los ids del proyecto, del campo Status y de cada estado están en `.claude/factory.md`.
 
 Probado el 2026-10-26 sobre el issue de prueba #6 (ya borrado, así que no queda historial): Todo → In Progress → Verify → In Review → In Progress → In Review → Done. Si se renombra o recrea un estado,
-se vuelven a leer con `gh project field-list 1 --owner SergioLizana --format json`.
+se vuelven a leer con `gh project field-list <número> --owner <owner> --format json`.
 
 ## Comprobar por qué estados ha pasado una tarjeta
 
@@ -89,7 +83,7 @@ Lo escribe GitHub, no el agente: es la evidencia de los cambios de estado. La AP
 los eventos pero **no** los estados; hay que usar GraphQL.
 
 ```bash
-gh api graphql -f query='query{repository(owner:"SergioLizana",name:"Dynamo"){issue(number:<n>){
+gh api graphql -f query='query{repository(owner:"<owner>",name:"<nombre del repo>"){issue(number:<n>){
   timelineItems(first:50,itemTypes:[PROJECT_V2_ITEM_STATUS_CHANGED_EVENT]){nodes{
   ... on ProjectV2ItemStatusChangedEvent{createdAt previousStatus status}}}}}}' \
   --jq '.data.repository.issue.timelineItems.nodes[]|"\(.createdAt) \(.previousStatus) -> \(.status)"'
