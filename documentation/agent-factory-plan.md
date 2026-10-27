@@ -205,7 +205,7 @@ que ya existen.
 | El bucle Builder → comprobación → revisor, con tope de 2 | Hook `Stop` para la comprobación (§3.9) |
 | Qué se anota por ticket | `claude -p --output-format json` da `total_cost_usd`; `--max-turns` y `--max-budget-usd` ponen topes (§3.8) |
 | Cuándo se fusiona y qué pasa si choca | Sesiones en segundo plano (`claude --bg`) que abren PR (§3.4) |
-| Cuándo se lanza una lista | El Programador de tareas de Windows lanzando `claude -p`, o `/loop` en una sesión abierta |
+| Cuándo se lanza una lista | El programador de tareas del sistema (cron, launchd o el de Windows) lanzando `claude -p`, o `/loop` en una sesión abierta |
 
 Todo corre **en local**, en mi PC (§10, pregunta 3). En la etapa 3a se prueba cuál de esas opciones va mejor antes de
 escribir `/run`. `implement-spec` se lee como **comparación**, para ver qué resuelve y qué no, no para sustituir lo
@@ -279,7 +279,7 @@ Comprobado el 2026-10-26 (detalle y comandos en `documentation/github-board.md`,
   workflow dinámico falla al llegar al límite en vez de esperar (investigación §3.6).
 - **Coste.** Tope por ticket con `--max-budget-usd` (ver §10, pregunta 6).
 - **El PC encendido.** Sí, mientras corre una lista. Las tareas programadas de Claude Code corren en la nube
-  (investigación §3.16), así que en local se usa el Programador de tareas de Windows.
+  (investigación §3.16), así que en local se usa el programador de tareas del sistema (cron, launchd o el de Windows).
 - **Copias de trabajo.**
   - Salen de la rama principal, no de la de integración, salvo que se configure `worktree.baseRef: "head"` o se creen
     con `git worktree add` (investigación §3.3). Si no, los tickets no ven el trabajo del que dependen.
@@ -371,8 +371,8 @@ y tickets solo en GitHub (regla 2).
    o si, cuando la revisión cueste, cada ticket abre su propio PR contra `release/x.y.z` (investigación §8.5).
    Recomendado: empezar con el informe, con listas de 5-8 tickets.
 3. **¿Ejecución en local o en la nube?** Decidido el 2026-10-26: **en local.** Solo hacen falta sesiones en segundo
-   plano, lanzar listas a una hora (Programador de tareas de Windows) y vigilar el límite de uso del plan. La nube y
-   Projects no interesan por ahora.
+   plano, lanzar listas a una hora con el programador de tareas del sistema (cron, launchd o el de Windows) y vigilar
+   el límite de uso del plan. La nube y Projects no interesan por ahora.
 4. **¿Qué permisos se dan a una ejecución desatendida?** Recomendado en local: modo `auto` con lista blanca y
    `--permission-prompts none`. `bypassPermissions` nunca fuera de un contenedor (investigación §3.12, §8.8).
 5. **¿Qué pasa con los tickets que dependen de uno bloqueado?** Recomendado: se saltan, se listan en el informe y el PR

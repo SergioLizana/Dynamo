@@ -15,7 +15,8 @@ construyan, prueben y revisen hasta abrir un PR que aprueba una persona. Reposit
 - Nada se añade sin un problema real que lo pida. Las ideas que surjan van a `documentation/backlog.md`, no a un ticket.
 - Cada skill, como mucho unas 150 líneas, si una skill requiere mas, se crearan otros ficheros y se referenciaran a ellos desde la skill. Sin scripts propios mientras Claude Code lo resuelva con una opción.
   Excepción: los guiones de workflow (`.claude/workflows/`), que ejecuta Claude Code.
-- Se mide desde el primer ticket: turnos, vueltas y coste.
+- Se mide desde el primer ticket: las vueltas, por ticket; el coste, por lista (al acabar una, `/cost` de la sesión
+  en el informe del PR). Al lanzar un ticket a mano no se anotan turnos ni coste.
 
 ## Convenciones
 

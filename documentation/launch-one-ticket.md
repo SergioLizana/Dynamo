@@ -5,15 +5,27 @@ permitido se deniega. Los permisos están en `.claude/settings.json` (lista blan
 Lo que no está en ninguna lista lo decide el modo `auto`; con `--permission-prompts none`, lo que preguntaría se
 deniega.
 
-Desde PowerShell, en `E:\Proyectos\Dynamo`, con el árbol limpio:
+Un ticket por comando, desde la raíz del repositorio y con el árbol limpio (`12` es el número del ticket):
 
-```powershell
-$n = 12   # número del ticket
-$r = claude -p "/implement $n" --output-format json --max-budget-usd 5 --permission-mode auto --permission-prompts none | ConvertFrom-Json
-gh issue comment $n -R SergioLizana/Dynamo --body "Métricas de /implement: $($r.num_turns) turnos · $([math]::Round($r.total_cost_usd, 2)) USD · $($r.subtype)"
+```bash
+printf '/implement 12' | claude -p --max-budget-usd 5 --permission-mode auto --permission-prompts none
 ```
 
-- `num_turns` y `total_cost_usd` salen del JSON de `claude -p`: la sesión no conoce su propio coste.
-- `subtype` es `success` o el motivo de corte (`error_max_budget_usd`, `error_max_turns`…).
+- El prompt va por la entrada estándar: así la `/` llega tal cual a `claude` y la skill se lanza como skill. Pasado
+  como argumento, algunas consolas lo reescriben como una ruta.
+- Para probar sobre otra base: `printf '/implement 12 release/0.0.0-prueba' | claude -p …`, con las mismas opciones.
 - Tope de coste por ticket: 5 USD para empezar; se ajusta tras los 3 primeros tickets (plan §10.6).
-- Para probar sobre otra base: `"/implement $n release/0.0.0-prueba"`.
+- Varios tickets se lanzan de uno en uno, con un comando cada uno.
+
+## Medición
+
+A mano no se anotan turnos ni coste: el comando no pide la salida en JSON y la sesión no conoce su propio coste.
+`/implement` deja en el ticket las vueltas. El coste se mide por lista: al acabar una, se anota `/cost` de la sesión
+en el informe del PR.
+
+## Dónde se probó
+
+Probado el 2026-10-27 con Claude Code 2.1.311 en Windows 11 (Git Bash), con las mismas opciones:
+`printf '/zz-no-existe hola' | claude -p --max-budget-usd 0.2 --permission-mode auto --permission-prompts none` →
+«El comando `/zz-no-existe` no está instalado en esta sesión»: la `/` llega a `claude`. En Linux y macOS está sin
+probar.

@@ -80,9 +80,6 @@ Pruebas sin rastro en GitHub: <command → output> | ninguna
 Fuera del ticket (para el backlog): <lo visto> | nada
 ```
 
-Turns and cost are not known inside the session: the launch command posts them (see the launch document in
-`.claude/factory.md`).
-
 ## 7. Blocked
 
 - Add the blocked label and post the step 6 comment with the reason: the literal failing output or verdict.
