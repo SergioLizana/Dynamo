@@ -1,6 +1,6 @@
 ---
 name: to-request
-description: Write the spec closed in the current conversation (usually right after /discover) with the request template and save it as a file in documentation/, deciding nothing new. Use when the human runs /to-request in the same session as /discover.
+description: Write the spec closed in the current conversation (usually right after /discover) with the request template and save it as a file where `.claude/factory.md` puts specifications, deciding nothing new. Use when the human runs /to-request in the same session as /discover.
 argument-hint: [short-slug for the file name]
 disable-model-invocation: true
 ---
@@ -8,7 +8,7 @@ disable-model-invocation: true
 # /to-request
 
 Turn what was already agreed in this conversation into a spec file that `/to-tasks` can split. Talk to the human
-in Spanish; the spec is written in Spanish too (working documentation).
+in the language their `CLAUDE.md` asks for; write the spec in the documents language of `.claude/factory.md`.
 
 This is synthesis, not an interview: do not ask the human to decide anything. You write down decisions, you never
 make them.
@@ -42,8 +42,8 @@ No code, no file layouts, no ticket split: that is `/to-tasks`'s job.
 
 ## 3. Save the file
 
-- Path: `documentation/spec-<slug>.md`. The slug is `$0` if given, else 2-4 lowercase words from the idea,
-  joined with `-`.
+- Path: the specifications path of `.claude/factory.md`, with `<slug>` filled in. The slug is `$0` if given, else
+  2-4 lowercase words from the idea, joined with `-`.
 - If the file already exists, do not overwrite it: tell the human and stop.
 - Write only that file. Do not commit, create issues or touch other files.
 
@@ -52,4 +52,4 @@ No code, no file layouts, no ticket split: that is `/to-tasks`'s job.
 Tell the human, in at most 5 lines:
 - the path of the file;
 - how many items went to «Notas» as pending (if any, they should be closed before splitting);
-- the next step, literally: `/to-tasks documentation/spec-<slug>.md`.
+- the next step, literally: `/to-tasks <the path of the file>`.

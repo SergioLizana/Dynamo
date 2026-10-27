@@ -131,6 +131,8 @@ Ideas y riesgos que surgen por el camino y que no se convierten en ticket mientr
   `documentation/launch-one-ticket.md` (`/implement`, solo como referencia), `CLAUDE.md` (comprobación automática) y
   `documentation/github-board.md` (ids y comandos del tablero).
 - **Cuándo:** en la etapa 4, al sacar las skills a un plugin para otro proyecto.
+- **Resuelto el 2026-10-27:** los datos del proyecto están en `.claude/factory.md` y las skills y el `reviewer` los
+  leen de ahí (#30 y #31).
 
 ## `/to-request` toma texto libre como nombre del fichero
 

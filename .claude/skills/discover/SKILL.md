@@ -7,7 +7,8 @@ disable-model-invocation: true
 
 # /discover
 
-Turn a loose idea into closed decisions that the next skill can write down. Talk to the human in Spanish.
+Turn a loose idea into closed decisions that the next skill can write down. Talk to the human in the language
+their `CLAUDE.md` asks for. The plan and the backlog are where `.claude/factory.md` says.
 
 You do not write the spec and you do not create tickets: that is `/to-request` and `/to-tasks`. Write no files,
 no issues and no commits; the result lives in this conversation.
@@ -15,9 +16,9 @@ no issues and no commits; the result lives in this conversation.
 ## 1. Understand the idea
 
 - The idea is `$ARGUMENTS`. If it is empty, ask for it in one line and wait.
-- Read `CLAUDE.md` and the parts of `documentation/agent-factory-plan.md` the idea touches. Ideas that the
-  plan puts out of scope, or that only fix how tickets are made without a measured failure (plan §8.1), belong in
-  `documentation/backlog.md`: say so and stop unless the human insists.
+- Read `CLAUDE.md` and the parts of the plan the idea touches. Ideas that the plan puts out of scope, or that only
+  fix how tickets are made without a measured failure (plan §8.1), belong in the backlog: say so and stop unless
+  the human insists.
 - Restate the idea in two or three lines: the problem, for whom, and what changes for them. Ask if that is right.
 
 ## 2. Check facts before asking
@@ -49,14 +50,14 @@ Think of the idea as a tree of decisions: each one opens the ones that hang from
   o la casilla?»). Use the agreed term from then on.
 - Test the boundaries with a concrete scenario when a rule is unclear («si el revisor falla dos veces, ¿qué ve
   el humano?»).
-- Keep scope tight: anything that appears on the way and is not needed for this idea goes to a «para backlog.md»
+- Keep scope tight: anything that appears on the way and is not needed for this idea goes to a «para el backlog»
   list, not to the tree.
 
 The tree is done when the frontier is empty: every branch visited, nothing assumed in silence.
 
 ## 4. Summarise and confirm
 
-Show, in Spanish:
+Show, in the language you talk to the human in:
 
 ```text
 Idea: <dos o tres líneas>
@@ -64,7 +65,7 @@ Hechos comprobados: <hecho → fuente>
 Decisiones: <una por línea, con su motivo>
 Pendiente: <duda> | nada
 Fuera de alcance: <lo que se dejó fuera> | nada
-Para backlog.md: <lo visto por el camino> | nada
+Para el backlog: <lo visto por el camino> | nada
 ```
 
 Ask the human to confirm it is the shared understanding. Fix it until they confirm. Do not go on with anything
