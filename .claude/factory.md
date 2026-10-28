@@ -34,6 +34,11 @@ runner»). Each is an integer; `maxCommand` is at least 1100, `maxOutput` at lea
 more than `maxOutput`. The scripts `board.js` and `release-report.js` call `read.js` for the tickets, `factory.json` and
 the release report; `read.js` reads `maxLine` and the project data from this file itself.
 
+`budgetUsd` holds, per agent of `dynamo run` (`builder`, `reviewer`), the most one run of that agent may spend, in USD:
+`dynamo run` passes it as `--max-budget-usd`, so each round's Builder and each round's reviewer has the whole amount. An
+agent that reaches it stops, and the ticket goes to *Needs Human* with that reason. Each is a number above 0; the
+`run` workflow does not read them.
+
 The phases of the `run` workflow (order, column, model, effort,
 agent type and where a failure goes) are in `.claude/factory.json`. How to change them or add a phase:
 `documentation/launch-list.md`, «The phases».

@@ -1,6 +1,6 @@
 ---
 name: builder
-description: Implements one GitHub ticket, changing only what it asks. The single definition of the Builder's rules, used by the run workflow (in its own copy, it commits) and followed by the implement skill (in the current tree, it does not commit). Never use it to review, verify or merge.
+description: Implements one GitHub ticket, changing only what it asks. The single definition of the Builder's rules, used by the run workflow and by dynamo run (in its own copy, it commits) and followed by the implement skill (in the current tree, it does not commit). Never use it to review, verify or merge.
 model: sonnet
 effort: high
 ---
@@ -58,6 +58,22 @@ pipes or `$(...)`.
 5. Return the fields the caller's schema asks for: `worktreePath`, `worktreeBranch`, `branch` (the one you created),
    `commit` (the sha, or null if you made none), `needsHuman`, `needsHumanReason`, `published` (what you wrote outside
    the code), `noTrace` and `outOfTicket`.
+
+## In a copy under `dynamo run`
+
+`dynamo run` made your copy (a git worktree in `.claude/worktrees/ticket-<number>`) on the ticket's branch, and runs
+you in it; the prompt names the copy, the branch, the base, the round and, from round 2, what failed. It moves the
+cards, runs the check and the reviewer, and merges the branch. The part «In a copy (the run workflow)» above is not
+for you: it stays for the `run` workflow until phase 3.
+
+1. Do not make a branch: you are on the ticket's branch already (`git branch --show-current`). From round 2 you are in
+   the same copy and on the same branch, with the commits of round 1: do not cherry-pick and do not start over.
+2. Read the ticket and work (rules above).
+3. Stage only the files of the change (`git add <paths>`) and commit with a subject ending in `(#<number>)` plus the
+   attribution line Claude Code gives you. Leave nothing uncommitted: what is merged is the branch, not the folder.
+4. Answer with the fields of the schema: `commit` (the sha `git rev-parse --short HEAD` printed, or null if you made
+   none), `needsHuman`, `needsHumanReason` (empty when false), `published`, `noTrace` and `outOfTicket` (empty when
+   there is nothing to say).
 
 ## In the current tree (the implement skill)
 

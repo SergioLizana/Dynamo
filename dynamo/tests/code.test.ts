@@ -80,3 +80,16 @@ test('claude.ts is reached from the entry point only: a subcommand gets runAgent
   assert.deepEqual(imports('agents.ts').filter((i) => edges.includes(i.from)), []);
   assert.deepEqual(sources.filter((n) => n !== 'claude.ts' && n !== 'dynamo.ts' && imports(n).some((i) => !i.type && i.from === './claude.ts')), []);
 });
+
+test('the decisions of the loop are pure: rounds, briefs and runs import nothing but types, each other and the shared helper', () => {
+  const allowed = ['./rounds.ts', './cli.ts'];
+  for (const name of ['rounds.ts', 'briefs.ts', 'runs.ts']) {
+    assert.deepEqual(imports(name).filter((i) => !i.type && !allowed.includes(i.from)), [], name);
+  }
+  assert.deepEqual(imports('rounds.ts').filter((i) => !i.type), []);
+});
+
+test('run gets gh, git, claude and the config as parameters: it imports none of their modules', () => {
+  const edges = ['./exec.ts', './gh.ts', './git.ts', './factory.ts', './claude.ts', 'node:child_process'];
+  assert.deepEqual(imports('run.ts').filter((i) => !i.type && edges.includes(i.from)), []);
+});

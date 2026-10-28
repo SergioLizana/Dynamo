@@ -79,7 +79,7 @@ test('parseStream treats what claude printed as unknown: a field of the wrong ty
 });
 
 const run: AgentRun = {
-  agent: 'builder', prompt: 'Build #86.', cwd: '/copy', log: '/logs/86.jsonl', schema: { type: 'object' }, budget: 2.5, session: SESSION,
+  agent: 'builder', prompt: 'Build #86.', cwd: '/copy', log: '/logs/86.jsonl', schema: { type: 'object' }, budget: 2.5, session: SESSION, tools: null,
 };
 
 test('agentArgs: the flags the loop needs, each with its value', () => {
@@ -89,9 +89,15 @@ test('agentArgs: the flags the loop needs, each with its value', () => {
   ]);
 });
 
+test('agentArgs: a run with tools gets them by flag and no MCP server; one without gets neither flag', () => {
+  const args = agentArgs({ ...run, agent: 'reviewer', tools: ['Read', 'Grep', 'Glob', 'Bash'] });
+  assert.deepEqual(args.slice(args.indexOf('--tools')), ['--tools', 'Read,Grep,Glob,Bash', '--strict-mcp-config']);
+  assert.ok(!agentArgs(run).includes('--tools') && !agentArgs(run).includes('--strict-mcp-config'));
+});
+
 // --- The edge (claude.ts), with the fake claude and no real one on the PATH.
 
-function answer(state: string, a: { stdout?: string; stderr?: string; code?: number }): void {
+function answer(state: string, a: { stdout?: string; stderr?: string; code?: number; waitFor?: string; then?: string }): void {
   writeFileSync(join(state, 'answer.json'), JSON.stringify(a));
 }
 function calls(state: string): { args: string[]; stdin: string; cwd: string }[] {
@@ -106,11 +112,11 @@ test('claude runs the command in DYNAMO_CLAUDE with the arguments and stdin, and
   assert.deepEqual(calls(state).map((c) => [c.args, c.stdin]), [[['-p', '--agent', 'builder'], 'a prompt']]);
 });
 
-test('runAgent passes --agent, --json-schema, --max-budget-usd, --permission-mode auto, --permission-prompts none, --session-id and --output-format stream-json', () => {
+test('runAgent passes --agent, --json-schema, --max-budget-usd, --permission-mode auto, --permission-prompts none, --session-id and --output-format stream-json', async () => {
   const state = scratch();
   const folder = scratch();
   answer(state, { stdout: [init, success].join('\n') + '\n' });
-  runAgent({ ...run, cwd: folder, log: join(folder, 'b.jsonl') }, { env: fakeClaudeEnv(state) });
+  await runAgent({ ...run, cwd: folder, log: join(folder, 'b.jsonl') }, { env: fakeClaudeEnv(state) });
   const [call] = calls(state);
   const pairs = (flag: string) => call.args[call.args.indexOf(flag) + 1];
   assert.equal(pairs('--agent'), 'builder');
@@ -123,51 +129,80 @@ test('runAgent passes --agent, --json-schema, --max-budget-usd, --permission-mod
   assert.ok(call.args.includes('-p') && call.args.includes('--verbose'));
 });
 
-test('runAgent runs in the folder it is given, sends the prompt on stdin and returns what the stream says', () => {
+test('runAgent runs in the folder it is given, sends the prompt on stdin and returns what the stream says', async () => {
   const state = scratch();
   const folder = scratch();
   answer(state, { stdout: [init, step, success].join('\n') + '\n' });
-  const r = runAgent({ ...run, cwd: folder, log: join(folder, 'b.jsonl') }, { env: fakeClaudeEnv(state) });
+  const r = await runAgent({ ...run, cwd: folder, log: join(folder, 'b.jsonl') }, { env: fakeClaudeEnv(state) });
   assert.deepEqual(r, { ending: 'success', structured: { answer: 'ok' }, cost: 0.00553076, turns: 3, session: SESSION, detail: null });
   const [call] = calls(state);
   assert.equal(call.stdin, 'Build #86.');
   assert.equal(realpathSync(call.cwd), realpathSync(folder));
 });
 
-test('runAgent writes the whole stream to the log file, line for line, and makes its folder', () => {
+test('runAgent writes the whole stream to the log file, line for line, and makes its folder', async () => {
   const state = scratch();
   const folder = scratch();
   const stream = ['not json at all', init, step, budget].join('\n') + '\n';
   answer(state, { stdout: stream, code: 1 });
   const log = join(folder, 'logs', 'deep', '86.jsonl');
-  const r = runAgent({ ...run, cwd: folder, log }, { env: fakeClaudeEnv(state) });
+  const r = await runAgent({ ...run, cwd: folder, log }, { env: fakeClaudeEnv(state) });
   assert.equal(readFileSync(log, 'utf8'), stream);
   assert.equal(r.ending, 'budget');
   assert.equal(r.cost, 0.107044);
 });
 
-test('runAgent decides from the stream, not from the exit code: a result that succeeded counts even if claude exited 1', () => {
+test('runAgent decides from the stream, not from the exit code: a result that succeeded counts even if claude exited 1', async () => {
   const state = scratch();
   const folder = scratch();
   answer(state, { stdout: success + '\n', code: 1 });
-  assert.equal(runAgent({ ...run, cwd: folder, log: join(folder, 'l') }, { env: fakeClaudeEnv(state) }).ending, 'success');
+  assert.equal((await runAgent({ ...run, cwd: folder, log: join(folder, 'l') }, { env: fakeClaudeEnv(state) })).ending, 'success');
 });
 
-test('runAgent with no claude on the PATH and no DYNAMO_CLAUDE ends in error with the reason, and still writes an empty log', () => {
+test('runAgent with no claude on the PATH and no DYNAMO_CLAUDE ends in error with the reason, and still writes an empty log', async () => {
   const folder = scratch();
   const log = join(folder, 'l.jsonl');
-  const r = runAgent({ ...run, cwd: folder, log }, { env: noGhEnv() });
+  const r = await runAgent({ ...run, cwd: folder, log }, { env: noGhEnv() });
   assert.equal(r.ending, 'error');
   assert.match(String(r.detail), /the stream has no result line.*claude exited 127: claude: /);
   assert.equal(existsSync(log), true);
   assert.equal(readFileSync(log, 'utf8'), '');
 });
 
-test('runAgent with a claude that printed nothing and failed keeps the end of its stderr in the detail', () => {
+test('runAgent with a claude that printed nothing and failed keeps the end of its stderr in the detail', async () => {
   const state = scratch();
   const folder = scratch();
   answer(state, { stderr: 'boom: no session\n', code: 1 });
-  const r = runAgent({ ...run, cwd: folder, log: join(folder, 'l') }, { env: fakeClaudeEnv(state) });
+  const r = await runAgent({ ...run, cwd: folder, log: join(folder, 'l') }, { env: fakeClaudeEnv(state) });
   assert.equal(r.ending, 'error');
   assert.match(String(r.detail), /claude exited 1: boom: no session/);
+});
+
+test('runAgent is asynchronous and the log is claude\'s stdout itself: a line printed while the agent works is in the log before it exits', async () => {
+  const state = scratch();
+  const folder = scratch();
+  const log = join(folder, 'live.jsonl');
+  const release = join(folder, 'release');
+  answer(state, { stdout: init + '\n', waitFor: release, then: success + '\n' });
+  let settled = false;
+  const running = runAgent({ ...run, cwd: folder, log }, { env: fakeClaudeEnv(state) }).finally(() => { settled = true; });
+  const until = Date.now() + 15000;
+  while (!(existsSync(log) && readFileSync(log, 'utf8').includes(init)) && Date.now() < until) await new Promise((r) => setTimeout(r, 25));
+  assert.ok(readFileSync(log, 'utf8').includes(init), 'the first line is in the log while the agent works');
+  assert.equal(settled, false, 'the agent has not ended yet');
+  writeFileSync(release, '');
+  const r = await running;
+  assert.equal(r.ending, 'success');
+  assert.equal(readFileSync(log, 'utf8'), init + '\n' + success + '\n');
+});
+
+test('runAgent writes a stream of any size to the log: it never passes through a buffer of the output', async () => {
+  const state = scratch();
+  const folder = scratch();
+  const big = JSON.stringify({ type: 'assistant', text: 'x'.repeat(1024 * 1024) });
+  answer(state, { stdout: (big + '\n').repeat(3) + success + '\n' });
+  const log = join(folder, 'big.jsonl');
+  const r = await runAgent({ ...run, cwd: folder, log }, { env: fakeClaudeEnv(state) });
+  assert.equal(r.ending, 'success');
+  assert.equal(readFileSync(log, 'utf8').length, (big.length + 1) * 3 + success.length + 1);
 });
