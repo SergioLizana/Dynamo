@@ -138,6 +138,16 @@ The tickets still open when 0.1.0 was frozen are closed as superseded; what they
 ### Phase 3. Subtract
 
 - Delete what §4 marks; `/run` becomes the thin skill; rewrite `launch-list.md` as a short README; update `factory.md`.
+- Clean up what the review of phase 1 left (2026-10-28), with the same cleanup:
+  - One `setting()` in `dynamo/cli.ts`: drop the private copy in `dynamo/board.ts` and `read()` in `dynamo/merging.ts`.
+    One loop that runs the checks, shared by `dynamo/verify.ts` and `dynamo/merge.ts`.
+  - The README of the program says the Node version `dynamo` needs (built and tested on 24.15.0: type stripping, and
+    `node --test <folder>` loading `dynamo/tests/index.js` as a module).
+  - `dynamo report` asks the remote for `refs/heads/<base>` exactly, not by pattern (`x/<base>` matches today), and says
+    nothing about `gh pr create` or `gh pr edit` when the remote has diverged with nothing to push.
+  - The two failing tests of `tests/workflows/` go with that folder.
+  - The `__MACOSX` folders of `documentation/Research/dynamo-analisis/` are deleted.
+  - The human updates the local `main` (`git fetch origin main:main`): it is behind `origin/main` since PR #66.
 - Compare the first lists of the program with the comments of the past `/run` runs: agents per ticket, plumbing
   failures, cost, duration. Write it down as `workflow-trial.md` was.
 - **Done when:** there is one implementation of the loop and the documentation describes only it.
