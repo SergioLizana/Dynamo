@@ -16,8 +16,7 @@ export const meta = {
 
 const NAME = 'run' // the same as meta.name
 const FACTORY_JSON = '.claude/factory.json'
-// One report file per base, ignored by git; the body that `gh` reads. A release never sees another base's report.
-const reportFileOf = b => `.claude/worktrees/run-report-${b.replace(/[^A-Za-z0-9._-]+/g, '-')}.md`
+const REPORT_WORKFLOW = '.claude/workflows/release-report.js' // the end of the list, run as a child
 const MAX_ROUNDS = 2
 
 // Trial failure 4: a commit must be a sha, not «HEAD of …».
@@ -136,7 +135,6 @@ ${ctx.failure}`
     read: async b => {
       builds.push({ number: t.number, round: ctx.round, worktreePath: b.worktreePath, worktreeBranch: b.worktreeBranch, branch: b.branch, commit: b.commit })
       ctx.build = b
-      outOf[t.number] = b.outOfTicket // the latest round's, for the report of the list
       // Trial failure 3: a second round cannot fix a ticket that needs the human.
       if (b.needsHuman) return { pass: false, stop: true, failure: `needs the human: ${b.needsHumanReason}` }
       if (!b.commit) return { pass: false, failure: 'the Builder made no commit' }
@@ -430,7 +428,6 @@ if (invalid) return { stopped: `${FACTORY_JSON} is invalid: ${invalid}` }
 const C = F.columns
 const P = F.project
 const SMALL = optsOf(F.small) // the script's small agents: every `runner` call that has no phase of its own
-const LAST = F.phases[F.phases.length - 1].name
 
 // ---------- Frontier ----------
 
@@ -448,13 +445,11 @@ const wanted = tokens.map(Number)
 // The base is known from factory.json and the call: the main branch stops the run before any other agent.
 const base = input.base ? String(input.base) : P.workingBranch
 if (base === P.mainBranch) return { stopped: `the base is the main branch (${base})` }
-const REPORT_FILE = reportFileOf(base)
 
 // The reads of the start in one `runner` call, each with its literal output: the state of the main folder, the branch,
-// the report file the earlier runs of this release left, the tickets with their labels, card status and native blockers
-// (one GraphQL query, every list with its total checked, so nothing is cut off silently), and, for the report at the
-// end, the tickets already merged into the base since the main branch and the open pull request of the base. The
-// tickets come before the last two because their query exits non-zero when a ticket is missing; the script parses and decides.
+// and the tickets with their labels, card status and native blockers (one GraphQL query, every list with its total
+// checked, so nothing is cut off silently). The report at the end reads its own state (release-report.js). The query
+// exits non-zero when a ticket is missing; the script parses and decides.
 const [OWNER, REPO_NAME] = P.repo.split('/')
 const TICKET_FIELDS = 'number title state labels(first:20){totalCount nodes{name}} '
   + 'projectItems(first:5){totalCount nodes{fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}} '
@@ -467,22 +462,18 @@ const query = `query { repository(owner:"${OWNER}", name:"${REPO_NAME}") { ${wan
 const startCommands = [
   'git status --porcelain --untracked-files=no', // 0
   'git branch --show-current', // 1
-  `sh -c ${shq(`test ! -f ${REPORT_FILE} || cat ${REPORT_FILE}`)}`, // 2: the report of the earlier runs, or nothing
-  `gh api graphql -f query='${query}'`, // 3
-  `git log --first-parent --format=%s ${P.mainBranch}..${base}`, // 4
-  `gh pr list -R ${P.repo} --head ${base} --base ${P.mainBranch} --state open --json number,url,body`, // 5
+  `gh api graphql -f query='${query}'`, // 2
 ]
 const startRs = await runListRetry('start', startCommands, 'Start')
 if (!startRs || !startRs.length) return { stopped: 'the read of the tickets and of the main folder returned nothing' }
 for (let i = 0; i < startRs.length; i++) {
   if (i >= startCommands.length || loose(startRs[i].command) !== loose(startCommands[i])) return { stopped: `the start read ran «${oneLine(startRs[i].command, 120)}» where «${oneLine(startCommands[i] || 'nothing', 120)}» was expected` }
 }
-const [rStatus, rBranch, rFile, rTickets, rLog, rPrs] = startRs
+const [rStatus, rBranch, rTickets] = startRs
 if (rStatus.exitCode !== 0) return { stopped: 'the state of the main folder could not be read' }
 if (rStatus.output.trim()) return { stopped: `the main folder has changes in tracked files:\n${rStatus.output.trimEnd()}` }
 if (!rBranch || rBranch.exitCode !== 0) return { stopped: 'the current branch of the main folder could not be read' }
 if (rBranch.output.trim() !== base) return { stopped: `the main folder is on «${rBranch.output.trim()}», not on the base (${base})` }
-if (!rFile || rFile.exitCode !== 0) return { stopped: `the report file (${REPORT_FILE}) could not be read` }
 if (!rTickets) return { stopped: 'the tickets could not be read: the runner stopped before the query' }
 const read = { tickets: { exitCode: rTickets.exitCode, stdout: rTickets.output } }
 
@@ -534,23 +525,6 @@ if (read.tickets.exitCode !== 0 && !(answer.errors || []).length) return { stopp
 
 const byNum = {}
 for (const t of tickets) byNum[t.number] = t
-
-// What the end of the list needs, from the start read; null where it could not be read (the report says so).
-// Merge commits on the base since the main branch, oldest first: a ticket merged and then reverted does not count.
-function mergedSinceMain(lines) {
-  const set = new Set()
-  for (const line of lines.split('\n').map(l => l.trim()).filter(Boolean).reverse()) {
-    const rv = line.match(/^Revert "Merge .*\(#(\d+)\)"$/)
-    const mg = line.match(/^Merge .*\(#(\d+)\)$/)
-    if (rv) set.delete(Number(rv[1]))
-    else if (mg) set.add(Number(mg[1]))
-  }
-  return set
-}
-const mergedBefore = rLog && rLog.exitCode === 0 ? mergedSinceMain(rLog.output) : null
-let startPrs = null
-if (rPrs && rPrs.exitCode === 0) { try { startPrs = JSON.parse(rPrs.output.trim()) } catch (e) { startPrs = null } }
-const previousReport = norm(rFile.output)
 
 // A list of commands in one `runner` agent (.claude/agents/runner.md): it runs them in order, literally, stops at the
 // first that fails and returns each one it ran with its exit code and output. The runner names no project data; the
@@ -649,7 +623,6 @@ function serial(fn) {
 }
 
 const builds = [] // every Build result, for the cleanup
-const outOf = {} // ticket number → the «Out of the ticket» lines of its latest Build, for the report of the list
 
 // The ticket's comment, built here. What an agent wrote (the reviewer's checkboxes, the Builder's no-trace and
 // out-of-ticket lines, a reason that quotes one) goes only inside a fenced block, as quoted data. What the Builder
@@ -790,167 +763,44 @@ log(`${order.length} tickets on ${base}: ${order.map(n => `#${n}`).join(', ')}`)
 const results = await Promise.all(order.map(start))
 await queue
 
+
 // ---------- The end of the list ----------
 
-// The report, built here from the results (not from what an agent remembers), and everything that closes the list in
-// ONE `runner` call: the cleanup of the copies (trial failure 1), the state of the branches, the report file, the
-// remote, and the body of the release PR if one exists. The run never pushes and never opens a PR: with no PR it
-// returns the report and the commands the human runs (documentation/launch-list.md, «The end of a list»).
-// The commands that can fail for the network come last, because the runner stops at the first that fails.
-
-// The report keeps one section per run (the file `REPORT_FILE` accumulates) and ends with a `Closes #n` line for every
-// ticket merged into the base since the main branch, from the git log of the start plus this run's merges.
-function runSection(list, out, k) {
-  const title = n => (byNum[n] ? ` «${byNum[n].title}»` : '')
-  const rounds = r => (r.rounds ? `${r.rounds}/${MAX_ROUNDS}` : 'n/a')
-  const blocked = list.filter(r => r.status === 'blocked')
-  const skipped = list.filter(r => r.status === 'skipped')
-  const withNotes = r => (r.notes && r.notes.length ? `; to check: ${r.notes.join('; ')}` : '')
-  const ticketLine = r => {
-    if (r.status === 'done' && r.mergeCommit) return `- #${r.number}${title(r.number)}: merged into ${base} (${r.mergeCommit}), rounds ${rounds(r)}${withNotes(r)}`
-    if (r.status === 'done') return `- #${r.number}${title(r.number)}: ${r.note || 'done'}`
-    if (r.status === 'blocked') return `- #${r.number}${title(r.number)}: blocked, rounds ${rounds(r)}${r.marked === false ? `; its card could not be moved to *${C.needsHuman}*: check it by hand` : ''}${withNotes(r)}`
-    return `- #${r.number}${title(r.number)}: ${r.status}`
-  }
-  const why = r => `- #${r.number}: ${oneLine(r.reason || r.note || 'no reason given')}`
-  const seen = list.flatMap(r => (out[r.number] || []).map(l => `- #${r.number}: ${oneLine(l, 600)}`))
-  return [
-    `## ${NAME} report · ${base} · run ${k}`, '',
-    '### Tickets', '', ...(list.length ? list.map(ticketLine) : ['- none']), '',
-    '### Blocked', '', ...(blocked.length ? blocked.map(why) : ['- none']), '',
-    '### Skipped', '', ...(skipped.length ? skipped.map(why) : ['- none']), '',
-    '### Out of the ticket (for the backlog)', '', ...(seen.length ? seen : ['- nothing']), '',
-    '### Cost', '', '- `/cost` of the session: <the human fills it in>',
-  ].join('\n').trim()
-}
-
-const closesLine = n => `Closes #${n}`
-const notes = []
-if (!mergedBefore) notes.push(`the tickets already merged into ${base} could not be read: the Closes lines cover this run and the earlier reports of ${base} only`)
-if (!startPrs) notes.push(`the pull requests of ${P.repo} could not be read at the start: if one from ${base} exists, put the report in its body by hand`)
-const pr = Array.isArray(startPrs) && startPrs.length ? startPrs[0] : null
-
-// The file: the earlier runs' sections of THIS base stay, this run's is added, and the Closes lines go once at the end.
-// The file is keyed by base, and its sections are filtered by their header anyway: a section that names another base
-// is dropped, and `run k` counts only this base's sections. The Closes lines come from the first-parent log of the
-// base (merged before, minus the reverted ones, plus this run's merges); the file's lines are the fallback only when
-// the log could not be read, and only if every section of the file names this base.
-const headerBase = l => { const m = l.match(/^## .* report · (.+) · run \d+$/); return m ? m[1] : null }
-const fileSections = []
-for (const l of previousReport.split('\n')) {
-  const b = headerBase(l.trimEnd())
-  if (b !== null) fileSections.push({ base: b, lines: [l] })
-  else if (fileSections.length) fileSections[fileSections.length - 1].lines.push(l)
-}
-const ownSections = fileSections.filter(s => s.base === base)
-const onlyOwn = fileSections.length === ownSections.length
-const fileCloses = onlyOwn ? previousReport.split('\n').map(l => l.trim()).filter(l => /^Closes #\d+$/.test(l)).map(l => Number(l.slice(8))) : []
-const thisRunMerges = results.filter(r => r.status === 'done' && r.mergeCommit).map(r => r.number)
-const closes = [...new Set([...(mergedBefore ? [...mergedBefore] : fileCloses), ...thisRunMerges])].sort((a, b) => a - b)
-const runNumber = ownSections.length + 1
-const section = runSection(results, outOf, runNumber)
-const previousSections = ownSections.map(s => s.lines.filter(l => !/^Closes #\d+$/.test(l.trim())).join('\n').trim()).filter(Boolean).join('\n\n')
-const report = [previousSections, section, closes.map(closesLine).join('\n')].filter(Boolean).join('\n\n')
-
-// With a PR: its body plus this run's section, with a Closes line only for a ticket the body does not close already.
-let prBody = null
-if (pr) {
-  const old = norm(pr.body || '')
-  const oldLines = new Set(old.split('\n').map(l => l.trim()))
-  prBody = [old, section, closes.filter(n => !oldLines.has(closesLine(n))).map(closesLine).join('\n')].filter(Boolean).join('\n\n')
-}
-
-// Copies: removed if their ticket is done or the Builder committed (the branch keeps the work); kept otherwise, a
-// copy with no commit holds the only copy. The branches left are the copies' own and those of rounds that did not
-// end their ticket: the human deletes them.
+// The report is the child workflow release-report.js (documentation/launch-list.md, «The end of a list»): it reads git and
+// GitHub, writes the report file and returns the commands for the human; the run never pushes and never opens a PR. The
+// cleanup of the copies (trial failure 1) rides in the child's `runner` call that writes the file, so the end of the list
+// is two agents (the child's read and write). Copies: removed if their ticket is done or the Builder committed (the branch
+// keeps the work); kept otherwise, a copy with no commit holds the only copy. The branches left are the copies' own and
+// those of rounds that did not end their ticket: the human deletes them.
 const statusOf = n => (results.find(r => r.number === n) || {}).status
 const removable = builds.filter(b => b.worktreePath && (statusOf(b.number) === 'done' || b.commit))
 const branchNames = [...new Set(builds.flatMap(b => [b.worktreeBranch, builds.some(o => o.number === b.number && o.round > b.round) ? b.branch : null]).filter(Boolean))]
-
-const E = [], at = {}
-const add = (key, cmd) => { at[key] = E.length; E.push(cmd) }
-removable.forEach((b, i) => add(`rm${i}`, `sh -c ${shq(`git worktree remove --force ${shq(b.worktreePath)} || true`)}`))
-add('prune', 'git worktree prune')
-add('worktrees', 'git worktree list')
-if (branchNames.length) add('branches', `git branch --list ${branchNames.map(shq).join(' ')}`)
-add('head', `git rev-parse ${base}`)
-add('ahead', `git rev-list --count ${base} --not --remotes=origin`)
-add('file', fromText(report, `{ mkdir -p .claude/worktrees; cat > ${REPORT_FILE}; }`))
-add('fileBack', `cat ${REPORT_FILE}`)
-add('remote', `git ls-remote --heads origin ${base}`)
-if (pr) {
-  add('prEdit', fromText(prBody, `gh pr edit ${pr.number} -R ${P.repo} --body-file -`))
-  add('prBack', `gh pr view ${pr.number} -R ${P.repo} --json body`)
-}
-add('prs', `gh pr list -R ${P.repo} --head ${base} --base ${P.mainBranch} --state open --json number,url`)
-
-const endRs = await runListRetry('end', E, LAST)
-// A result counts only for the command that was asked.
-const got = key => {
-  const r = endRs && endRs[at[key]]
-  return r && loose(r.command) === loose(E[at[key]]) ? r : null
-}
-const ok = key => { const r = got(key); return r && r.exitCode === 0 ? r : null }
-if (!endRs) notes.push('the end of the list could not be run (no answer twice): the copies, the report file and the remote were not handled')
+const WORKTREES = 'git worktree list'
+const BRANCHES = `git branch --list ${branchNames.map(shq).join(' ')}`
+const cleanup = [
+  ...removable.map(b => `sh -c ${shq(`git worktree remove --force ${shq(b.worktreePath)} || true`)}`),
+  'git worktree prune', WORKTREES,
+  ...(branchNames.length ? [BRANCHES] : []),
+]
+let rep = null, reportFailure = null
+try { rep = await workflow({ scriptPath: REPORT_WORKFLOW }, { base, project: P, columns: C, small: F.small, results, cleanup }) } catch (e) { reportFailure = String(e) }
+if (rep && rep.stopped) { reportFailure = rep.stopped; rep = null }
+const notes = rep ? [...rep.notes] : [`the release report was not built (${reportFailure}): the copies were not cleaned; launch /release-report`]
 
 // Copies and branches, from what git listed after the cleanup.
-const listing = ok('worktrees')
+const ranOk = cmd => {
+  const r = rep && rep.cleanupResults.find(x => loose(x.command) === loose(cmd))
+  return r && r.exitCode === 0 ? r : null
+}
+const listing = ranOk(WORKTREES)
 const stillThere = p => !!listing && listing.output.split('\n').some(l => normPath(l).startsWith(`${normPath(p)} `))
 const copyPaths = [...new Set(builds.map(b => b.worktreePath).filter(Boolean))]
 const copiesRemoved = listing ? copyPaths.filter(p => !stillThere(p)) : []
 const copiesKept = listing ? copyPaths.filter(stillThere) : []
-const branchRead = ok('branches')
+const branchRead = branchNames.length ? ranOk(BRANCHES) : null
 const branchesLeft = branchRead ? branchRead.output.split('\n').map(l => l.replace(/^[*+]?\s*/, '').trim()).filter(l => branchNames.includes(l)) : []
-if (endRs && !listing) notes.push('the copies could not be listed after the cleanup: look at `git worktree list`')
-if (endRs && branchNames.length && !branchRead) notes.push('the branches of the run could not be listed: look at `git branch --list`')
-
-// The report file and the PR body, read back.
-const fileBack = ok('fileBack')
-const fileOk = !!ok('file') && !!fileBack && norm(fileBack.output) === norm(report)
-let prUpdated = false
-if (pr) {
-  const back = ok('prBack')
-  let now = null
-  if (back) { try { now = JSON.parse(back.output.trim()) } catch (e) { now = null } }
-  prUpdated = !!ok('prEdit') && !!now && norm(now.body || '') === norm(prBody)
-  if (!prUpdated) notes.push(`the body of PR #${pr.number} could not be confirmed: the report is in ${REPORT_FILE} and below`)
-} else if (endRs && !fileOk) {
-  notes.push(`${REPORT_FILE} was not written as it should: the create command below needs it, so paste the report as the body`)
-}
-
-// The remote against the local base: the tip it has, and how many commits it is missing.
-const localHead = (ok('head') || { output: '' }).output.trim()
-const aheadRead = ok('ahead')
-const missing = aheadRead && /^\d+$/.test(aheadRead.output.trim()) ? Number(aheadRead.output.trim()) : null
-const remoteRead = ok('remote')
-const remoteSha = remoteRead ? remoteRead.output.trim().split(/\s+/)[0] : ''
-let remote = { state: 'unknown', missing }
-if (endRs && !remoteRead) {
-  notes.push('the remote (origin) could not be read: check that it has the base before the push')
-} else if (remoteRead && !remoteSha) {
-  remote = { state: 'missing', missing }
-  notes.push(`${base} is not on the remote (origin): the push creates it${missing === null ? '' : `; ${missing} commits are not on origin yet`}`)
-} else if (remoteRead && remoteSha === localHead) {
-  remote = { state: 'up to date', missing: 0 }
-} else if (remoteRead && missing) {
-  remote = { state: 'behind', missing }
-  notes.push(`the remote ${base} is behind ${base} here: ${missing} commits are not on it; push first`)
-} else if (remoteRead) {
-  remote = { state: 'different', missing }
-  notes.push(`the remote ${base} is at ${remoteSha.slice(0, 7)} and ${base} here at ${localHead.slice(0, 7)}, with no commit to push: look at the difference before pushing`)
-}
-const lookup = ok('prs')
-if (lookup && !pr) {
-  let found = null
-  try { found = JSON.parse(lookup.output.trim()) } catch (e) { found = null }
-  if (Array.isArray(found) && found.length) notes.push(`a pull request from ${base} (#${found[0].number}) appeared during the run: put the report in its body by hand`)
-}
-// The push is the first command for the human whenever the remote lacks commits, with a PR or without one.
-const needsPush = remote.state === 'missing' || remote.state === 'behind'
-const commands = [
-  ...(needsPush ? [`git push -u origin ${base}`] : []),
-  ...(pr ? [] : [`gh pr create -R ${P.repo} --base ${P.mainBranch} --head ${base} --title "Release ${base.replace(/^release\//, '')}" --body-file ${REPORT_FILE}`]),
-]
+if (rep && !listing) notes.push('the copies could not be listed after the cleanup: look at `git worktree list`')
+if (rep && branchNames.length && !branchRead) notes.push('the branches of the run could not be listed: look at `git branch --list`')
 
 return {
   base,
@@ -958,11 +808,11 @@ return {
   copiesRemoved,
   copiesKept,
   branchesForTheHuman: branchesLeft,
-  report,
-  pullRequest: pr ? { number: pr.number, url: pr.url, updated: prUpdated } : null,
-  baseOnRemote: remote.state === 'unknown' ? null : remote.state !== 'missing',
-  remote,
-  reportFile: fileOk ? REPORT_FILE : null,
-  commandsForTheHuman: commands,
+  report: rep ? rep.report : null,
+  pullRequest: rep ? rep.pullRequest : null,
+  baseOnRemote: rep ? rep.baseOnRemote : null,
+  remote: rep ? rep.remote : null,
+  reportFile: rep ? rep.reportFile : null,
+  commandsForTheHuman: rep ? rep.commandsForTheHuman : [],
   notes,
 }
