@@ -69,7 +69,8 @@
       "Bash(sh -c 'out=$(gh pr list -R SergioLizana/Dynamo --head release/* --base main --state open --json number,url,body 2>&1); code=$?; printf %s \"$out\" | base64; exit $code')",
       "Bash(sh -c 'out=$(gh issue view * -R SergioLizana/Dynamo --json comments --jq * 2>&1); code=$?; printf %s \"$out\" | base64; exit $code')",
       "Bash(sh -c 'git branch -d * || true')",
-      "Bash(git branch -d *)"
+      "Bash(git branch -d *)",
+      "Bash(node .claude/workflows/lib/*)"
     ],
     "deny": [
       "Bash(git reset --hard*)",
