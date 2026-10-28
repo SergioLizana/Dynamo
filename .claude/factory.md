@@ -25,11 +25,14 @@ says what failed. A person takes it out (see the board commands file).
 `small` (model and effort) is for the script's small agents: the literal reads, the card moves, the reports and the
 cleanup. The start of the run has no agent of its own; see `documentation/launch-list.md`, «The start».
 
-`runner` holds the two limits for what crosses the `runner` agent, which copies commands and outputs by hand:
-`maxCommand`, the longest command a script hands it (characters), and `maxOutput`, the longest output a script accepts
-from one command. A longer text goes out in pieces and comes back in pages (`documentation/launch-list.md`, «Long text and
-the runner»). Each is an integer written on one line as `"maxCommand": 1500`, because the first read of this file prints
-them with a `grep`; `maxCommand` is at least 1100 and `maxOutput` at least 400.
+`runner` holds the three limits for what crosses the `runner` agent, which copies commands and outputs by hand:
+`maxCommand`, the longest command a script hands it (characters), `maxOutput`, the longest output a script accepts from
+one command, and `maxLine`, the longest line the command `.claude/workflows/lib/read.js` prints (the one place that limit
+is stated). A longer text goes out in pieces, and a big read is done by that command, which builds the data into a file
+where it is and prints one short line with its own hash and length (`documentation/launch-list.md`, «Long text and the
+runner»). Each is an integer; `maxCommand` is at least 1100, `maxOutput` at least 400 and `maxLine` at least 240 and not
+more than `maxOutput`. The scripts `board.js` and `release-report.js` call `read.js` for the tickets, `factory.json` and
+the release report; `read.js` reads `maxLine` and the project data from this file itself.
 
 The phases of the `run` workflow (order, column, model, effort,
 agent type and where a failure goes) are in `.claude/factory.json`. How to change them or add a phase:
@@ -63,33 +66,35 @@ command outside these forms asks (or is refused in `-p`), which is the point.
 
 | Phase or agent | Tools | Commands it runs (the rule is in `allow`) |
 | --- | --- | --- |
-| `board` workflow (start) | `runner`: Bash | `git status --porcelain --untracked-files=no`, `git branch --show-current`, `grep -o '"max…' .claude/factory.json` (the limits), and, each one inside the stored-read form (`sh -c 'mkdir -p .claude/worktrees; out=$(… 2>&1); code=$?; printf %s "$out" \| base64 \| tr -d "[:space:]" > .claude/worktrees/tmp-rd-…; echo …'`), `cat .claude/factory.json` and `gh api graphql` (read), and the pages of each (`sh -c 'p=$(cut -c a-b .claude/worktrees/tmp-rd-…); echo …'`) |
+| `board` workflow (start) | `runner`: Bash | only `node .claude/workflows/lib/read.js factory <k>`, `folder`, `tickets [n …]` and `ticket <k>` (rule `Bash(node .claude/workflows/lib/*)`) |
 | `run` workflow, Build | `builder`: all tools | `git rev-parse`, `git branch --show-current`, `git checkout -b ticket/…`, `git log`, `git cherry-pick <base>..<branch>` (round 2), `git add`, `git commit`, `gh issue view`, `gh issue comment` |
 | `run` workflow, Verify | `runner`: Bash only | the card move and read-back (`gh project item-edit`, `gh issue view`), `git -C <copy> status`, `rev-parse`, `merge-base`, and the checks inside `sh -c 'cd <copy> && …'` |
 | `run` workflow, Review | `reviewer`: Read, Grep, Glob, Bash (no Edit or Write) | `git -C <copy> diff`, `log`, `show`, `status`, `gh issue view`, `ls`, `wc`, and what a checkbox needs to be proven |
 | `run` workflow, Merge | `runner`: Bash only | `git merge --no-ff ticket/…`, `git merge-base`, `git revert -m 1 --no-edit HEAD`, `git merge --abort`, the checks, `gh issue edit --add-label`, `gh issue comment` (in pieces: `sh -c 'mkdir -p … && printf %s <piece> > .claude/worktrees/tmp-post-… && test …'`, then `sh -c 'test … && cat … \| base64 --decode \| gh issue comment … && rm -f …'`), and its read-back (`gh issue view --json comments`, inside `sh -c 'printf %s "$(… \| tr -d "\r")" \| cksum'`) |
 | `run` workflow, cleanup | `runner`: Bash only | `git branch --list`, `git worktree list`, `remove` (inside `sh -c`) and `prune` |
-| `release-report` workflow | `runner`: Bash only | `git rev-parse`, `git rev-list --count`, `git ls-remote --heads origin`, and, each one inside the stored-read form above (with its pages), `cat .claude/factory.json` (alone, with the `grep` of the limits), `git log --first-parent`, `gh api graphql` (read), `gh project item-list`, `gh pr list`; the report file under `.claude/worktrees/` (written in pieces as the comment is, joined by `sh -c 'test … && cat … \| base64 --decode \| { mkdir -p .claude/worktrees; cat > … ; } && rm -f …'`, confirmed with `cksum < <file>`), and `rm -f .claude/worktrees/tmp-*` |
+| `release-report` workflow | `runner`: Bash only | only `node .claude/workflows/lib/read.js release <base> [results <hash>]`, `put <name> <k> <piece> <crc> <len>` (the results of a run, as a child of `run.js`) and `tidy` (rule `Bash(node .claude/workflows/lib/*)`), plus the cleanup commands `run.js` hands it (the `run` workflow, cleanup row). `read.js` itself runs `git rev-parse`, `rev-list --count`, `ls-remote`, `log --first-parent`, `status`, `branch --show-current`, `gh api graphql`, `gh project item-list` and `gh pr list` as its own processes, not through the `runner`; it writes the report file under `.claude/worktrees/` |
 | `/implement`, `/to-tasks`, `/discover` | the session's | the same git and `gh` forms; `gh issue create`, `gh api repos/<repo>/issues/…` (the blocker relation), `git stash push -u -m` |
 
 What is not in `allow` on purpose: `gh api *` (only `gh api graphql` and `gh api repos/<repo>/issues/…`), `git push`
 (`ask`; the run prints it for the human), `gh pr create` and `gh pr edit` (the run prints them for the human), any
 `git merge` that is not `--no-ff ticket/…` or `--abort`, a bare `cat`, and `git switch`. Nothing relies on Claude Code's own
 read-only exemption: every command above, `ls` and `wc` (the reviewer's) included, has a rule in `allow`. `cat` has none of its
-own: the read the workflows make of `.claude/factory.json` is a `sh -c 'mkdir -p …; out=$(cat … 2>&1); …'` rule.
+own: the read the workflows make of `.claude/factory.json` is `node .claude/workflows/lib/read.js factory <k>`.
 
 The rules that name the repository, the board and its ids (`gh project item-edit …`, `gh api repos/…`, `gh pr list -R …`,
 `gh issue comment … -R …`) copy `project.repo`, `project.boardNumber`, `project.boardOwner`, `project.boardId`,
 `project.statusFieldId` and `project.doneLabel`; if one of those changes in `factory.json`, change the rule too.
 The `sh -c '…'` rules are the exact shapes the workflows build (`run.js`, `board.js`, `release-report.js`; the helpers `inCopy`,
-`pieces`, `stored` and `pageCommand`): a rule for a `sh -c` command matches its whole text, so each one ends where the command ends. A
+`pieces`): a rule for a `sh -c` command matches its whole text, so each one ends where the command ends. A
 `*` inside one stands for the part that varies (a path, a query, the base64 text) and cannot be narrowed further. A check added to `project.checks` needs its own
 `sh -c 'cd * && <check>'` rule.
 
-The rules for the shapes of the long-text change (ticket #75: the stored reads and their pages, the pieces, the join, the
-fingerprints, the `grep` of the limits and `rm -f .claude/worktrees/tmp-*`) are not in `.claude/settings.json` yet: a
-session cannot edit its own permissions, so the human adds them. `node --test tests/workflows/dry-run.test.js` lists the
-shapes that have no rule (its last test, marked todo); until they are in, a real run asks permission for them.
+The command of the big reads (ticket #76) needs one rule, `Bash(node .claude/workflows/lib/*)`, which covers every call
+`board.js` and `release-report.js` make to it; it is in `.claude/settings.json`, and `node --test tests/workflows/`
+checks that those two scripts send nothing else to the `runner` for their reads. The rules for the shapes of the comment
+pieces (ticket #75: the pieces, the join, the fingerprint of the last comment) are not in `.claude/settings.json` yet: a
+session cannot edit its own permissions, so the human adds them. `node --test tests/workflows/` lists the shapes that have
+no rule (a test marked todo); until they are in, a real run asks permission for them.
 
 ## Writes outside the repository
 

@@ -74,18 +74,17 @@ returns their output untouched (so the cleanup costs no agent of its own). `run.
 from that output, and returns the report next to them.
 
 **The report is rebuilt from state, not from what a run remembers** (the first report of the release was overwritten, and
-a report built from memory lost the earlier runs). Two `runner` calls:
-
-1. *Read:* the merge commits of the base since the main branch (`git log --first-parent`), the last run comment of every
-   ticket with the done label (one `gh api graphql` query, cut down by `--jq` to one line per ticket: the first line of
-   its last run comment, the `Rounds:` line and the «Out of the ticket» lines), the cards in *Needs Human* (`gh project
-   item-list`), the open PR of the base, and the remote: the tip `git ls-remote` printed against the local one and the
-   commits not on `origin`. The long ones come back in pages (see «Long text and the runner»).
-2. *Write:* the cleanup of the copies (if the run passed it), the report file in pieces and the file's fingerprint.
-
-They cannot be one call: the report is built from the read's output, and the script has no way to use a result inside
-the same `runner` call. So the end of a list launches two agents, one more than the single `end` call that built the
-report from memory, plus the calls for the pages of the read (one per eight pages).
+a report built from memory lost the earlier runs). It is built by a command of the repository, not by the `runner` copying
+data (ticket #76, «The big reads» in «Long text and the runner»): one `runner` call runs the cleanup of the copies (if the
+run passed it), the pieces of the run's results (only as a child of `run.js`), `node .claude/workflows/lib/read.js release
+<base> [results <hash>]` and `node .claude/workflows/lib/read.js tidy`. The `release` command reads the merge commits of
+the base since the main branch (`git log --first-parent`), the last run comment of every ticket with the done label (one
+`gh api graphql` query: the first line of its last run comment, the `Rounds:` line and the «Out of the ticket» lines), the
+cards in *Needs Human* (`gh project item-list`), the open PR of the base, and the remote (the tip `git ls-remote` printed
+against the local one and the commits not on `origin`); it writes the report file itself and prints ONE short line with the
+file, its length and hash, and a few counts and note codes. The script checks that line against the hash and length printed
+with it, and turns the codes into the notes. So the end of a list launches one agent for the report (two if the line has to
+be asked again), and the cleanup of the copies rides in the same call.
 
 The tickets are the `(#n)` that ends the subject of every merge commit, whatever the language of the subject (the older
 merges say `Fusiona ticket/… en … (#n)`); a `Revert "<merge subject>"` takes its ticket out. The report has: the
@@ -94,8 +93,9 @@ blocked run shows that blocked comment, and the git log says it is merged); what
 `results`); the tickets whose card is in *Needs Human*; the «Out of the ticket» lines for the backlog; a `/cost` line;
 and one `Closes #n` line for every ticket merged since the main branch. A `/cost` line the human filled in on the PR is
 kept in the rebuilt report. The file is `.claude/worktrees/release-report-<base>.md` (the base with `/` as `-`, ignored by
-git). The file's fingerprint (`cksum`) must be the report's, or `reportFile` is `null` and `notes` says which piece or
-check failed.
+git). The result carries the path and the file's hash and length (`reportFile`, `reportSum`) and the counts (`mergedCount`,
+`needsHumanCount`), not the text of the report: read the file. If the short line does not have its own hash and length
+after two calls, `reportFile` is `null` and `notes` says so (nothing is taken from that line).
 
 What it returns for the human (`commandsForTheHuman`), in order:
 
@@ -111,7 +111,7 @@ The human fills in the `/cost` of the session and decides about the backlog line
 ## The start
 
 The start is a third workflow, `.claude/workflows/board.js`, that `run.js` calls as a child before anything else. No
-agent interprets it: it is two literal reads, each a `runner` call, and the script decides (one agent per phase, not
+agent interprets it: it is literal reads, each a `runner` call, and the script decides (one agent per phase, not
 per command). It has two ways to run, like the end of a list.
 
 **Alone,** as `/board`: it takes the same `args` as `/run` (no args: every open ticket; or ticket numbers in the forms
@@ -123,23 +123,26 @@ its script path.
 
 **As a child of `run.js`** (`workflow({ scriptPath }, args)`, one level only): `run.js` passes its own `args` and gets
 back what it used to read itself, so nothing is read twice: `factory` (the parsed and validated `.claude/factory.json`),
-`base`, `wanted` (the ticket numbers asked for), `tickets` (as GitHub gave them: state, labels, card `status` and
-blockers) and `mainFolder` (`problem`, null if the main folder can take a run). The table comes along too. The agents
-are the same as before, two reads, and they show under the group *Start* in `/workflows`.
+`base`, `wanted` (the ticket numbers asked for), `tickets` (state, labels, card `status` and blockers) and `mainFolder`
+(`problem`, null if the main folder can take a run). The table comes along too. The agents are the same as before, and
+they show under the group *Start* in `/workflows`.
 
-1. `.claude/factory.json`, read by the `runner` in pages (see «Long text and the runner»): the same call prints the
-   limits that the pages are cut by.
-2. One `runner` call runs the commands and returns each one's exit code and output as they are: `git status --porcelain
-   --untracked-files=no`, `git branch --show-current` and the `gh api graphql` query (or queries) with every ticket (the
-   requested ones, or the first 100 open ones), its labels, the status of its card and its native blockers (with their
-   state and labels); the answer is read in pages. Every list is checked against its total, so nothing is cut off
-   silently. The report at the end reads its own state (see «The end of a list»).
+1. `.claude/factory.json`, read by the `runner` as parts of one short line each (`read.js factory <k>`, eight commands to
+   a call): the command cuts the file by the `runner.maxLine` that is in it, so there is nothing to ask first. The parts
+   are joined, checked against the hash of the whole and decoded.
+2. One `runner` call runs `read.js folder` (changes in tracked files and the branch of the main folder) and `read.js
+   tickets [numbers]`, which asks GitHub for every ticket (the requested ones, or the first 100 open ones), its labels,
+   the status of its card and its native blockers (with their state and labels), keeps them in a file and prints how many
+   there are. Then one `read.js ticket <k>` per ticket, eight to a call, each printing one short line: number, state,
+   card, whether it has the done label, its blockers (number, state, done) and its title (cut, with `cut=1`, only if the
+   line would be longer than `maxLine`). Every list is checked against its total, so nothing is cut off silently. The
+   report at the end reads its own state (see «The end of a list»).
 
-   The query has caps (`TICKET_FIELDS` in `board.js`): 20 labels per ticket, 5 board cards per ticket, 20 blockers per
+   The query has caps (`TICKET_FIELDS` in `read.js`): 20 labels per ticket, 5 board cards per ticket, 20 blockers per
    ticket and 10 labels per blocker, and 100 open tickets when no numbers are given. A ticket with more than that
-   cannot be read whole: it stops before any *Build* and names the ticket, it does not go on with a cut list. The
-   fields are a fragment written once, so each requested ticket is a short alias; the requested tickets go in as few
-   queries as `runner.maxCommand` allows.
+   cannot be read whole: it stops before any *Build* and names the ticket, it does not go on with a cut list. A ticket
+   whose line would be longer than `maxLine` even without its title (about 20 blockers) stops the same way. The labels
+   of a ticket reach the script only as «has the done label» (all that `run.js` and the table read).
 
 `board.js` stops, and so does the run before any *Build*, if `factory.json` cannot be read or is not valid, if the base
 is the main branch, if something in `args` is not a ticket number, and if a requested ticket cannot be read (it is
@@ -205,8 +208,8 @@ says why (`checkFactory` and the read of the JSON in `board.js`, and the `PHASES
   merge, one more call reads `is-ancestor` and runs the checks again, and the ticket still ends *done* with its label.
   On success that is two `runner` calls. A ticket that passes in round 1 launches eleven agents in the whole run: the two
   reads of the start, the card to *Build*, the Builder, the base read, *Verify*, the reviewer, the two of *Merge* and the
-  two of the end (the report's read and its write, with the cleanup of the copies); plus one `runner` call for every
-  eight pages of a long read (the start's file and tickets, the report's four reads).
+  one of the end (the report, with the cleanup of the copies); plus one `runner` call for every eight short lines of the
+  start (the parts of `factory.json`, one line per ticket).
 - **Plumbing does not cost a round:** a call that returns nothing, or that did not run what it should, is repeated once;
   a second time the ticket stops as «infrastructure» (that is its «Stopped at») and uses no round. The fields of a round
   (build, base sha, checks, verdict) are reset when the next round starts, so a block in round 2 quotes only round 2.
@@ -248,18 +251,43 @@ says why (`checkFactory` and the read of the JSON in `board.js`, and the `PHASES
 The `runner` (Haiku) copies every command it runs and every output it returns by hand, and long text does not survive
 that. In run `wf_cec30c76-5dd` a typo got into a 4.5 KB comment command and the comment was posted twice, a code fence
 was dropped when the last comment was copied back, and a 30 KB read came back cut to its first 2 KB. So nothing long
-crosses the `runner` in one piece, in either direction (ticket #75). The rule has three parts, the same in the three
-scripts (a script cannot import, so the helpers are copied; each carries the same comment).
+crosses the `runner` in one piece, in either direction (ticket #75), and a big read is not done by the `runner` at all
+but by a command of the repository (ticket #76, «The big reads»). The rule has the parts below; a script cannot import,
+so the helpers are copied between scripts, each copy with the same comment.
 
 **The limits** are in one place, the `runner` block of `.claude/factory.json`: `maxCommand`, the longest command a script
-hands the `runner` (default 1500 characters), and `maxOutput`, the longest output a script accepts from one command
-(default 1500, under the 2 KB the Bash tool shows). Each is an integer, `maxCommand` at least 1100 (the longest fixed
-command, the report's query, is about 1050) and `maxOutput` at least 400, written as `"maxCommand": 1500` on one line,
-because the first read of the file prints them with a `grep` before it can cut the file in pages. `run.js` refuses to
-send a command longer than `maxCommand` (it throws, naming the command), and the helper that cuts text into pieces and
-pages takes its sizes from the same two numbers.
+hands the `runner` (default 1500 characters), `maxOutput`, the longest output a script accepts from one command (default
+1500, under the 2 KB the Bash tool shows), and `maxLine`, the longest line `read.js` prints (default 400). Each is an
+integer: `maxCommand` at least 1100 (the longest fixed command is about 1050), `maxOutput` at least 400, `maxLine` at
+least 240 and not more than `maxOutput`. `run.js` refuses to send a command longer than `maxCommand` (it throws, naming
+the command), the helper that cuts text into pieces takes its size from it, and `read.js` fails with an `error` line
+rather than print a line longer than `maxLine`.
 
-**Text that goes out** (a comment on a ticket, the release report file) is sent as base64 in pieces:
+**The big reads** (the tickets of the start, `factory.json`, the whole of the release report) are done by
+`.claude/workflows/lib/read.js`, plain Node with no dependencies, the same on Linux, macOS and Windows (Git Bash): it runs
+`git` and `gh` itself with no shell, reads `.claude/factory.json` for the project data and the limits, builds what is big
+into a file under `.claude/worktrees/` (ignored by git) and prints **one short ASCII line**: `<kind> key=value ... <crc>
+<length>`, where the values are percent-encoded and the last two numbers are the `cksum` of the text before them. The
+script accepts a line only if that hash and length are the line's own, so a character the `runner` changed is caught, and
+asks again (the start: three tries; the report: one more call) or builds nothing from it. Commands, all `node
+.claude/workflows/lib/read.js <command>`, so that the one allow rule `Bash(node .claude/workflows/lib/*)` in
+`.claude/settings.json` covers every call the start and the report make:
+
+- `factory <k>`: part k of `factory.json` (base64, as many characters as fit `maxLine`; the line has the number of parts
+  and the hash of the whole). `folder`: changes in tracked files and the current branch of the main folder.
+- `tickets [n ...]`: reads the open tickets (or the numbers given) into `tmp-tickets.json` and prints their count and
+  hash; `ticket <k>`: the k-th one, as a line.
+- `release <base|-> [results <hash>]`: builds `release-report-<base>.md` and prints its path, hash and length, the counts
+  (tickets merged, cards in *Needs Human*, the PR number), the state of the remote and the notes as codes
+  (`remote-behind:3`, `no-prs`...) that `release-report.js` turns into text.
+- `put <name> <k> <piece> <crc> <len>`: stores one piece of a text the script sends (the results of the run); it fails
+  unless the piece arrived with that hash and length. `release` uses the pieces only if together they have the hash the
+  script sent, and removes them. `tidy`: removes the `tmp-*` files.
+
+`FACTORY_GH` and `FACTORY_GIT` (a JSON list) replace `gh` and `git` for the command, which is how the tests put a fake
+in their place.
+
+**Text that goes out** (a comment on a ticket; the results of a run to the report go the same way, through `read.js put`) is sent as base64 in pieces:
 
 1. One command per piece, `sh -c 'mkdir -p .claude/worktrees && printf %s <piece> > <file>.NNN && test "$(cksum <
    <file>.NNN)" = "<crc> <length>"'`. The script computed the `cksum` (POSIX: the CRC and the byte count, the same on
@@ -270,7 +298,7 @@ pages takes its sizes from the same two numbers.
    --decode | <gh issue comment … --body-file - | the file> && rm -f <file>.[0-9]*'`. It runs only if the pieces together
    have the fingerprint of the whole, and it removes them: running it a second time finds no pieces and does nothing, so
    a text is posted at most once. The pieces are `.claude/worktrees/tmp-*` (ignored by git); what is left of a failed
-   attempt is removed with `rm -f .claude/worktrees/tmp-*` in the report's write call.
+   attempt is removed by `read.js tidy` in the report's call.
 3. A text is **confirmed by its fingerprint, not by copying it back**: a command prints the `cksum` of the ticket's last
    comment (`gh issue view … --jq '.comments[-1].body'`, without carriage returns) or of the file
    (`cksum < <file>`), and the script compares those two numbers with its own. A mismatch is a note that says the hash and
@@ -282,29 +310,18 @@ anything again, and if it cannot read it either it sends nothing and the note sa
 A piece that fails twice stops the post: the comment is not posted, and the note says which piece failed and how (it
 failed its check, or the `runner` ran another command than the one it was given).
 
-**Text that comes back** (the long reads: `factory.json`, the tickets of the start, the git log, the comments, the cards and
-the PR body of the report) is stored by the command that makes it, as base64 on one line in `.claude/worktrees/tmp-rd-<name>`,
-and read in pages: `sh -c 'mkdir -p .claude/worktrees; out=$(<command> 2>&1); code=$?; printf %s "$out" | base64 | tr -d
-"[:space:]" > <file>; echo "$code $(cksum < <file>)"'` prints the command's exit code and the file's fingerprint (and exits
-0, so a failed read does not stop the ones after it). Then each page is `sh -c 'p=$(cut -c a-b <file>); echo "$p"; printf
-%s "$p" | cksum'`: its output is the page and, on the next line, the fingerprint of that page, which the script checks
-before accepting it. A page that does not match is asked again (three tries in all; only that page); the pages
-together are checked against the file's fingerprint, and then decoded. A page is `maxOutput - 60` characters and a
-call carries at most eight of them. The report's read keeps only the last run comment of each ticket (the command
-computes it, with the dot of «run · » as its code), so 55 tickets of ten comments each are about 15 KB, not every comment.
-
-The first read of `factory.json` has a chicken-and-egg problem (the pages are cut by limits that are in the file): the
-same call runs `grep -o '"max[A-Za-z]*": *[0-9]*' .claude/factory.json`, which prints the two numbers, and the script
-checks them against the parsed file.
-
-**Dry runs.** `node --test tests/workflows/dry-run.test.js` (needs `sh`, as the factory does: Git Bash on Windows) runs the
-three scripts with a `runner` played by a real shell in a scratch copy, with `gh` and `git` replaced by a fake
-(`tests/workflows/`). The `runner` there cuts every output at 2000 characters, as the Bash tool does, and can alter one
-character of a command or of an output, or lose an answer. It checks that no command exceeds `maxCommand` and no output
-`maxOutput`, that a long comment is posted once and whole, that an altered character posts it at most once with a note
-that says what failed, that a lost answer does not post it twice, that `release-report` builds the report of 55 tickets
-and that `board` reads 100 open tickets, also with the smallest limits. It also lists the command shapes with no rule in
-`.claude/settings.json` (see «Not tested yet»).
+**Tests.** `node --test tests/workflows/` (needs `sh`, as the factory does: Git Bash on Windows). `read.test.js` runs the
+command as a process in a scratch copy of the repository with a fake `gh` and `git` (`tests/workflows/fake-gh.js`), and
+checks every line (short, ASCII, its own hash and length), the factory in parts, the tickets (also with titles cut to fit
+and a line that cannot fit), the pieces and the report. `dry-run.test.js` runs the three scripts with a `runner` played by
+a real shell in the same scratch copy. The `runner` there cuts every output at 2000 characters, as the Bash tool does, and
+can alter one character of a command or of an output, or lose an answer. It checks that no command exceeds `maxCommand`,
+no output `maxOutput` and no line of `read.js` `maxLine`, that the scripts send nothing to the `runner` for the big reads
+but `node .claude/workflows/lib/read.js ...`, that a line altered once is asked again and altered every time builds
+nothing, that a long comment is posted once and whole, that an altered character posts it at most once with a note that
+says what failed, that a lost answer does not post it twice, that `release-report` builds the report of 55 tickets and
+that `board` reads 100 open tickets, also with the smallest limits. It also lists the command shapes of `run.js` with no
+rule in `.claude/settings.json` (see «Not tested yet»).
 
 ## Failures from the trial, fixed
 
@@ -340,10 +357,11 @@ Still untested:
   the usage limit;
 - the changes of #56-#58 (*Verify* decided by the script against a pinned base, the Builder's one definition, the *Merge*
   sequence proved by literal reads, the comments sent as base64, the report that accumulates) with real tickets: they
-  were tried in a dry run with simulated agents. A real run still has to show that the `runner` copies the short pieces
-  and the pages of «Long text and the runner» without a change (the script checks a fingerprint of every one and says
-  when it differs) and that the `sh -c` shapes of that section are allowed without a prompt: their allow rules are not
-  in `.claude/settings.json` yet (the dry-run test lists them as «todo»);
+  were tried in a dry run with simulated agents. A real run still has to show that the `runner` copies the short pieces of
+  «Long text and the runner» (the comments) and the short lines of `read.js` without a change (the script checks a
+  fingerprint of every one and says when it differs) and that the `sh -c` shapes of the comments are allowed without a
+  prompt: their allow rules are not in `.claude/settings.json` yet (the dry-run test lists them as «todo»); the rule for
+  `read.js` is `Bash(node .claude/workflows/lib/*)`;
 - `release-report.js` launched for real (`/release-report`, or the workflow by its script path): the Builder never
   launches a workflow (a subagent has no Workflow tool, and `claude -p` stops at «Review dynamic workflow before
   running»), so the human launches it once. It was tried with a script that answers each `agent()` call the way the

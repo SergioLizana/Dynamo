@@ -22,6 +22,8 @@ function scratch() {
   fs.mkdirSync(path.join(dir, '.git'));
   fs.mkdirSync(path.join(dir, '.claude', 'worktrees'), { recursive: true });
   fs.copyFileSync(path.join(ROOT, '.claude', 'factory.json'), path.join(dir, '.claude', 'factory.json'));
+  fs.mkdirSync(path.join(dir, '.claude', 'workflows', 'lib'), { recursive: true });
+  fs.copyFileSync(path.join(ROOT, '.claude', 'workflows', 'lib', 'read.js'), path.join(dir, '.claude', 'workflows', 'lib', 'read.js'));
   const state = path.join(dir, 'state');
   fs.mkdirSync(state);
   const bin = path.join(dir, 'bin');
@@ -29,6 +31,16 @@ function scratch() {
   const fake = fwd(path.join(__dirname, 'fake-gh.js'));
   for (const tool of ['gh', 'git']) fs.writeFileSync(path.join(bin, tool), `#!/bin/sh\nexec node "${fake}" ${tool} "$@"\n`, { mode: 0o755 });
   return { dir, state, bin };
+}
+
+// The environment that puts the fake in place of gh and git: for the scripts through PATH (the shell finds the stand-ins in
+// `bin`), and for .claude/workflows/lib/read.js, which runs them without a shell, through FACTORY_GH and FACTORY_GIT.
+function fakeEnv({ state, bin }, extra) {
+  const fake = fwd(path.join(__dirname, 'fake-gh.js'));
+  return {
+    ...process.env, ...extra, FAKE_STATE: state, PATH: bin + path.delimiter + process.env.PATH,
+    FACTORY_GH: JSON.stringify([process.execPath, fake, 'gh']), FACTORY_GIT: JSON.stringify([process.execPath, fake, 'git']),
+  };
 }
 
 // options: file (script), args, env, workflow (stub for child workflows), agent (stub for the other agents),
@@ -39,12 +51,12 @@ async function dryRun(options) {
   if (options.limits) {
     const f = path.join(dir, '.claude', 'factory.json');
     const json = JSON.parse(fs.readFileSync(f, 'utf8'));
-    json.runner = options.limits;
+    json.runner = { ...json.runner, ...options.limits };
     fs.writeFileSync(f, JSON.stringify(json, null, 2));
   }
   const factory = JSON.parse(fs.readFileSync(path.join(dir, '.claude', 'factory.json'), 'utf8'));
-  const env = { ...process.env, ...options.env, FAKE_STATE: state, PATH: bin + path.delimiter + process.env.PATH };
-  const seen = { commands: [], longCommands: [], longOutputs: [], refused: [], calls: 0, runnerCalls: 0, labels: [] };
+  const env = fakeEnv({ state, bin }, options.env);
+  const seen = { commands: [], longCommands: [], longOutputs: [], longLines: [], refused: [], calls: 0, runnerCalls: 0, labels: [] };
   let n = 0;
 
   async function agent(prompt, opts = {}) {
@@ -65,6 +77,8 @@ async function dryRun(options) {
       const p = spawnSync('sh', ['-c', command], { cwd: dir, env, encoding: 'utf8' });
       const full = `${p.stdout || ''}${p.stderr || ''}`;
       if (full.length > ((factory.runner || {}).maxOutput || Infinity) && !options.allowLongOutput) seen.longOutputs.push({ command, length: full.length });
+      const maxLine = (factory.runner || {}).maxLine;
+      if (maxLine && command.startsWith('node .claude/workflows/lib/') && full.trim().length > maxLine) seen.longLines.push({ command, length: full.trim().length });
       const cut = full.length > TRUNCATE ? full.slice(0, TRUNCATE) : full;
       const output = options.garble ? options.garble(cut, command, n++, call) : cut;
       results.push({ command, exitCode: p.status === null ? 1 : p.status, output: output === '' ? '(Bash completed with no output)' : output });
@@ -85,4 +99,4 @@ async function dryRun(options) {
   return { result, error, logs, posts, seen, dir, state, left, factory };
 }
 
-module.exports = { dryRun, ROOT };
+module.exports = { dryRun, scratch, fakeEnv, ROOT };
