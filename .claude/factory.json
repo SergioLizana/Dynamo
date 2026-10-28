@@ -12,7 +12,8 @@
     "doneLabel": "in-release",
     "checks": [
       "claude plugin validate . --strict",
-      "git diff --check <base>"
+      "git diff --check <base>",
+      "node --test dynamo/tests/"
     ],
     "documentsLanguage": "English",
     "plan": "documentation/agent-factory-plan.md",
