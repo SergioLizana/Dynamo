@@ -10,6 +10,7 @@ import { git } from './git.ts';
 import { board } from './board.ts';
 import { card } from './card.ts';
 import { comment } from './comment.ts';
+import { copy } from './copy.ts';
 import { merge } from './merge.ts';
 import { report } from './report.ts';
 import { verify } from './verify.ts';
@@ -21,6 +22,7 @@ const subcommands = new Map<string, Subcommand>([
   ['merge', merge],
   ['card', card],
   ['comment', comment],
+  ['copy', copy],
   ['report', report],
 ]);
 
