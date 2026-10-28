@@ -60,3 +60,13 @@ test('report gets gh, git and the config as parameters: it imports none of their
     assert.deepEqual(imports(name).filter((i) => !i.type && edges.includes(i.from)), [], name);
   }
 });
+
+test('the copy decisions are pure: they import nothing but types, node:path and the branch names of merging.ts', () => {
+  assert.deepEqual(imports('copies.ts').filter((i) => !i.type && i.from !== 'node:path' && i.from !== './merging.ts'), []);
+  assert.deepEqual(imports('merging.ts').filter((i) => !i.type), []);
+});
+
+test('copy gets gh, git and the config as parameters: it imports none of their modules', () => {
+  const edges = ['./exec.ts', './gh.ts', './git.ts', './factory.ts', 'node:child_process', 'node:fs'];
+  for (const name of ['copy.ts', 'copies.ts']) assert.deepEqual(imports(name).filter((i) => !i.type && edges.includes(i.from)), [], name);
+});
