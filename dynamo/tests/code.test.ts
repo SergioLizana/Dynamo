@@ -70,3 +70,13 @@ test('copy gets gh, git and the config as parameters: it imports none of their m
   const edges = ['./exec.ts', './gh.ts', './git.ts', './factory.ts', 'node:child_process', 'node:fs'];
   for (const name of ['copy.ts', 'copies.ts']) assert.deepEqual(imports(name).filter((i) => !i.type && edges.includes(i.from)), [], name);
 });
+
+test('the agent decisions are pure: agents.ts imports nothing but types', () => {
+  assert.deepEqual(imports('agents.ts').filter((i) => !i.type), []);
+});
+
+test('claude.ts is reached from the entry point only: a subcommand gets runAgent as a parameter, and agents.ts has no edge', () => {
+  const edges = ['./exec.ts', './claude.ts', './gh.ts', './git.ts', './factory.ts', 'node:child_process', 'node:fs'];
+  assert.deepEqual(imports('agents.ts').filter((i) => edges.includes(i.from)), []);
+  assert.deepEqual(sources.filter((n) => n !== 'claude.ts' && n !== 'dynamo.ts' && imports(n).some((i) => !i.type && i.from === './claude.ts')), []);
+});
