@@ -762,7 +762,7 @@ if (rep && branchNames.length && !branchRead) notes.push('the branches of the ru
 
 return {
   base, tickets: results, copiesRemoved, copiesKept, branchesForTheHuman: branchesLeft,
-  report: rep ? rep.report : null, pullRequest: rep ? rep.pullRequest : null, baseOnRemote: rep ? rep.baseOnRemote : null,
+  pullRequest: rep ? rep.pullRequest : null, baseOnRemote: rep ? rep.baseOnRemote : null,
   remote: rep ? rep.remote : null, reportFile: rep ? rep.reportFile : null, commandsForTheHuman: rep ? rep.commandsForTheHuman : [],
   notes,
 }
