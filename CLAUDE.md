@@ -5,7 +5,8 @@ them until they open a PR that a person approves. Private repository.
 
 - Design: `documentation/agent-factory-plan.md` (read it before proposing anything).
 - Supporting research: `documentation/agent-factory-research.md` (consult it by section, not in full).
-- Status: stage 2 (the unit). The stages are in the plan, §8.
+- Status: stage 2 (the unit); release 0.1.0 is frozen (tag `v0.1.0`) and 0.2.0 moves the loop from the workflow to a
+  program of our own, in the phases of `documentation/orchestrator-review.md`. The stages are in the plan, §8.
 
 ## How we work
 
