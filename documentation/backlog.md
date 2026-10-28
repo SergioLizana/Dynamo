@@ -202,3 +202,17 @@ Small things found when reviewing the list #53-#58. None is a problem yet; each 
   (column, round, last step, turns, cost). Details in `documentation/orchestrator-review.md`, phase 2.
 - **When:** the logs and `dynamo status --json` exist and the first real list shows that the log and the board are not
   enough.
+
+## The agent log is written only when the agent ends
+
+- **Origin:** ticket #86 (merged, 2026-10-28). `runAgent` (`dynamo/claude.ts`) runs `claude -p --agent` through `exec`
+  (`dynamo/exec.ts`), which uses `spawnSync`: the stream arrives whole when the process ends, and only then
+  `writeFileSync(run.log, …)` writes it.
+- **Problem:** while an agent works its log does not exist or is empty, so the live view above (the last step of each
+  agent, read from `logs/*.jsonl` or `dynamo status --json`) would have nothing to show until the agent is done.
+  Also, `exec` has a `maxBuffer` of 64 MB: a bigger stream makes `spawnSync` fail and the log is lost too.
+- **Options (none chosen):**
+  - Give the child's stdout to the log file itself (a file descriptor as the stdio of `spawnSync`), so the log grows
+    live and does not depend on the buffer. It changes `exec.ts`, and the result is read back from the file.
+  - Move to an asynchronous `spawn`, which running two tickets at once (N = 2 with a merge lock) needs anyway.
+- **When:** the ticket that builds `dynamo run` or the live view, whichever comes first. Nothing to fix before.
