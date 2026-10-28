@@ -10,7 +10,9 @@ export const meta = {
 // commands in one `runner` call (.claude/agents/runner.md), one agent per phase and not per command, and the script
 // decides from the exit codes and the outputs. Text an agent wrote reaches a prompt of the others never, and a GitHub
 // comment only as quoted data. One phase = one column = one agent. To add one: an entry in factory.json and a function
-// in PHASES (documentation/launch-list.md, «The phases»).
+// in PHASES (documentation/launch-list.md, «The phases»). The `runner` copies by hand, so no command is longer than
+// `runner.maxCommand` of factory.json, and a long text goes out in pieces and is confirmed by a fingerprint (below,
+// «Long text through the runner»; documentation/launch-list.md, «Long text and the runner»).
 
 const NAME = 'run' // the same as meta.name
 const FACTORY_JSON = '.claude/factory.json'
@@ -78,10 +80,28 @@ function fence(text) {
   return `${f}text\n${body}\n${f}`
 }
 
-// The runner takes commands, not files: a long text travels as base64 in one command, `printf %s <text> | base64
-// --decode | …`, so no quote, backtick or newline in it reaches a shell. Done here because the script has no Buffer.
-const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-function base64(text) {
+// ---------- Long text through the runner ----------
+
+// The `runner` copies every command and every output by hand, and long text does not survive that (run wf_cec30c76-5dd:
+// a typo in a 4.5 KB command, a dropped code fence, a read cut by the Bash tool at about 2 KB). So nothing long crosses
+// in one piece. A text goes out in short pieces, each one a command that checks itself with a fingerprint the script
+// computed, so the runner stops at the first piece that came out wrong; a text that comes back is not copied back at all,
+// a command computes its fingerprint and the script compares it with its own. The limits are in factory.json
+// (`runner`, read at the start): `maxCommand` is the longest command the script hands over; `maxOutput` the longest output
+// it accepts. Scripts cannot import, so these helpers are the same in run.js and release-report.js.
+// The fingerprint is `cksum`'s (POSIX: the same on Linux, macOS and Git Bash): "<crc> <length in bytes>".
+const CRC_TABLE = Array.from({ length: 256 }, (_, i) => {
+  let c = i << 24
+  for (let k = 0; k < 8; k++) c = c & 0x80000000 ? (c << 1) ^ 0x04c11db7 : c << 1
+  return c >>> 0
+})
+function cksum(bytes) {
+  let crc = 0
+  for (const b of bytes) crc = ((crc << 8) ^ CRC_TABLE[((crc >>> 24) ^ b) & 255]) >>> 0
+  for (let n = bytes.length; n > 0; n = Math.floor(n / 256)) crc = ((crc << 8) ^ CRC_TABLE[((crc >>> 24) ^ (n & 255)) & 255]) >>> 0
+  return `${(~crc) >>> 0} ${bytes.length}`
+}
+function utf8(text) {
   const bytes = []
   for (const ch of String(text)) {
     const c = ch.codePointAt(0)
@@ -90,6 +110,16 @@ function base64(text) {
     else if (c < 0x10000) bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
     else bytes.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
   }
+  return bytes
+}
+const ascii = s => Array.from(String(s), ch => ch.charCodeAt(0))
+// The fingerprint of a text as GitHub keeps it (no carriage returns, no blank edges): what `cksum` prints for the same text.
+const fingerprint = text => cksum(utf8(String(text).replace(/\r/g, '').trim()))
+
+// Base64 of a text: the pieces carry it so that no quote, backtick or newline of the text reaches a shell. The script has no Buffer.
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+function base64(text) {
+  const bytes = utf8(text)
   let out = ''
   for (let i = 0; i < bytes.length; i += 3) {
     const a = bytes[i], b = bytes[i + 1], c = bytes[i + 2]
@@ -98,49 +128,38 @@ function base64(text) {
   }
   return out
 }
-const fromText = (text, tail) => `sh -c ${shq(`printf %s ${base64(text)} | base64 --decode | ${tail}`)}`
+
+// A text to send: { puts, unpack(tail) }. `puts` are the commands that write the pieces, in order; each writes its piece to
+// its own file and fails (exit 1) unless the file has the fingerprint the script computed for that piece. `unpack(tail)` is
+// the command that, only if all the pieces together have the fingerprint of the whole, decodes them into `tail`'s standard
+// input and removes them: once it ran, a second run finds no pieces and does nothing, so a text goes out at most once.
+const TMP = '.claude/worktrees/tmp-' // ignored by git; the end of a list removes what is left
+function pieces(name, text) {
+  const b64 = base64(text)
+  const total = cksum(ascii(b64))
+  const prefix = `${TMP}${name}-${total.split(' ')[0]}.`
+  const put = (k, chunk) => {
+    const file = `${prefix}${String(k).padStart(3, '0')}`
+    return `sh -c ${shq(`mkdir -p .claude/worktrees && printf %s ${chunk} > ${file} && test "$(cksum < ${file})" = "${cksum(ascii(chunk))}"`)}`
+  }
+  const size = Math.floor((LIM.maxCommand - put(1, '').length - 20) / 4) * 4
+  if (size < 4) throw new Error(`maxCommand (${LIM.maxCommand}) is too short to carry a piece of text`)
+  const puts = []
+  for (let i = 0; i < b64.length; i += size) puts.push(put(puts.length + 1, b64.slice(i, i + size)))
+  if (puts.length > 999) throw new Error(`a text of ${b64.length} characters needs ${puts.length} pieces: too long`)
+  const all = `${prefix}[0-9]*`
+  const unpack = tail => `sh -c ${shq(`test "$(cat ${all} | cksum)" = "${total}" && cat ${all} | base64 --decode | ${tail} && rm -f ${all}`)}`
+  return { puts, unpack }
+}
 
 // Exact text through the `runner` (run wf_c3e19634-96a): an agent that copies text by hand does not keep an escape
-// (an escape sequence for the middle dot came back as `·`) or a non-ASCII character (`·` came back as `�`). So every command is plain ASCII with no
-// escape sequence in it (a filter that needs another character is done here, in the script), and a read whose output can
-// hold other text (comments, bodies, titles) is asked as base64 and decoded here. An output that is not valid base64 and
-// UTF-8 is a plumbing failure with its reason, never text with `�`.
+// (an escape sequence for the middle dot came back as `·`) or a non-ASCII character (`·` came back as `�`). So every
+// command is plain ASCII with no escape sequence in it (a filter that needs another character is done here, in the
+// script), and text with other characters travels only as base64 in pieces (above). A command that is not plain ASCII is
+// refused before it is sent.
 const plainProblem = c => {
   const bad = String(c).match(/[^\x20-\x7e]|\\u[0-9a-fA-F{]|\\x[0-9a-fA-F]{2}/)
   return bad ? `«${oneLine(c, 120)}» has «${bad[0]}»` : null
-}
-// `<command>` with its output as base64 (`… | base64`, on Linux, macOS and Git Bash); the exit code stays the command's.
-const asBase64 = command => `sh -c ${shq(`out=$(${command} 2>&1); code=$?; printf %s "$out" | base64; exit $code`)}`
-// Base64 back to text: { text } or { error }. The line breaks `base64` adds are ignored; the rest must be exact.
-function fromBase64(encoded) {
-  const s = String(encoded).replace(/\s+/g, '')
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s)) return { error: 'it has characters that are not base64' }
-  if (s.length % 4 !== 0) return { error: `its length (${s.length}) is not a multiple of 4: characters were lost or added` }
-  const bytes = []
-  for (let i = 0; i < s.length; i += 4) {
-    const v = [0, 1, 2, 3].map(k => (s[i + k] === '=' ? 0 : B64.indexOf(s[i + k])))
-    const n = (v[0] << 18) | (v[1] << 12) | (v[2] << 6) | v[3]
-    bytes.push((n >> 16) & 255)
-    if (s[i + 2] !== '=') bytes.push((n >> 8) & 255)
-    if (s[i + 3] !== '=') bytes.push(n & 255)
-  }
-  let text = ''
-  for (let i = 0; i < bytes.length;) {
-    const b = bytes[i]
-    if (b < 0x80) { text += String.fromCharCode(b); i++; continue }
-    const need = b >= 0xc2 && b <= 0xdf ? 1 : b >= 0xe0 && b <= 0xef ? 2 : b >= 0xf0 && b <= 0xf4 ? 3 : 0
-    if (!need) return { error: `byte ${i} is not valid UTF-8` }
-    let cp = b & (0x3f >> need)
-    for (let k = 1; k <= need; k++) {
-      const c = bytes[i + k]
-      if (c === undefined || (c & 0xc0) !== 0x80) return { error: `the UTF-8 sequence at byte ${i} is cut or broken` }
-      cp = (cp << 6) | (c & 63)
-    }
-    if (cp < [0, 0x80, 0x800, 0x10000][need] || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return { error: `the UTF-8 sequence at byte ${i} is not a valid character` }
-    text += String.fromCodePoint(cp)
-    i += need + 1
-  }
-  return { text }
 }
 
 // ---------- Phases ----------
@@ -420,6 +439,7 @@ const { factory: F, base } = board
 const C = F.columns
 const P = F.project
 const SMALL = optsOf(F.small) // the script's small agents: every `runner` call that has no phase of its own
+const LIM = F.runner // the longest command and the longest output of the runner (factory.json, `runner`)
 const noFunction = F.phases.find(p => !PHASES[p.name])
 if (noFunction) return { stopped: `${FACTORY_JSON} is invalid: phase «${noFunction.name}» has no function in PHASES of .claude/workflows/run.js` }
 if (board.mainFolder.problem) return { stopped: board.mainFolder.problem }
@@ -437,6 +457,8 @@ for (const t of tickets) byNum[t.number] = t
 async function runList(label, commands, phase, own = {}) {
   const off = commands.map(plainProblem).find(Boolean)
   if (off) throw new Error(`a command is not plain ASCII: ${off}`)
+  const long = commands.find(c => c.length > LIM.maxCommand)
+  if (long) throw new Error(`a command is longer than ${LIM.maxCommand} characters (${long.length}): ${oneLine(long, 120)}`)
   const r = await agent(`Run these commands, in this order:
 ${commands.map((c, i) => `${i + 1}. ${c}`).join('\n')}`,
   { ...SMALL, ...own, agentType: 'runner', label, phase, schema: RUN_SCHEMA })
@@ -471,41 +493,85 @@ async function moveCard(n, column, group) {
   log(`#${n} could not be moved to ${column}: check it by hand`)
 }
 
-// A comment the script wrote, posted from stdin (so it travels as base64) and read back from the ticket.
-const postCommand = (n, body) => fromText(body, `gh issue comment ${n} -R ${P.repo} --body-file -`)
-const lastCommentCommand = n => asBase64(`gh issue view ${n} -R ${P.repo} --json comments --jq '.comments[-1].body'`) // the body holds non-ASCII text
+// A comment the script wrote travels in pieces (`pieces`) and is posted from stdin by a command that checks the
+// fingerprint of the whole first. It is confirmed by a command over the ticket's last comment, which prints its fingerprint
+// (crc and length in bytes, without carriage returns): the script compares it with its own, and the runner copies back
+// nothing but those two numbers.
+const lastCommentFingerprint = n => `sh -c ${shq(`printf %s "$(gh issue view ${n} -R ${P.repo} --json comments --jq ".comments[-1].body" | tr -d "\\r")" | cksum`)}`
 
 // What closes a ticket's step in one `runner` call: the done label (if any), the card in its column (if any) and the
 // comment, each read back; the runner stops at the first command that fails, so a second call repeats only what is
-// still missing (a comment that was posted is never posted twice). Returns what could not be confirmed, in notes.
+// still missing. A comment is posted at most once: after a call whose answer does not say whether the post ran, the last
+// comment is read before anything is sent again (and if it cannot be read, nothing is), and once posted it is never sent
+// again, whatever the read-back says. Returns what could not be confirmed, in notes.
 async function settle(tag, n, group, { label, column, body }) {
+  const text = norm(body)
+  const mine = fingerprint(text)
+  const msg = pieces(`post-${n}`, text)
+  const post = msg.unpack(`gh issue comment ${n} -R ${P.repo} --body-file -`)
+  const lastRead = lastCommentFingerprint(n)
   const need = { label: !!label, card: !!column, comment: true }
-  const state = { card: !column, commentMatches: false, readError: null }
+  const state = { card: !column, posted: false, held: false, confirmed: false, unsure: false, seen: null, why: 'it was not tried' }
+  // A fingerprint printed by `cksum`: two numbers.
+  const printed = r => (r && r.exitCode === 0 && /^\d+ \d+$/.test(String(r.output).trim()) ? String(r.output).trim() : null)
+  // The last comment's fingerprint, alone (asked twice if the runner answers nothing); whether it could be read.
+  const look = async name => {
+    for (const suffix of ['', ':retry']) {
+      const rd = await runList(`${tag}:${name}${suffix}`, [lastRead], group)
+      const seen = rd && rd[0] && loose(rd[0].command) === loose(lastRead) ? printed(rd[0]) : null
+      if (seen) { state.seen = seen; state.confirmed = seen === mine; return true }
+    }
+    return false
+  }
+  // The post may have gone through while its answer was lost: the last comment says. Not readable: nothing is sent again.
+  const settleDoubt = async name => {
+    state.unsure = false
+    const read = await look(name)
+    if (read && state.confirmed) { need.comment = false; state.posted = true }
+    else if (!read) { need.comment = false; state.held = true; state.why = 'the answer did not say whether the post ran and the last comment could not be read, so it was not sent again' }
+  }
   for (let attempt = 1; attempt <= 2 && (need.label || need.card || need.comment); attempt++) {
+    if (need.comment && state.unsure) await settleDoubt(`look${attempt}`)
     const cmds = [], at = {}
     if (need.label) { at.label = cmds.length; cmds.push(`gh issue edit ${n} -R ${P.repo} --add-label ${P.doneLabel}`) }
     if (need.card) { at.card = cmds.length; cmds.push(...cardCommands(n, column)) }
-    if (need.comment) { at.post = cmds.length; cmds.push(postCommand(n, body), lastCommentCommand(n)) }
+    if (need.comment) { at.puts = cmds.length; cmds.push(...msg.puts); at.post = cmds.length; cmds.push(post, lastRead) }
+    if (!cmds.length) break
     const rs = await runList(attempt > 1 ? `${tag}:retry` : tag, cmds, group)
     // Only a result for the command that was asked counts.
     const got = i => (rs && rs[i] && loose(rs[i].command) === loose(cmds[i]) ? rs[i] : null)
+    // How a command went: ok, failed (non-zero exit), changed (the runner ran another command than the one asked) or missing.
+    const kindOf = i => (!rs || !rs[i] ? 'missing' : !got(i) ? 'changed' : rs[i].exitCode === 0 ? 'ok' : 'failed')
+    const WHAT = { missing: 'was not run', changed: 'was run as another command: the runner did not copy it as it was', failed: 'failed its check: the runner did not copy it as it was' }
     if (need.label && got(at.label) && got(at.label).exitCode === 0) need.label = false
     const cb = need.card ? got(at.card + 1) : null
     if (cb && cb.exitCode === 0 && cardIn(cb.output, column)) { need.card = false; state.card = true }
-    const post = need.comment ? got(at.post) : null
-    if (post && post.exitCode === 0) {
+    if (!need.comment) continue
+    const failedPut = msg.puts.findIndex((_, i) => kindOf(at.puts + i) !== 'ok')
+    const p = got(at.post)
+    if (p && p.exitCode === 0) {
       need.comment = false
-      const rb = got(at.post + 1)
-      const back = rb && rb.exitCode === 0 ? fromBase64(rb.output) : null
-      if (back && back.error) state.readError = back.error
-      state.commentMatches = !!back && !back.error && norm(back.text) === norm(body)
+      state.posted = true
+      state.seen = null; state.confirmed = false
+      const seen = printed(got(at.post + 1))
+      if (seen) { state.seen = seen; state.confirmed = seen === mine }
+    } else if (failedPut >= 0) {
+      state.why = `piece ${failedPut + 1} of ${msg.puts.length} ${WHAT[kindOf(at.puts + failedPut)]}`
+    } else {
+      state.why = `the command that posts ${WHAT[kindOf(at.post)]}`
     }
+    // A command that failed stopped the runner, so nothing after it ran. Without one, the post may have run unseen.
+    if (need.comment && !p && !(rs && rs.some(r => r && r.exitCode !== 0))) state.unsure = true
   }
+  if (need.comment && state.unsure) await settleDoubt('look')
+  // Posted but not read back: one more read, alone, never a second post.
+  if (state.posted && !state.seen) await look('look')
   const notes = []
   if (need.label) notes.push(`the label ${P.doneLabel} could not be added to #${n}: add it by hand`)
   if (need.card) notes.push(`the card of #${n} could not be moved to ${column}: check it by hand`)
-  if (need.comment) notes.push(`the comment on #${n} could not be posted`)
-  else if (!state.commentMatches) notes.push(`the last comment on #${n} could not be confirmed to be the script's report${state.readError ? ` (the read-back is not valid base64 and UTF-8: ${state.readError})` : ''}: read it`)
+  if (state.held) notes.push(`the comment on #${n} may not have been posted: ${state.why}: read the ticket`)
+  else if (!state.posted) notes.push(`the comment on #${n} was not posted: ${state.why}`)
+  else if (!state.confirmed) notes.push(`the last comment on #${n} could not be confirmed to be the script's report: ${state.seen ? `its hash and length (${state.seen}) are not the report's (${mine})` : 'its hash and length could not be read'}: read it`)
   for (const m of notes) log(m)
   return { notes, card: state.card }
 }
@@ -661,14 +727,20 @@ const statusOf = n => (results.find(r => r.number === n) || {}).status
 const removable = builds.filter(b => b.worktreePath && (statusOf(b.number) === 'done' || b.commit))
 const branchNames = [...new Set(builds.flatMap(b => [b.worktreeBranch, builds.some(o => o.number === b.number && o.round > b.round) ? b.branch : null]).filter(Boolean))]
 const WORKTREES = 'git worktree list'
-const BRANCHES = `git branch --list ${branchNames.map(shq).join(' ')}`
+// One command per group of names that fits maxCommand: a list of tickets can have more branches than one command holds.
+const BRANCHES = []
+for (const name of branchNames.map(shq)) {
+  const last = BRANCHES.length - 1
+  if (last >= 0 && `${BRANCHES[last]} ${name}`.length <= LIM.maxCommand) BRANCHES[last] += ` ${name}`
+  else BRANCHES.push(`git branch --list ${name}`)
+}
 const cleanup = [
   ...removable.map(b => `sh -c ${shq(`git worktree remove --force ${shq(b.worktreePath)} || true`)}`),
   'git worktree prune', WORKTREES,
-  ...(branchNames.length ? [BRANCHES] : []),
+  ...BRANCHES,
 ]
 let rep = null, reportFailure = null
-try { rep = await workflow({ scriptPath: REPORT_WORKFLOW }, { base, project: P, columns: C, small: F.small, results, cleanup }) } catch (e) { reportFailure = String(e) }
+try { rep = await workflow({ scriptPath: REPORT_WORKFLOW }, { base, project: P, columns: C, small: F.small, runner: LIM, results, cleanup }) } catch (e) { reportFailure = String(e) }
 if (rep && rep.stopped) { reportFailure = rep.stopped; rep = null }
 const notes = rep ? [...rep.notes] : [`the release report was not built (${reportFailure}): the copies were not cleaned; launch /release-report`]
 
@@ -682,8 +754,9 @@ const stillThere = p => !!listing && listing.output.split('\n').some(l => normPa
 const copyPaths = [...new Set(builds.map(b => b.worktreePath).filter(Boolean))]
 const copiesRemoved = listing ? copyPaths.filter(p => !stillThere(p)) : []
 const copiesKept = listing ? copyPaths.filter(stillThere) : []
-const branchRead = branchNames.length ? ranOk(BRANCHES) : null
-const branchesLeft = branchRead ? branchRead.output.split('\n').map(l => l.replace(/^[*+]?\s*/, '').trim()).filter(l => branchNames.includes(l)) : []
+const branchReads = BRANCHES.map(ranOk)
+const branchRead = branchNames.length && branchReads.every(Boolean) ? branchReads.map(r => r.output).join('\n') : null
+const branchesLeft = branchRead ? branchRead.split('\n').map(l => l.replace(/^[*+]?\s*/, '').trim()).filter(l => branchNames.includes(l)) : []
 if (rep && !listing) notes.push('the copies could not be listed after the cleanup: look at `git worktree list`')
 if (rep && branchNames.length && !branchRead) notes.push('the branches of the run could not be listed: look at `git branch --list`')
 

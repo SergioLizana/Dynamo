@@ -7,6 +7,8 @@ export const meta = {
 // The start of a run as a workflow of its own: data in, data out, and no decision about the run. It reads
 // .claude/factory.json (one `runner` call, parsed and validated here) and, in a second `runner` call, the state of the
 // main folder and one GraphQL query with the tickets, their labels, the status of their card and their native blockers.
+// What can be long is stored by its command and read in pages that fit `runner.maxOutput` (see «Long text from the
+// runner»; documentation/launch-list.md, «Long text and the runner»).
 // Every list is checked against its total, so nothing is cut off silently. The rules of which tickets a run builds
 // (done, Needs Human, blockers) stay in run.js; the table below only shows them (documentation/launch-list.md, «The start»).
 // Alone: args is empty, ticket numbers ("38", "38 43", "38,43", 38, [38, 43]) or { tickets, base }; it returns the table.
@@ -38,20 +40,58 @@ const oneLine = (s, max = 300) => {
   return x.length > max ? `${x.slice(0, max - 1)}…` : x
 }
 const shq = s => `'${String(s).split("'").join("'\\''")}'`
-const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+// ---------- Long text from the runner ----------
+
+// The `runner` copies every command and every output by hand, and a long one does not survive that (run wf_cec30c76-5dd:
+// a read of about 30 KB came back cut to its first 2 KB). So a read whose output can be long, or can hold other text
+// (comments, bodies, titles), is stored by its own command as base64 in a file, and read back in pages that fit
+// `maxOutput`; each page comes with a fingerprint that a command computed over it, and the script checks it before it
+// accepts the page, asks again for the pages that do not match, and checks the whole against the fingerprint the file had.
+// The limits are in factory.json (`runner`): `maxCommand` is the longest command the script hands over; `maxOutput` the
+// longest output it accepts. The fingerprint is `cksum`'s (POSIX: the same on Linux, macOS and Git Bash): "<crc> <length in bytes>".
+// Scripts cannot import, so these helpers are the same in board.js and release-report.js.
+const CRC_TABLE = Array.from({ length: 256 }, (_, i) => {
+  let c = i << 24
+  for (let k = 0; k < 8; k++) c = c & 0x80000000 ? (c << 1) ^ 0x04c11db7 : c << 1
+  return c >>> 0
+})
+function cksum(bytes) {
+  let crc = 0
+  for (const b of bytes) crc = ((crc << 8) ^ CRC_TABLE[((crc >>> 24) ^ b) & 255]) >>> 0
+  for (let n = bytes.length; n > 0; n = Math.floor(n / 256)) crc = ((crc << 8) ^ CRC_TABLE[((crc >>> 24) ^ (n & 255)) & 255]) >>> 0
+  return `${(~crc) >>> 0} ${bytes.length}`
+}
+const ascii = s => Array.from(String(s), ch => ch.charCodeAt(0))
+const TMP = '.claude/worktrees/tmp-' // ignored by git; the end of a list removes what is left
+const PAGES_PER_CALL = 8
+let LIM = null // { maxCommand, maxOutput }: known after the first read of factory.json
 
 // Exact text through the `runner` (run wf_c3e19634-96a): an agent that copies text by hand does not keep an escape
 // (an escape sequence for the middle dot came back as `·`) or a non-ASCII character (`·` came back as `�`). So every command is plain ASCII with no
-// escape sequence in it (a filter that needs another character is done here, in the script), and a read whose output can
-// hold other text (comments, bodies, titles) is asked as base64 and decoded here. An output that is not valid base64 and
-// UTF-8 is a plumbing failure with its reason, never text with `�`.
+// escape sequence in it (a filter that needs another character is done here, in the script), and text with other
+// characters comes back only as base64. An output that is not valid base64 and UTF-8 is a plumbing failure with its
+// reason, never text with `�`.
 const plainProblem = c => {
   const bad = String(c).match(/[^\x20-\x7e]|\\u[0-9a-fA-F{]|\\x[0-9a-fA-F]{2}/)
   return bad ? `«${oneLine(c, 120)}» has «${bad[0]}»` : null
 }
-// `<command>` with its output as base64 (`… | base64`, on Linux, macOS and Git Bash); the exit code stays the command's.
-const asBase64 = command => `sh -c ${shq(`out=$(${command} 2>&1); code=$?; printf %s "$out" | base64; exit $code`)}`
+// `command` with its output stored as base64, on one line, in a file; it prints "<exit code> <crc> <length>" of the file and
+// exits 0 (the command's code travels in what it prints, so a command that fails does not stop the ones after it).
+const stored = (name, command) => {
+  const file = `${TMP}rd-${name}`
+  return `sh -c ${shq(`mkdir -p .claude/worktrees; out=$(${command} 2>&1); code=$?; printf %s "$out" | base64 | tr -d "[:space:]" > ${file}; echo "$code $(cksum < ${file})"`)}`
+}
+// One page of a stored file: its characters from the (k * size + 1)th, then the fingerprint of those characters.
+const pageCommand = (name, k, size) => `sh -c ${shq(`p=$(cut -c ${k * size + 1}-${(k + 1) * size} ${TMP}rd-${name}); echo "$p"; printf %s "$p" | cksum`)}`
+// The page a command printed if it is exactly the characters it fingerprinted (and as many as the file has there), or null.
+function pageOf(output, length) {
+  const m = /^([\s\S]*)\n(\d+) (\d+)$/.exec(String(output).replace(/\r/g, '').trimEnd())
+  if (!m) return null
+  const page = m[1].replace(/\s+/g, '')
+  return page.length === length && cksum(ascii(page)) === `${m[2]} ${m[3]}` ? page : null
+}
 // Base64 back to text: { text } or { error }. The line breaks `base64` adds are ignored; the rest must be exact.
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 function fromBase64(encoded) {
   const s = String(encoded).replace(/\s+/g, '')
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s)) return { error: 'it has characters that are not base64' }
@@ -82,16 +122,6 @@ function fromBase64(encoded) {
   }
   return { text }
 }
-// The commands in `results` that are base64, decoded in place; the reason of the first that is not, or null.
-function decodeAt(results, indexes) {
-  for (const i of indexes) {
-    if (!results[i]) continue
-    const d = fromBase64(results[i].output)
-    if (d.error) return `the output of \`${oneLine(results[i].command, 100)}\` is not valid base64 and UTF-8: ${d.error}`
-    results[i] = { ...results[i], output: d.text }
-  }
-  return null
-}
 
 const optsOf = step => {
   const o = {}
@@ -102,6 +132,8 @@ const optsOf = step => {
 async function runList(label, commands, own = {}) {
   const off = commands.map(plainProblem).find(Boolean)
   if (off) throw new Error(`a command is not plain ASCII: ${off}`)
+  const long = LIM && commands.find(c => c.length > LIM.maxCommand)
+  if (long) throw new Error(`a command is longer than ${LIM.maxCommand} characters (${long.length}): ${oneLine(long, 120)}`)
   const r = await agent(`Run these commands, in this order:
 ${commands.map((c, i) => `${i + 1}. ${c}`).join('\n')}`,
   { ...own, agentType: 'runner', label, phase: GROUP, schema: RUN_SCHEMA })
@@ -109,6 +141,74 @@ ${commands.map((c, i) => `${i + 1}. ${c}`).join('\n')}`,
 }
 // A null read is plumbing: it is asked once more.
 const runListRetry = async (label, commands, own) => (await runList(label, commands, own)) || (await runList(`${label}:retry`, commands, own))
+
+// The pages of the stored files, { name: { sum, length } } → { name: { text } or { error } }. Every page is checked when it
+// arrives; the ones that do not match are asked again (three times in all); the whole is checked against the file's own.
+async function readPages(label, files, own) {
+  const size = LIM.maxOutput - 60
+  const parts = {}
+  for (const [name, f] of Object.entries(files)) parts[name] = Array(Math.ceil(f.length / size)).fill(null)
+  const lengthOf = (name, k) => Math.min(size, files[name].length - k * size)
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const todo = Object.keys(parts).flatMap(name => parts[name].flatMap((p, k) => (p === null ? [{ name, k }] : [])))
+    if (!todo.length) break
+    const calls = []
+    for (let i = 0; i < todo.length; i += PAGES_PER_CALL) calls.push(todo.slice(i, i + PAGES_PER_CALL))
+    await Promise.all(calls.map(async (call, c) => {
+      const commands = call.map(w => pageCommand(w.name, w.k, size))
+      const rs = await runList(`${label}:pages${attempt > 1 ? `:again${attempt}` : ''}:${c + 1}`, commands, own)
+      call.forEach((w, j) => {
+        const r = rs && rs[j] && rs[j].exitCode === 0 && loose(rs[j].command) === loose(commands[j]) ? rs[j] : null
+        const page = r ? pageOf(r.output, lengthOf(w.name, w.k)) : null
+        if (page !== null) parts[w.name][w.k] = page
+      })
+    }))
+  }
+  const out = {}
+  for (const [name, f] of Object.entries(files)) {
+    const missing = parts[name].flatMap((p, k) => (p === null ? [k + 1] : []))
+    if (missing.length) { out[name] = { error: `page ${missing.join(', ')} of ${parts[name].length} could not be read right in three tries` }; continue }
+    const b64 = parts[name].join('')
+    if (cksum(ascii(b64)) !== f.sum) { out[name] = { error: 'the pages do not add up to the file (hash and length differ)' }; continue }
+    const d = fromBase64(b64)
+    out[name] = d.error ? { error: `it is not valid base64 and UTF-8: ${d.error}` } : { text: d.text }
+  }
+  return out
+}
+
+// One call with plain commands and stored reads, then the pages of every stored one. specs: [{ command }] or [{ command,
+// name }] for a stored read. Returns { results, error } (null if the runner answered nothing twice): results are like
+// runList's, with a stored read's `output` the decoded text and its `exitCode` the command's own; error is the first
+// reason an answer cannot be trusted, or null. `pre(results)`, if given, runs before the pages (the first read of
+// factory.json sets the limits there).
+async function runReads(label, specs, own, pre) {
+  const commands = specs.map(s => (s.name ? stored(s.name, s.command) : s.command))
+  const rs = await runListRetry(label, commands, own)
+  if (!rs || !rs.length) return null
+  for (let i = 0; i < rs.length; i++) {
+    if (i >= commands.length || loose(rs[i].command) !== loose(commands[i])) return { results: rs, error: `it ran «${oneLine(rs[i].command, 120)}» where «${oneLine(commands[i] || 'nothing', 120)}» was expected` }
+  }
+  const bad = pre ? await pre(rs) : null
+  if (bad) return { results: rs, error: bad }
+  const files = {}
+  const results = rs.map((r, i) => {
+    if (!specs[i].name) return r
+    const m = /^(\d+) (\d+) (\d+)$/.exec(String(r.output).trim())
+    if (r.exitCode !== 0 || !m) return { ...r, error: `the store of «${oneLine(specs[i].command, 100)}» did not print its hash and length (exit code ${r.exitCode})` }
+    files[specs[i].name] = { sum: `${m[2]} ${m[3]}`, length: Number(m[3]) }
+    return { ...r, exitCode: Number(m[1]), code: Number(m[1]) }
+  })
+  const pages = await readPages(label, files, own)
+  let error = null
+  results.forEach((r, i) => {
+    if (r.error) { error = error || r.error; return }
+    const name = specs[i].name
+    if (!name) return
+    const p = pages[name]
+    if (p.error) { error = error || `the output of \`${oneLine(specs[i].command, 100)}\` could not be read: ${p.error}`; results[i] = { ...r, error: p.error, output: '' } } else results[i] = { ...r, output: p.text }
+  })
+  return { results, error }
+}
 
 // ---------- factory.json ----------
 
@@ -129,6 +229,8 @@ function checkFactory(f) {
   if (!c || !str(c.todo) || !str(c.needsHuman) || !str(c.done)) return 'columns needs todo, needsHuman and done'
   const s = f.small
   if (!s || !opt(s.model) || !opt(s.effort)) return 'small needs a model and an effort (a string or null)'
+  const r = f.runner
+  if (!r || !Number.isInteger(r.maxCommand) || r.maxCommand < 1100 || !Number.isInteger(r.maxOutput) || r.maxOutput < 400) return 'runner needs maxCommand (an integer, at least 1100) and maxOutput (an integer, at least 400)'
   if (!Array.isArray(f.phases) || !f.phases.length) return 'phases must be a list with at least one phase'
   const seen = []
   for (const p of f.phases) {
@@ -147,17 +249,27 @@ function checkFactory(f) {
 }
 
 // Without a valid factory.json nothing is read. No model here: it is not read yet, so the runner's own (its definition's).
-const rawFactory = await agent(`Run these commands, in this order:
-1. ${asBase64(`cat ${FACTORY_JSON}`)}`, { agentType: 'runner', label: 'factory.json', phase: GROUP, schema: RUN_SCHEMA })
-const factoryRead = (resultsOf(rawFactory) || [])[0] || null
+// The file is read in pages as any long text is, and the pages are cut by the limits that are in the file: one `grep`
+// prints them (two short lines) in the same call that stores the file.
+const LIMITS = `grep -o ${shq('"max[A-Za-z]*": *[0-9]*')} ${FACTORY_JSON}`
+const limitsOf = output => {
+  const get = k => { const m = new RegExp(`"${k}":\\s*(\\d+)`).exec(output); return m ? Number(m[1]) : 0 }
+  const l = { maxCommand: get('maxCommand'), maxOutput: get('maxOutput') }
+  return l.maxCommand >= 1100 && l.maxOutput >= 400 ? l : null
+}
+const firstRead = await runReads('factory.json', [{ command: LIMITS }, { name: 'factory', command: `cat ${FACTORY_JSON}` }], {}, rs => {
+  LIM = limitsOf(rs[0] && rs[0].exitCode === 0 ? rs[0].output : '')
+  return LIM ? null : `${FACTORY_JSON} must give runner.maxCommand (an integer, at least 1100) and runner.maxOutput (an integer, at least 400), each on one line as "name": number`
+})
+if (!firstRead) return { stopped: `${FACTORY_JSON} is missing or cannot be read` }
+if (firstRead.error) return { stopped: `${FACTORY_JSON} cannot be read: ${firstRead.error}` }
+const factoryRead = firstRead.results[1]
 if (!factoryRead || factoryRead.exitCode !== 0) return { stopped: `${FACTORY_JSON} is missing or cannot be read` }
-const factoryText = fromBase64(factoryRead.output)
-if (factoryText.error) return { stopped: `the output of reading ${FACTORY_JSON} is not valid base64 and UTF-8: ${factoryText.error}` }
-factoryRead.output = factoryText.text
 let F
 try { F = JSON.parse(factoryRead.output.trim()) } catch (e) { return { stopped: `${FACTORY_JSON} is not valid JSON: ${e.message}` } }
 const invalid = checkFactory(F)
 if (invalid) return { stopped: `${FACTORY_JSON} is invalid: ${invalid}` }
+if (F.runner.maxCommand !== LIM.maxCommand || F.runner.maxOutput !== LIM.maxOutput) return { stopped: `${FACTORY_JSON} is invalid: runner is not the one the pages were cut by (${JSON.stringify(LIM)}): the keys must be written as "maxCommand": n and "maxOutput": n, once each` }
 const C = F.columns
 const P = F.project
 const SMALL = optsOf(F.small) // the script's small agents: every `runner` call that has no phase of its own
@@ -181,30 +293,41 @@ if (base === P.mainBranch) return { stopped: `the base is the main branch (${bas
 
 // ---------- The read ----------
 
-// One `runner` call with each command's literal output: the state of the main folder, the branch, and the tickets (the
-// requested ones, or the first 100 open ones). The query exits non-zero when a ticket is missing; the script parses
-// and decides.
+// One `runner` call with the state of the main folder, the branch, and the tickets (the requested ones, or the first 100
+// open ones), each query stored and read in pages (see «Long text from the runner»). The query exits non-zero when a ticket
+// is missing; the script parses and decides. The ticket fields are a fragment written once, so a ticket in the query is
+// one short alias; the requested tickets go in as few queries as `maxCommand` allows.
 const [OWNER, REPO_NAME] = P.repo.split('/')
 const TICKET_FIELDS = 'number title state labels(first:20){totalCount nodes{name}} '
   + 'projectItems(first:5){totalCount nodes{fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}} '
   + 'blockedBy(first:20){totalCount nodes{number state labels(first:10){totalCount nodes{name}}}}'
-const query = `query { repository(owner:"${OWNER}", name:"${REPO_NAME}") { ${wanted.length
-  ? wanted.map(n => `t${n}: issue(number:${n}) { ${TICKET_FIELDS} }`).join(' ')
-  : `issues(states:OPEN, first:100) { pageInfo{hasNextPage} nodes { ${TICKET_FIELDS} } }`} } }`
-
-const startCommands = [
-  'git status --porcelain --untracked-files=no', // 0
-  'git branch --show-current', // 1
-  asBase64(`gh api graphql -f query='${query}'`), // 2: titles can hold non-ASCII text
-]
-const startRs = await runListRetry('start', startCommands, SMALL)
-if (!startRs || !startRs.length) return { stopped: 'the read of the tickets and of the main folder returned nothing' }
-for (let i = 0; i < startRs.length; i++) {
-  if (i >= startCommands.length || loose(startRs[i].command) !== loose(startCommands[i])) return { stopped: `the start read ran «${oneLine(startRs[i].command, 120)}» where «${oneLine(startCommands[i] || 'nothing', 120)}» was expected` }
+const queryOf = body => `query { repository(owner:"${OWNER}", name:"${REPO_NAME}") { ${body} } } fragment F on Issue { ${TICKET_FIELDS} }`
+const queryCommand = (name, q) => ({ name, command: `gh api graphql -f query='${q}'` })
+const fits = body => stored('tickets999', queryCommand('', queryOf(body)).command).length <= LIM.maxCommand
+const bodies = []
+if (wanted.length) {
+  let cur = []
+  for (const n of wanted) {
+    const item = `t${n}: issue(number:${n}) { ...F }`
+    if (!fits(item)) return { stopped: `the query for one ticket is longer than runner.maxCommand (${LIM.maxCommand}) in ${FACTORY_JSON}` }
+    if (cur.length && !fits([...cur, item].join(' '))) { bodies.push(cur.join(' ')); cur = [] }
+    cur.push(item)
+  }
+  bodies.push(cur.join(' '))
+} else {
+  bodies.push('issues(states:OPEN, first:100) { pageInfo{hasNextPage} nodes { ...F } }')
+  if (!fits(bodies[0])) return { stopped: `the query of the open tickets is longer than runner.maxCommand (${LIM.maxCommand}) in ${FACTORY_JSON}` }
 }
-const notB64 = decodeAt(startRs, [2])
-if (notB64) return { stopped: `the tickets could not be read: ${notB64}` }
-const [rStatus, rBranch, rTickets] = startRs
+
+const startSpecs = [
+  { command: 'git status --porcelain --untracked-files=no' }, // 0
+  { command: 'git branch --show-current' }, // 1
+  ...bodies.map((b, i) => queryCommand(`tickets${i}`, queryOf(b))), // 2...: titles can hold non-ASCII text
+]
+const start = await runReads('start', startSpecs, SMALL)
+if (!start) return { stopped: 'the read of the tickets and of the main folder returned nothing' }
+if (start.error) return { stopped: `the start read could not be trusted: ${start.error}` }
+const [rStatus, rBranch, ...rTickets] = start.results
 
 // Why the main folder cannot take a run (the merges happen there), or null.
 let problem = null
@@ -212,18 +335,24 @@ if (rStatus.exitCode !== 0) problem = 'the state of the main folder could not be
 else if (rStatus.output.trim()) problem = `the main folder has changes in tracked files:\n${rStatus.output.trimEnd()}`
 else if (!rBranch || rBranch.exitCode !== 0) problem = 'the current branch of the main folder could not be read'
 else if (rBranch.output.trim() !== base) problem = `the main folder is on «${rBranch.output.trim()}», not on the base (${base})`
-if (!rTickets) return { stopped: problem || 'the tickets could not be read: the runner stopped before the query' }
+if (rTickets.length < bodies.length) return { stopped: problem || 'the tickets could not be read: the runner stopped before the query' }
 const mainFolder = { problem, branch: rBranch && rBranch.exitCode === 0 ? rBranch.output.trim() : null, changes: rStatus.exitCode === 0 ? rStatus.output.trimEnd() : null }
 
 // GitHub prints the data and the errors together (a missing ticket is null with an error), then exits non-zero: the
 // output is parsed whatever the code, and a stray line before or after the JSON is ignored.
-let answer = null
-const out = rTickets.output
-for (const text of [out.trim(), out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)]) {
-  try { answer = JSON.parse(text); break } catch (e) { /* the next text */ }
+const repository = {}
+let silentFailure = null
+for (const r of rTickets) {
+  let answer = null
+  const out = r.output
+  for (const text of [out.trim(), out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)]) {
+    try { answer = JSON.parse(text); break } catch (e) { /* the next text */ }
+  }
+  const part = answer && answer.data && answer.data.repository
+  if (!part) return { stopped: `the tickets could not be read: GitHub's answer is not usable (exit code ${r.exitCode})` }
+  if (r.exitCode !== 0 && !(answer.errors || []).length) silentFailure = r.exitCode
+  Object.assign(repository, part)
 }
-const repository = answer && answer.data && answer.data.repository
-if (!repository) return { stopped: `the tickets could not be read: GitHub's answer is not usable (exit code ${rTickets.exitCode})` }
 
 const whole = c => (c && Array.isArray(c.nodes) && c.nodes.length === c.totalCount ? c.nodes : null)
 // A ticket as the run uses it, or null if what GitHub returned is incomplete or malformed.
@@ -255,7 +384,7 @@ if (wanted.length) {
   const bad = open.nodes.map((n, i) => (tickets[i] ? null : n && Number.isInteger(n.number) ? `#${n.number}` : 'one of them')).filter(Boolean)
   if (bad.length) return { stopped: `these tickets cannot be read on GitHub: ${bad.join(', ')}` }
 }
-if (rTickets.exitCode !== 0 && !(answer.errors || []).length) return { stopped: `the tickets query failed (exit code ${rTickets.exitCode}) with no error to show` }
+if (silentFailure !== null) return { stopped: `the tickets query failed (exit code ${silentFailure}) with no error to show` }
 tickets.sort((a, b) => a.number - b.number)
 
 // ---------- The table ----------
