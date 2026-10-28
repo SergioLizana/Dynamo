@@ -38,7 +38,11 @@
       "Bash(gh api -X *)",
       "Bash(gh api --method *)",
       "Bash(gh api * -X *)",
-      "Bash(gh api * --method *)"
+      "Bash(gh api * --method *)",
+      "Bash(git push*--no-verify*)",
+      "Bash(git config*)",
+      "Edit(/.githooks/**)",
+      "Edit(/.git/**)"
     ],
     "ask": [
       "Bash(git push*)",
