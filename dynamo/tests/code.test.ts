@@ -49,3 +49,14 @@ test('card and comment get gh and the config as parameters: they import none of 
     assert.deepEqual(imports(name).filter((i) => !i.type && edges.includes(i.from)), [], name);
   }
 });
+
+test('the report decisions are pure: they import nothing but types and each other', () => {
+  for (const name of ['releases.ts', 'reports.ts']) assert.deepEqual(imports(name).filter((i) => !i.type && i.from !== './releases.ts'), [], name);
+});
+
+test('report gets gh, git and the config as parameters: it imports none of their modules', () => {
+  const edges = ['./exec.ts', './gh.ts', './git.ts', './factory.ts', 'node:child_process'];
+  for (const name of ['report.ts', 'releases.ts', 'reports.ts']) {
+    assert.deepEqual(imports(name).filter((i) => !i.type && edges.includes(i.from)), [], name);
+  }
+});

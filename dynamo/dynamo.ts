@@ -11,6 +11,7 @@ import { board } from './board.ts';
 import { card } from './card.ts';
 import { comment } from './comment.ts';
 import { merge } from './merge.ts';
+import { report } from './report.ts';
 import { verify } from './verify.ts';
 
 // Each subcommand comes with its own ticket: its module, and its line here.
@@ -20,6 +21,7 @@ const subcommands = new Map<string, Subcommand>([
   ['merge', merge],
   ['card', card],
   ['comment', comment],
+  ['report', report],
 ]);
 
 function main(argv: string[]): number {
