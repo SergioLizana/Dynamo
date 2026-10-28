@@ -70,7 +70,8 @@
       "Bash(sh -c 'out=$(gh issue view * -R SergioLizana/Dynamo --json comments --jq * 2>&1); code=$?; printf %s \"$out\" | base64; exit $code')",
       "Bash(sh -c 'git branch -d * || true')",
       "Bash(git branch -d *)",
-      "Bash(node .claude/workflows/lib/*)"
+      "Bash(node .claude/workflows/lib/*)",
+      "Bash(sh -c 'cd * && node --test dynamo/tests/')"
     ],
     "deny": [
       "Bash(git reset --hard*)",
