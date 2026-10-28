@@ -337,7 +337,7 @@ without my intervention (stage 3b). Not one more piece.
 
 Barriers while the factory builds itself:
 - **What occurs to me along the way** goes to a list "after the real project" (`documentation/backlog.md`), not to a ticket.
-- **Size limit:** each skill, at most about 150 lines. No own scripts while Claude Code can solve it with an option.
+- **Size limit:** each skill, at most about 150 lines.
 - **On reaching "complete", it moves to the real project**, even if things are missing. The improvements of stage 5 come from
   what hurts there, not from the factory itself.
 - **Alarm signal:** if a ticket serves to fix how tickets are created and no measured failure asks for it, it is Cadenza's
