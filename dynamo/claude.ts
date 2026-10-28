@@ -1,27 +1,31 @@
 // `claude`, run by dynamo itself. DYNAMO_CLAUDE, a JSON array with a program and its first arguments, takes its place: the
 // tests put the fake there (tests/fake-claude.ts) and run with no real claude on the PATH. `runAgent` is the edge the loop
-// gets as a parameter: it runs one agent in its copy, keeps the whole stream in the log, and returns how it ended.
-import { mkdirSync, writeFileSync } from 'node:fs';
+// gets as a parameter: it runs one agent in its copy, its stream going to the log as it arrives, and returns how it ended.
+import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { agentArgs, parseStream } from './agents.ts';
 import type { AgentResult, AgentRun } from './agents.ts';
 import { endOf } from './checks.ts';
-import { exec, type Options, type Result } from './exec.ts';
+import { exec, execToFile, type Options, type Result } from './exec.ts';
 
-export type RunAgent = (run: AgentRun, options?: Options) => AgentResult;
+export type RunAgent = (run: AgentRun, options?: Options) => Promise<AgentResult>;
 
-export function claude(args: string[], options: Options = {}): Result {
+function program(options: Options): string[] {
   const fake = (options.env ?? process.env).DYNAMO_CLAUDE;
-  return exec(fake ? JSON.parse(fake) : ['claude'], args, options);
+  return fake ? JSON.parse(fake) : ['claude'];
 }
 
-// The ending comes from the stream, not from the exit code (a spent budget exits 1 with a full result). When there is no
-// result line, the exit code and the end of the output say why the process gave none (not on the PATH, killed, refused).
-export const runAgent: RunAgent = (run, options = {}) => {
-  const r = claude(agentArgs(run), { ...options, cwd: run.cwd, input: run.prompt });
+export function claude(args: string[], options: Options = {}): Result {
+  return exec(program(options), args, options);
+}
+
+// The log is claude's stdout itself, so it can be watched while the agent works; the result is read back from it when the
+// agent ends. The ending comes from the stream, not from the exit code (a spent budget exits 1 with a full result). When
+// there is no result line, the exit code and the end of stderr say why the process gave none (not on the PATH, killed).
+export const runAgent: RunAgent = async (run, options = {}) => {
   mkdirSync(dirname(run.log), { recursive: true });
-  writeFileSync(run.log, r.stdout);
-  const result = parseStream(r.stdout);
+  const r = await execToFile(program(options), agentArgs(run), run.log, { ...options, cwd: run.cwd, input: run.prompt });
+  const result = parseStream(readFileSync(run.log, 'utf8'));
   if (result.turns !== null || result.ending !== 'error') return result;
-  return { ...result, detail: `${result.detail}; claude exited ${r.code}: ${endOf(r)}` };
+  return { ...result, detail: `${result.detail}; claude exited ${r.code}: ${endOf({ stdout: '', stderr: r.stderr })}` };
 };

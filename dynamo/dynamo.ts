@@ -2,7 +2,8 @@
 // `node dynamo/dynamo.ts <subcommand> [arguments]`. It runs git and gh itself. Every call prints one short JSON line and
 // exits with a real code: 0 when the subcommand did what it says, 1 when it failed, 2 when it was called wrong.
 import type { Output, Subcommand } from './cli.ts';
-import { UsageError } from './cli.ts';
+import { exit } from './cli.ts';
+import { runAgent } from './claude.ts';
 import { exec } from './exec.ts';
 import { readFactory } from './factory.ts';
 import { gh } from './gh.ts';
@@ -13,6 +14,7 @@ import { comment } from './comment.ts';
 import { copy } from './copy.ts';
 import { merge } from './merge.ts';
 import { report } from './report.ts';
+import { run } from './run.ts';
 import { verify } from './verify.ts';
 
 // Each subcommand comes with its own ticket: its module, and its line here.
@@ -24,27 +26,23 @@ const subcommands = new Map<string, Subcommand>([
   ['comment', comment],
   ['copy', copy],
   ['report', report],
+  ['run', run],
 ]);
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
   const [name, ...args] = argv;
-  const run = name === undefined ? undefined : subcommands.get(name);
-  if (!run) {
+  const subcommand = name === undefined ? undefined : subcommands.get(name);
+  if (!subcommand) {
     print({ ok: false, error: name === undefined ? 'no subcommand' : `unknown subcommand: ${name}` });
     return 2;
   }
-  try {
-    const out = run(args, { gh, git, exec, factory: () => readFactory() });
-    print(out);
-    return out.ok ? 0 : 1;
-  } catch (e) {
-    print({ ok: false, error: e instanceof Error ? e.message : String(e) });
-    return e instanceof UsageError ? 2 : 1;
-  }
+  const { code, out } = await exit(() => subcommand(args, { gh, git, exec, factory: () => readFactory(), agent: runAgent }));
+  print(out);
+  return code;
 }
 
 function print(out: Output): void {
   process.stdout.write(JSON.stringify(out) + '\n');
 }
 
-process.exitCode = main(process.argv.slice(2));
+process.exitCode = await main(process.argv.slice(2));
