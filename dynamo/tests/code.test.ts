@@ -36,3 +36,16 @@ test('board gets gh, git and the config as parameters: it imports none of their 
   assert.deepEqual(bad, []);
   assert.deepEqual(imports('tickets.ts').filter((i) => !i.type && edges.includes(i.from)), []);
 });
+
+test('the card and comment decisions are pure: they import nothing but types and the shared helper', () => {
+  for (const name of ['cards.ts', 'comments.ts']) {
+    assert.deepEqual(imports(name).filter((i) => !i.type && i.from !== './cli.ts'), [], name);
+  }
+});
+
+test('card and comment get gh and the config as parameters: they import none of their modules', () => {
+  const edges = ['./exec.ts', './gh.ts', './git.ts', './factory.ts', 'node:child_process'];
+  for (const name of ['card.ts', 'comment.ts', 'cards.ts', 'comments.ts']) {
+    assert.deepEqual(imports(name).filter((i) => !i.type && edges.includes(i.from)), [], name);
+  }
+});
