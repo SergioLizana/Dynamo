@@ -26,6 +26,24 @@ Verified:
 - The project has no "Blocked by" field: the blocker is seen on the issue page, not as a board column. I have not been
   able to check from the CLI whether the web interface shows it on the card.
 
+## Pre-push hook: nothing from this clone reaches `main`
+
+`.githooks/pre-push` (POSIX `sh`) reads the remote refs git gives it and refuses the push if any is
+`refs/heads/<mainBranch of .claude/factory.json>`, however the command is written (`HEAD:refs/heads/main`, inside
+`sh -c`, an alias). The message says to merge the release PR on GitHub. Git does not use a hooks folder from the
+repository until it is told to, so the human runs this **once per clone**:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`.claude/settings.json` denies `git push` with `--no-verify`, `git config` and edits to `.githooks/**` and `.git/**`, so
+an agent cannot switch the hook off.
+
+What the hook does **not** cover: pushes from other machines or clones where the setting was not made, the GitHub web
+interface, and the API (`gh api`, see `documentation/backlog.md`, "Protect `main`"). Only GitHub Pro (rulesets) or a
+token without write access to contents closes those.
+
 ## Done in release
 
 GitHub only closes issues when merging into `main`, and tickets are merged into `release/x.y.z`. Decision:
