@@ -11,12 +11,25 @@ One ticket in, one checked and reviewed change out, merged into the release bran
 ask the human anything. When something is missing or unclear, stop as blocked (step 7) with the reason.
 
 Ticket: `$0`. Project data is in `.claude/factory.md`: repo, main and working branch, board,
-labels, automatic check, documents language and where the backlog goes. The board commands (`move_card`, labels,
-history) are in the file it names: use them from there. Base branch: `$1` if given, else the working branch.
-Write GitHub comments in the documents language; code, commits and files follow `CLAUDE.md`.
-Column names and option ids come only from `.claude/factory.json`: the `column` of the phases *Build*, *Verify*,
-*Review* and *Merge*, and `columns.needsHuman` and `columns.done`. Below, «the Build column» is the `column` of the
-phase *Build*, and so on; the option id of a column is in `options`.
+labels, automatic check, documents language and where the backlog goes. Base branch: `$1` if given, else the working
+branch. Write GitHub comments in the documents language; code, commits and files follow `CLAUDE.md`.
+Column names come only from `.claude/factory.json`: the `column` of the phases *Build*, *Verify*, *Review* and
+*Merge*, and `columns.needsHuman` and `columns.done`. Below, «the Build column» is the `column` of the phase
+*Build*, and so on.
+
+## The dynamo commands
+
+Every board, GitHub and verification step goes through `node dynamo/dynamo.ts <subcommand>`
+(`documentation/orchestrator-review.md`, phase 1), never through `gh` or `git` by hand. Each prints one short JSON line
+and exits 0 (done), 1 (failed) or 2 (called wrong); the decision is the exit code, read with the line:
+
+- `board <n>`: the ticket's column, done label, blockers, and `ready` with the `why` when it is not.
+- `card <n> <column>`: moves the card and reads that one issue back; it moves again once by itself if it did not take.
+- `verify <copy> <base>`: runs every command of the automatic check in `<copy>` (`.` here), with `<base>` replaced.
+- `merge <n>`: merges `ticket/<n>-*` into the working branch, runs the check, reverts if it fails, adds the done label.
+- `comment <n> --body-file <file>`: posts the file and reads the last comment back.
+
+Anything else the steps below need from git (status, checkout, add, commit, stash) is plain git.
 
 ## Hard limits
 
@@ -28,24 +41,25 @@ phase *Build*, and so on; the option id of a column is in `options`.
 
 ## Moving the card
 
-Every «move the card to X» below means two things, in this order:
+Every «move the card to X» below means this command:
 
-1. Move it with `move_card` (the board commands file).
-2. Check it: `gh issue view $0 --json projectItems` and read the status of the card. If it is not the column X, run the
-   move once more and check again. If it is still not X, stop as blocked (step 7) with «card did not move to X» and
-   the literal output of the check. In step 7 itself the move to *Needs Human* is checked the same way, but a second
-   failure there only goes in the comment and in the final summary.
+`node dynamo/dynamo.ts card $0 <column>`. It moves the card and reads it back, and moves it once more by itself if it
+did not take. Exit 0 means the card is in X. Any other exit: stop as blocked (step 7) with «card did not move to X» and
+its literal line. In step 7 itself the move to *Needs Human* is the same command, but a failure there only goes in the
+comment and in the final summary.
 
 ## 0. Start
 
 A stop in this step (every «stop as blocked» below, and the hard limit on the main branch) is a stop at `start`: step 7
 only comments, because nothing is built yet and the tree may hold the human's own work.
 
-1. `git status --porcelain` must be empty. If not, stop as blocked («working tree not clean»).
+1. `git status --porcelain` must be empty. If not, stop as blocked («working tree not clean»). If `$1` is given and
+   is not `project.workingBranch` of `.claude/factory.json`, stop as blocked too («base is not the working branch:
+   `dynamo merge` only merges there»).
 2. Read `.claude/factory.md` and `CLAUDE.md`. No automatic check defined: stop as blocked. Never treat a missing
    check as passed.
-3. `gh issue view $0 --json projectItems`: stop as blocked if its status on the board is *Needs Human*. Then
-   `.../dependencies/blocked_by`: stop as blocked if any blocker is neither closed nor has the done label.
+3. `node dynamo/dynamo.ts board $0`: stop as blocked if the exit is not 0 or the ticket's row has `ready: false`
+   (in *Needs Human*, a blocker not done, already done), with its `why`.
 4. Set `round = 1`. The limit is 2 rounds in total, counting failures of both the check and the reviewer.
 5. Move the card to the Build column. This is the last action of step 0: no branch and no code before the card is
    there and checked.
@@ -63,11 +77,12 @@ asks you to keep (what you published, the no-trace notes, what you saw outside t
 ## 3. Automatic check
 
 Move the card to the Verify column. First `git add -N <paths of the new files>` (intent to add, nothing else is
-staged): `git diff --check <base>` ignores files git does not know. Run every command of the automatic check with
-`<base>` replaced.
-- All exit 0: go to step 4.
-- Any fails: no commit and no reviewer. If `round = 1`: `round = 2`, card to the Build column, back to step 2 with the
-  failing output. If `round = 2`: blocked (step 7) with the failing command and its output.
+staged): `git diff --check <base>` ignores files git does not know. Then `node dynamo/dynamo.ts verify . <base>`.
+- Exit 0: go to step 4.
+- Exit 1: some command failed (`checks` in its line has each command, its code and the end of its output). No commit
+  and no reviewer. If `round = 1`: `round = 2`, card to the Build column, back to step 2 with the failing commands and
+  their output. If `round = 2`: blocked (step 7) with the failing command and its output.
+- Exit 2, or an `error` instead of `checks`: the check did not run, which is not a pass: blocked (step 7).
 
 ## 4. Review
 
@@ -81,16 +96,20 @@ uncommitted change in the current directory, and from round 2 its previous verdi
 
 1. Stage only the files of the change (`git add <paths>`, never `-A`). Commit on the ticket branch: subject in
    the documents language, ending in `(#$0)`, plus the attribution line Claude Code gives you.
-2. `git checkout <base>`, `git merge --no-ff ticket/$0-<slug> -m "Merge ticket/$0-<slug> into <base> (#$0)"`.
-3. Move the card to the Verify column and run the automatic check again on the base, with `<base>` replaced by
-   `HEAD~1` (the base before the merge: `<base>` itself would compare the branch with itself). If it fails:
-   `git revert -m 1 --no-edit HEAD` and blocked (step 7).
-4. Add the done label and move the card to the Done column.
+2. `git checkout <base>` (the merge needs the main folder clean and on the base).
+3. Move the card to the Verify column, then `node dynamo/dynamo.ts merge $0`. It merges the ticket's branch, runs the
+   automatic check on the base, reverts the merge if a command fails, and adds the done label.
+   - Exit 0: `head` is the merge commit; go to 4 below (the Done column).
+   - Exit 1 or 2: blocked (step 7) with its literal line. If `failed` is in it, the check failed after the merge:
+     `reverted` says whether the merge was undone. Anything else in it (an `error`) means nothing was merged.
+4. Move the card to the Done column.
 
 ## 6. Report on the ticket
 
-One `gh issue comment $0`, in the documents language, with this shape. It does not repeat what step 2 already
-published for a checkbox:
+One comment on the ticket, in the documents language, with this shape. It does not repeat what step 2 already
+published for a checkbox. Write it to a file in the scratchpad (outside the repository, so the tree stays clean) and
+run `node dynamo/dynamo.ts comment $0 --body-file <file>`. If it exits 1 or 2, never run it again (a second comment
+could be posted): the failure goes in the final summary.
 
 ```text
 /implement · <PASS and merged into <base> | not merged>
@@ -106,7 +125,7 @@ Out of the ticket (for the backlog): <what was seen> | nothing
 - Stopped at `start` (step 0): post only the comment, with `Stopped at: start` and `Left: nothing`. No card move (a
   card already in *Needs Human* stays there; the `run` workflow skips a ticket whose blocker is not done), no stash, no
   checkout. Skip the rest of this step.
-- Move the card to the Needs Human column (`move_card`, by URL as the board commands file says).
+- Move the card to the Needs Human column (step «Moving the card»).
 - Post the step 6 comment with the reason (the literal failing output or verdict), and these three lines after
   `Reviewer:`:
 
@@ -119,7 +138,8 @@ Out of the ticket (for the backlog): <what was seen> | nothing
 
 - No commit, no merge.
 - Keep the change for the human and leave the tree clean for the next launch:
-  `git stash push -u -m "blocked #$0"`, then `git checkout <base>`. Name the stash in the comment.
+  `git stash push -u -m "blocked #$0"`, then `git checkout <base>`. Name the stash in the comment. Stopped at `merge`
+  the change is already committed on the branch and the tree is clean: there is nothing to stash.
 
 ## End
 
