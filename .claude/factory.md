@@ -1,7 +1,7 @@
 # Factory data
 
-The values of the project data are in the `project` block of `.claude/factory.json`, where the `run` workflow reads
-them without an agent. This file keeps what the values mean and how to change them. The skills and agents name none of
+The values of the project data are in the `project` block of `.claude/factory.json`, which the `board` workflow (the start of the `run`) reads
+without an agent. This file keeps what the values mean and how to change them. The skills and agents name none of
 the values themselves: to use the factory in another project, fill in the JSON and leave the skills alone.
 
 ## Repository
