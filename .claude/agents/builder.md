@@ -38,6 +38,10 @@ These apply wherever you work.
    `git rev-parse --short HEAD` printed, a branch or copy exists only if `git branch --list` or `git worktree list`
    shows it.
 
+9. **Files stay inside.** Test files and any other file you create or delete go only inside your copy (or the current
+   tree) or the scratchpad, never elsewhere on the disk (not `../`, not a disk root, not the home folder). A hook
+   refuses a Bash command that does otherwise; do not look for another way around it.
+
 ## In a copy (the run workflow)
 
 You are in your own git worktree, which starts at the tip of the base. Run one command per Bash call: no `&&`, `;`,

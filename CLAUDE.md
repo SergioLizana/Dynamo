@@ -19,7 +19,9 @@ them until they open a PR that a person approves. Private repository.
   Exceptions: workflow scripts (`.claude/workflows/`), which Claude Code runs; and the git `pre-push` hook
   (`.githooks/pre-push`), which refuses any push to the main branch. Claude Code has no option that protects a branch,
   and GitHub Free does not protect branches of a private repository either; a Claude Code hook only sees the command
-  text, while git's own hook gets the exact remote refs.
+  text, while git's own hook gets the exact remote refs. And the `PreToolUse` hook `.claude/hooks/outside-writes.js`,
+  which refuses a Bash command that writes or deletes outside the session's working tree and the scratchpad: Claude
+  Code's sandbox does not exist on native Windows (`.claude/factory.md`, «Writes outside the repository»).
 - Measured from the first ticket: turns per ticket, and cost per list (when a list ends, the session's `/cost` goes in
   the PR report). When a ticket is launched by hand, no turns or cost are recorded.
 
