@@ -132,6 +132,26 @@ Small things found when reviewing the list #53-#58. None is a problem yet; each 
   to the JSON. They should name `.claude/factory.json` directly (`implement`, `to-tasks`, `to-request`, `discover` and
   the `reviewer`). From the run of #53-#55.
 
+## Findings of the phase 1 review (2026-10-28)
+
+Found when reviewing #78-#84 against their checkboxes. None stops phase 2; each waits for a ticket that touches the file
+or for its trigger.
+
+- **Copied helpers in `dynamo/`.** `setting()` exists three times: the shared one in `dynamo/cli.ts`, a private copy in
+  `dynamo/board.ts` and `read()` inside `settings()` in `dynamo/merging.ts`. The loop that runs the checks is written
+  twice, in `dynamo/verify.ts` and `dynamo/merge.ts`. `CLAUDE.md` says a helper is not copied into a subcommand. When:
+  the first ticket that touches one of those files.
+- **The Node version `dynamo` needs is not written anywhere.** It was built and tested on Node 24.15.0: it relies on type
+  stripping and on `node --test <folder>` loading `dynamo/tests/index.js` as a module (noted in #78). When: the factory
+  is installed on another machine or project (phase 5).
+- **`dynamo report` asks the remote by pattern.** `git ls-remote --heads origin <base>` also matches a branch such as
+  `x/<base>`; it should ask for `refs/heads/<base>` exactly (noted in #82). When: a ticket touches `dynamo report`, or it
+  happens.
+- **`dynamo report` with a diverged remote.** When the remote branch is not at the local one and there is nothing to push,
+  it still prints `gh pr create` or `gh pr edit`; only the note warns (noted in #82). When: as above.
+- **Two tests of `tests/workflows/` fail on `release/0.2.0`** («release-report: alone with no args…» and «board: the open
+  tickets (100)…»; noted in #78). The folder is frozen: noted, not fixed. When: they go with the workflow in phase 3.
+
 ## Phases without globals, and a cap on parallel builds (#59)
 
 - **Origin:** ticket #59, moved to the backlog by the human on 2026-10-27: it waits for a real problem.
