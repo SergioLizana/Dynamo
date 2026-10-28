@@ -9,6 +9,7 @@ export type Output = { ok: boolean; [key: string]: unknown };
 export type Deps = {
   gh: (args: string[], options?: Options) => Result;
   git: (args: string[], options?: Options) => Result;
+  exec: (command: string[], args: string[], options?: Options) => Result;
   factory: () => Factory;
 };
 

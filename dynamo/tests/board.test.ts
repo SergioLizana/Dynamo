@@ -25,7 +25,8 @@ function deps(...answers: Result[]): Deps & { calls: string[][] } {
   const calls: string[][] = [];
   const gh = (args: string[]): Result => { calls.push(args); return answers.shift() ?? { code: 1, stdout: '', stderr: 'no answer' }; };
   const git = (): Result => { throw new Error('board does not use git'); };
-  return { gh, git, factory: () => factory, calls };
+  const exec = (): Result => { throw new Error('board does not run programs'); };
+  return { gh, git, exec, factory: () => factory, calls };
 }
 
 test('board prints, for each ticket, number, title, column, done label, blockers, ready and why not', () => {
