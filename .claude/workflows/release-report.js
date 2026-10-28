@@ -193,19 +193,20 @@ if (okAt(3)) {
   notes.push(`the tickets and their comments could not be read (${rs[3] ? `exit code ${rs[3].exitCode}` : 'the runner stopped before'}): the report lists the merged tickets without titles or results`)
 }
 
-// What the Builder noted outside the ticket, from the «Out of the ticket» block of a run comment: a fenced block, or «nothing».
+// What the Builder noted outside the ticket, from the «Out of the ticket» block of a run comment. The block comes in
+// three forms and all of them are kept: text after the colon on the first line, unfenced lines after it (up to the next
+// `Stopped at` / `Left` / `To relaunch` / `Reason` line), and fenced blocks (their lines count whatever they say, but the
+// fences themselves do not). The result is dropped only when all of that is just «nothing» or «none».
 function outOfTicket(block) {
   if (!block) return null
-  const lines = String(block).split('\n')
-  const first = lines[0].replace(/\r$/, '')
-  if (/:\s*nothing\s*$/.test(first) || /:\s*none\s*$/.test(first)) return null
-  const body = []
+  const lines = String(block).split('\n').map(l => l.replace(/\r$/, ''))
+  const colon = lines[0].indexOf(':')
+  const body = colon === -1 ? [] : [lines[0].slice(colon + 1)]
   let inside = false
-  for (const raw of lines.slice(1)) {
-    const l = raw.replace(/\r$/, '')
-    if (/^`{3,}/.test(l.trim())) { if (inside) break; inside = true; continue }
-    if (!inside && /^(Stopped at|Left|To relaunch|Reason)/.test(l)) break
-    if (inside) body.push(l)
+  for (const l of lines.slice(1)) {
+    if (/^`{3,}/.test(l.trim())) { inside = !inside; continue }
+    if (!inside && /^(Stopped at|Left|To relaunch|Reason)\b/.test(l.trim())) break
+    body.push(l)
   }
   const t = oneLine(body.join(' '), 600)
   return !t || /^(nothing|none)\.?$/i.test(t) ? null : t
