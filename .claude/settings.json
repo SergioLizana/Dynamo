@@ -67,7 +67,9 @@
       "Bash(sh -c 'out=$(gh api graphql -f query=* 2>&1); code=$?; printf %s \"$out\" | base64; exit $code')",
       "Bash(sh -c 'out=$(gh project item-list 1 --owner SergioLizana --format json --limit 200 --jq * 2>&1); code=$?; printf %s \"$out\" | base64; exit $code')",
       "Bash(sh -c 'out=$(gh pr list -R SergioLizana/Dynamo --head release/* --base main --state open --json number,url,body 2>&1); code=$?; printf %s \"$out\" | base64; exit $code')",
-      "Bash(sh -c 'out=$(gh issue view * -R SergioLizana/Dynamo --json comments --jq * 2>&1); code=$?; printf %s \"$out\" | base64; exit $code')"
+      "Bash(sh -c 'out=$(gh issue view * -R SergioLizana/Dynamo --json comments --jq * 2>&1); code=$?; printf %s \"$out\" | base64; exit $code')",
+      "Bash(sh -c 'git branch -d * || true')",
+      "Bash(git branch -d *)"
     ],
     "deny": [
       "Bash(git reset --hard*)",
@@ -88,7 +90,6 @@
     ],
     "ask": [
       "Bash(git push*)",
-      "Bash(git branch -d*)",
       "Bash(git branch -D*)"
     ]
   }
