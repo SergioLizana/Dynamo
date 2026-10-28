@@ -63,6 +63,59 @@ function base64(text) {
 }
 const fromText = (text, tail) => `sh -c ${shq(`printf %s ${base64(text)} | base64 --decode | ${tail}`)}`
 
+// Exact text through the `runner` (run wf_c3e19634-96a): an agent that copies text by hand does not keep an escape
+// (an escape sequence for the middle dot came back as `·`) or a non-ASCII character (`·` came back as `�`). So every command is plain ASCII with no
+// escape sequence in it (a filter that needs another character is done here, in the script), and a read whose output can
+// hold other text (comments, bodies, titles) is asked as base64 and decoded here. An output that is not valid base64 and
+// UTF-8 is a plumbing failure with its reason, never text with `�`.
+const plainProblem = c => {
+  const bad = String(c).match(/[^\x20-\x7e]|\\u[0-9a-fA-F{]|\\x[0-9a-fA-F]{2}/)
+  return bad ? `«${oneLine(c, 120)}» has «${bad[0]}»` : null
+}
+// `<command>` with its output as base64 (`… | base64`, on Linux, macOS and Git Bash); the exit code stays the command's.
+const asBase64 = command => `sh -c ${shq(`out=$(${command} 2>&1); code=$?; printf %s "$out" | base64; exit $code`)}`
+// Base64 back to text: { text } or { error }. The line breaks `base64` adds are ignored; the rest must be exact.
+function fromBase64(encoded) {
+  const s = String(encoded).replace(/\s+/g, '')
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s)) return { error: 'it has characters that are not base64' }
+  if (s.length % 4 !== 0) return { error: `its length (${s.length}) is not a multiple of 4: characters were lost or added` }
+  const bytes = []
+  for (let i = 0; i < s.length; i += 4) {
+    const v = [0, 1, 2, 3].map(k => (s[i + k] === '=' ? 0 : B64.indexOf(s[i + k])))
+    const n = (v[0] << 18) | (v[1] << 12) | (v[2] << 6) | v[3]
+    bytes.push((n >> 16) & 255)
+    if (s[i + 2] !== '=') bytes.push((n >> 8) & 255)
+    if (s[i + 3] !== '=') bytes.push(n & 255)
+  }
+  let text = ''
+  for (let i = 0; i < bytes.length;) {
+    const b = bytes[i]
+    if (b < 0x80) { text += String.fromCharCode(b); i++; continue }
+    const need = b >= 0xc2 && b <= 0xdf ? 1 : b >= 0xe0 && b <= 0xef ? 2 : b >= 0xf0 && b <= 0xf4 ? 3 : 0
+    if (!need) return { error: `byte ${i} is not valid UTF-8` }
+    let cp = b & (0x3f >> need)
+    for (let k = 1; k <= need; k++) {
+      const c = bytes[i + k]
+      if (c === undefined || (c & 0xc0) !== 0x80) return { error: `the UTF-8 sequence at byte ${i} is cut or broken` }
+      cp = (cp << 6) | (c & 63)
+    }
+    if (cp < [0, 0x80, 0x800, 0x10000][need] || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return { error: `the UTF-8 sequence at byte ${i} is not a valid character` }
+    text += String.fromCodePoint(cp)
+    i += need + 1
+  }
+  return { text }
+}
+// The commands in `results` that are base64, decoded in place; the reason of the first that is not, or null.
+function decodeAt(results, indexes) {
+  for (const i of indexes) {
+    if (!results[i]) continue
+    const d = fromBase64(results[i].output)
+    if (d.error) return `the output of \`${oneLine(results[i].command, 100)}\` is not valid base64 and UTF-8: ${d.error}`
+    results[i] = { ...results[i], output: d.text }
+  }
+  return null
+}
+
 let SMALL = {}
 const optsOf = step => {
   const o = {}
@@ -71,6 +124,8 @@ const optsOf = step => {
   return o
 }
 async function runList(label, commands) {
+  const off = commands.map(plainProblem).find(Boolean)
+  if (off) throw new Error(`a command is not plain ASCII: ${off}`)
   const r = await agent(`Run these commands, in this order:
 ${commands.map((c, i) => `${i + 1}. ${c}`).join('\n')}`,
   { ...SMALL, agentType: 'runner', label, phase: GROUP, schema: RUN_SCHEMA })
@@ -90,9 +145,12 @@ if (P && C) {
 } else {
   // Alone: the only read of factory.json. No model here: `small` is not known yet, so the runner's own.
   const raw = await agent(`Run these commands, in this order:
-1. cat ${FACTORY_JSON}`, { agentType: 'runner', label: 'factory.json', phase: GROUP, schema: RUN_SCHEMA })
+1. ${asBase64(`cat ${FACTORY_JSON}`)}`, { agentType: 'runner', label: 'factory.json', phase: GROUP, schema: RUN_SCHEMA })
   const read = (resultsOf(raw) || [])[0]
   if (!read || read.exitCode !== 0) return { stopped: `${FACTORY_JSON} is missing or cannot be read` }
+  const factoryText = fromBase64(read.output)
+  if (factoryText.error) return { stopped: `the output of reading ${FACTORY_JSON} is not valid base64 and UTF-8: ${factoryText.error}` }
+  read.output = factoryText.text
   let F
   try { F = JSON.parse(read.output.trim()) } catch (e) { return { stopped: `${FACTORY_JSON} is not valid JSON: ${e.message}` } }
   P = F && F.project
@@ -124,27 +182,32 @@ const REPORT_FILE = `.claude/worktrees/release-report-${base.replace(/[^A-Za-z0-
 // line (the result), the Rounds line and the «Out of the ticket» lines. One line of JSON per ticket, after a first one
 // with the totals, so nothing is cut off silently.
 const QUERY = `query { repository(owner:"${OWNER}", name:"${REPO_NAME}") { issues(labels:["${P.doneLabel}"], states:[OPEN,CLOSED], first:100, orderBy:{field:UPDATED_AT,direction:DESC}) { pageInfo{hasNextPage} totalCount nodes { number title comments(last:10){nodes{body}} } } } }`
+// The command is plain ASCII, so it cannot select the comments that start with «run · » (the dot is not ASCII and a model
+// may rewrite an escape for it): it keeps every comment that starts with «run », cut to the same three pieces, and the
+// script takes the last one whose fifth character is the dot (see `lastRun`). The line break is built from its code.
 const COMMENTS_JQ = '.data.repository.issues | ({more: .pageInfo.hasNextPage, total: .totalCount} | tojson), '
-  + '(.nodes[] | . as $i | ([$i.comments.nodes[].body | select(startswith("run \\u00b7 "))] | last) as $c '
-  + '| (if $c == null then [] else ($c | split("\\n")) end) as $l '
-  + '| {n: $i.number, t: $i.title, head: $l[0], rounds: ([$l[] | select(startswith("Rounds: "))] | first), '
-  + 'out: (($l | map(startswith("Out of the ticket")) | index(true)) as $k | if $k == null then null else ($l[$k:] | join("\\n")) end)} | tojson)'
+  + '(.nodes[] | . as $i | ([10] | implode) as $nl | {n: $i.number, t: $i.title, cs: [$i.comments.nodes[].body | select(startswith("run ")) '
+  + '| split($nl) as $l | {head: $l[0], rounds: ([$l[] | select(startswith("Rounds: "))] | first), '
+  + 'out: (($l | map(startswith("Out of the ticket")) | index(true)) as $k | if $k == null then null else ($l[$k:] | join($nl)) end)}]} | tojson)'
 const CARDS_LIMIT = 200
 const CARDS_JQ = `{total: .totalCount, listed: (.items | length), cards: [.items[] | select(.status == ${JSON.stringify(C.needsHuman)}) | {n: .content.number, t: .title}]} | tojson`
 
 const reads = [
   `git rev-parse --short ${base}`, // 0
-  `git log --first-parent --format=%p%x09%s ${P.mainBranch}..${base}`, // 1
+  asBase64(`git log --first-parent --format=%p%x09%s ${P.mainBranch}..${base}`), // 1: subjects can hold non-ASCII text
   `git rev-list --count ${base} --not --remotes=origin`, // 2
-  `gh api graphql -f query='${QUERY}' --jq ${shq(COMMENTS_JQ)}`, // 3
-  `gh project item-list ${P.boardNumber} --owner ${P.boardOwner} --format json --limit ${CARDS_LIMIT} --jq ${shq(CARDS_JQ)}`, // 4
-  `gh pr list -R ${P.repo} --head ${base} --base ${P.mainBranch} --state open --json number,url,body`, // 5
+  asBase64(`gh api graphql -f query='${QUERY}' --jq ${shq(COMMENTS_JQ)}`), // 3: titles and comments
+  asBase64(`gh project item-list ${P.boardNumber} --owner ${P.boardOwner} --format json --limit ${CARDS_LIMIT} --jq ${shq(CARDS_JQ)}`), // 4: titles
+  asBase64(`gh pr list -R ${P.repo} --head ${base} --base ${P.mainBranch} --state open --json number,url,body`), // 5: the body
   `git ls-remote --heads origin ${base}`, // 6: the network last, the runner stops at the first that fails
 ]
 const rs = await runListRetry('read', reads)
 if (!rs || !rs.length) return { stopped: 'the read of git and GitHub returned nothing twice' }
 const got = i => (rs[i] && loose(rs[i].command) === loose(reads[i]) ? rs[i] : null)
 for (let i = 0; i < rs.length; i++) if (!got(i)) return { stopped: `the read ran «${oneLine(rs[i].command, 120)}» where «${oneLine(reads[i] || 'nothing', 120)}» was expected` }
+// The outputs that are base64 are text from here on; one that is not valid stops the report before anything is written.
+const notB64 = decodeAt(rs, [1, 3, 4, 5])
+if (notB64) return { stopped: notB64 }
 const okAt = i => (got(i) && got(i).exitCode === 0 ? got(i) : null)
 if (!okAt(0)) return { stopped: `${base} does not exist here: \`${rs[0].command}\` → ${rs[0].exitCode}` }
 if (!okAt(1)) return { stopped: `the merges of ${base} since ${P.mainBranch} could not be read: ${rs[1] ? `\`${rs[1].command}\` → ${rs[1].exitCode} ${oneLine(rs[1].output)}` : 'the runner stopped before'}` }
@@ -178,6 +241,14 @@ const merged = mergedSinceMain(rs[1].output)
 
 // ---------- Last run comment of each ticket ----------
 
+// The last comment of a ticket that starts with «run · » (a dot in the fifth place: the command could not ask for it),
+// with the three pieces the report uses. A ticket with none has no head.
+const lastRun = o => {
+  const mine = (Array.isArray(o.cs) ? o.cs : []).filter(c => c && typeof c.head === 'string' && c.head.startsWith('run · '))
+  const c = mine[mine.length - 1] || {}
+  return { n: o.n, t: o.t, head: c.head, rounds: c.rounds, out: c.out }
+}
+
 const info = {}
 let moreTickets = false
 if (okAt(3)) {
@@ -186,7 +257,7 @@ if (okAt(3)) {
     try { o = JSON.parse(line) } catch (e) { o = null }
     if (!o) continue
     if (o.more !== undefined) { moreTickets = !!o.more; continue }
-    if (Number.isInteger(o.n)) info[o.n] = o
+    if (Number.isInteger(o.n)) info[o.n] = lastRun(o)
   }
   if (moreTickets) notes.push(`more than 100 tickets have the label ${P.doneLabel}: only the 100 updated last were read, so older ones have no data in this report`)
 } else {
@@ -301,14 +372,16 @@ const report = [
 const writes = [
   ...cleanup,
   fromText(report, `{ mkdir -p .claude/worktrees; cat > ${REPORT_FILE}; }`),
-  `cat ${REPORT_FILE}`,
+  asBase64(`cat ${REPORT_FILE}`), // the report holds non-ASCII text
 ]
 const ws = await runListRetry('write', writes)
 const wgot = i => (ws && ws[i] && loose(ws[i].command) === loose(writes[i]) ? ws[i] : null)
 const cleanupResults = ws ? cleanup.map((c, i) => wgot(i)).filter(Boolean) : []
 const wrote = wgot(cleanup.length), back = wgot(cleanup.length + 1)
-const fileOk = !!wrote && wrote.exitCode === 0 && !!back && back.exitCode === 0 && norm(back.output) === norm(report)
+const backText = back && back.exitCode === 0 ? fromBase64(back.output) : null
+const fileOk = !!wrote && wrote.exitCode === 0 && !!backText && !backText.error && norm(backText.text) === norm(report)
 if (!ws) notes.push('the file could not be written (no answer twice): the report is below, paste it as the body')
+else if (backText && backText.error) notes.push(`${REPORT_FILE} could not be read back (the output is not valid base64 and UTF-8: ${backText.error}): the commands below need it, so paste the report as the body`)
 else if (!fileOk) notes.push(`${REPORT_FILE} was not written as it should: the commands below need it, so paste the report as the body`)
 
 // ---------- What the human runs ----------
