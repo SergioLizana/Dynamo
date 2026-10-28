@@ -37,6 +37,62 @@ const oneLine = (s, max = 300) => {
   const x = String(s).replace(/\s+/g, ' ').trim()
   return x.length > max ? `${x.slice(0, max - 1)}…` : x
 }
+const shq = s => `'${String(s).split("'").join("'\\''")}'`
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+// Exact text through the `runner` (run wf_c3e19634-96a): an agent that copies text by hand does not keep an escape
+// (an escape sequence for the middle dot came back as `·`) or a non-ASCII character (`·` came back as `�`). So every command is plain ASCII with no
+// escape sequence in it (a filter that needs another character is done here, in the script), and a read whose output can
+// hold other text (comments, bodies, titles) is asked as base64 and decoded here. An output that is not valid base64 and
+// UTF-8 is a plumbing failure with its reason, never text with `�`.
+const plainProblem = c => {
+  const bad = String(c).match(/[^\x20-\x7e]|\\u[0-9a-fA-F{]|\\x[0-9a-fA-F]{2}/)
+  return bad ? `«${oneLine(c, 120)}» has «${bad[0]}»` : null
+}
+// `<command>` with its output as base64 (`… | base64`, on Linux, macOS and Git Bash); the exit code stays the command's.
+const asBase64 = command => `sh -c ${shq(`out=$(${command} 2>&1); code=$?; printf %s "$out" | base64; exit $code`)}`
+// Base64 back to text: { text } or { error }. The line breaks `base64` adds are ignored; the rest must be exact.
+function fromBase64(encoded) {
+  const s = String(encoded).replace(/\s+/g, '')
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s)) return { error: 'it has characters that are not base64' }
+  if (s.length % 4 !== 0) return { error: `its length (${s.length}) is not a multiple of 4: characters were lost or added` }
+  const bytes = []
+  for (let i = 0; i < s.length; i += 4) {
+    const v = [0, 1, 2, 3].map(k => (s[i + k] === '=' ? 0 : B64.indexOf(s[i + k])))
+    const n = (v[0] << 18) | (v[1] << 12) | (v[2] << 6) | v[3]
+    bytes.push((n >> 16) & 255)
+    if (s[i + 2] !== '=') bytes.push((n >> 8) & 255)
+    if (s[i + 3] !== '=') bytes.push(n & 255)
+  }
+  let text = ''
+  for (let i = 0; i < bytes.length;) {
+    const b = bytes[i]
+    if (b < 0x80) { text += String.fromCharCode(b); i++; continue }
+    const need = b >= 0xc2 && b <= 0xdf ? 1 : b >= 0xe0 && b <= 0xef ? 2 : b >= 0xf0 && b <= 0xf4 ? 3 : 0
+    if (!need) return { error: `byte ${i} is not valid UTF-8` }
+    let cp = b & (0x3f >> need)
+    for (let k = 1; k <= need; k++) {
+      const c = bytes[i + k]
+      if (c === undefined || (c & 0xc0) !== 0x80) return { error: `the UTF-8 sequence at byte ${i} is cut or broken` }
+      cp = (cp << 6) | (c & 63)
+    }
+    if (cp < [0, 0x80, 0x800, 0x10000][need] || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return { error: `the UTF-8 sequence at byte ${i} is not a valid character` }
+    text += String.fromCodePoint(cp)
+    i += need + 1
+  }
+  return { text }
+}
+// The commands in `results` that are base64, decoded in place; the reason of the first that is not, or null.
+function decodeAt(results, indexes) {
+  for (const i of indexes) {
+    if (!results[i]) continue
+    const d = fromBase64(results[i].output)
+    if (d.error) return `the output of \`${oneLine(results[i].command, 100)}\` is not valid base64 and UTF-8: ${d.error}`
+    results[i] = { ...results[i], output: d.text }
+  }
+  return null
+}
+
 const optsOf = step => {
   const o = {}
   if (step && step.model) o.model = step.model
@@ -44,6 +100,8 @@ const optsOf = step => {
   return o
 }
 async function runList(label, commands, own = {}) {
+  const off = commands.map(plainProblem).find(Boolean)
+  if (off) throw new Error(`a command is not plain ASCII: ${off}`)
   const r = await agent(`Run these commands, in this order:
 ${commands.map((c, i) => `${i + 1}. ${c}`).join('\n')}`,
   { ...own, agentType: 'runner', label, phase: GROUP, schema: RUN_SCHEMA })
@@ -90,9 +148,12 @@ function checkFactory(f) {
 
 // Without a valid factory.json nothing is read. No model here: it is not read yet, so the runner's own (its definition's).
 const rawFactory = await agent(`Run these commands, in this order:
-1. cat ${FACTORY_JSON}`, { agentType: 'runner', label: 'factory.json', phase: GROUP, schema: RUN_SCHEMA })
+1. ${asBase64(`cat ${FACTORY_JSON}`)}`, { agentType: 'runner', label: 'factory.json', phase: GROUP, schema: RUN_SCHEMA })
 const factoryRead = (resultsOf(rawFactory) || [])[0] || null
 if (!factoryRead || factoryRead.exitCode !== 0) return { stopped: `${FACTORY_JSON} is missing or cannot be read` }
+const factoryText = fromBase64(factoryRead.output)
+if (factoryText.error) return { stopped: `the output of reading ${FACTORY_JSON} is not valid base64 and UTF-8: ${factoryText.error}` }
+factoryRead.output = factoryText.text
 let F
 try { F = JSON.parse(factoryRead.output.trim()) } catch (e) { return { stopped: `${FACTORY_JSON} is not valid JSON: ${e.message}` } }
 const invalid = checkFactory(F)
@@ -134,13 +195,15 @@ const query = `query { repository(owner:"${OWNER}", name:"${REPO_NAME}") { ${wan
 const startCommands = [
   'git status --porcelain --untracked-files=no', // 0
   'git branch --show-current', // 1
-  `gh api graphql -f query='${query}'`, // 2
+  asBase64(`gh api graphql -f query='${query}'`), // 2: titles can hold non-ASCII text
 ]
 const startRs = await runListRetry('start', startCommands, SMALL)
 if (!startRs || !startRs.length) return { stopped: 'the read of the tickets and of the main folder returned nothing' }
 for (let i = 0; i < startRs.length; i++) {
   if (i >= startCommands.length || loose(startRs[i].command) !== loose(startCommands[i])) return { stopped: `the start read ran «${oneLine(startRs[i].command, 120)}» where «${oneLine(startCommands[i] || 'nothing', 120)}» was expected` }
 }
+const notB64 = decodeAt(startRs, [2])
+if (notB64) return { stopped: `the tickets could not be read: ${notB64}` }
 const [rStatus, rBranch, rTickets] = startRs
 
 // Why the main folder cannot take a run (the merges happen there), or null.

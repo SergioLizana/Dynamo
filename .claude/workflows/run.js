@@ -100,6 +100,49 @@ function base64(text) {
 }
 const fromText = (text, tail) => `sh -c ${shq(`printf %s ${base64(text)} | base64 --decode | ${tail}`)}`
 
+// Exact text through the `runner` (run wf_c3e19634-96a): an agent that copies text by hand does not keep an escape
+// (an escape sequence for the middle dot came back as `·`) or a non-ASCII character (`·` came back as `�`). So every command is plain ASCII with no
+// escape sequence in it (a filter that needs another character is done here, in the script), and a read whose output can
+// hold other text (comments, bodies, titles) is asked as base64 and decoded here. An output that is not valid base64 and
+// UTF-8 is a plumbing failure with its reason, never text with `�`.
+const plainProblem = c => {
+  const bad = String(c).match(/[^\x20-\x7e]|\\u[0-9a-fA-F{]|\\x[0-9a-fA-F]{2}/)
+  return bad ? `«${oneLine(c, 120)}» has «${bad[0]}»` : null
+}
+// `<command>` with its output as base64 (`… | base64`, on Linux, macOS and Git Bash); the exit code stays the command's.
+const asBase64 = command => `sh -c ${shq(`out=$(${command} 2>&1); code=$?; printf %s "$out" | base64; exit $code`)}`
+// Base64 back to text: { text } or { error }. The line breaks `base64` adds are ignored; the rest must be exact.
+function fromBase64(encoded) {
+  const s = String(encoded).replace(/\s+/g, '')
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s)) return { error: 'it has characters that are not base64' }
+  if (s.length % 4 !== 0) return { error: `its length (${s.length}) is not a multiple of 4: characters were lost or added` }
+  const bytes = []
+  for (let i = 0; i < s.length; i += 4) {
+    const v = [0, 1, 2, 3].map(k => (s[i + k] === '=' ? 0 : B64.indexOf(s[i + k])))
+    const n = (v[0] << 18) | (v[1] << 12) | (v[2] << 6) | v[3]
+    bytes.push((n >> 16) & 255)
+    if (s[i + 2] !== '=') bytes.push((n >> 8) & 255)
+    if (s[i + 3] !== '=') bytes.push(n & 255)
+  }
+  let text = ''
+  for (let i = 0; i < bytes.length;) {
+    const b = bytes[i]
+    if (b < 0x80) { text += String.fromCharCode(b); i++; continue }
+    const need = b >= 0xc2 && b <= 0xdf ? 1 : b >= 0xe0 && b <= 0xef ? 2 : b >= 0xf0 && b <= 0xf4 ? 3 : 0
+    if (!need) return { error: `byte ${i} is not valid UTF-8` }
+    let cp = b & (0x3f >> need)
+    for (let k = 1; k <= need; k++) {
+      const c = bytes[i + k]
+      if (c === undefined || (c & 0xc0) !== 0x80) return { error: `the UTF-8 sequence at byte ${i} is cut or broken` }
+      cp = (cp << 6) | (c & 63)
+    }
+    if (cp < [0, 0x80, 0x800, 0x10000][need] || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return { error: `the UTF-8 sequence at byte ${i} is not a valid character` }
+    text += String.fromCodePoint(cp)
+    i += need + 1
+  }
+  return { text }
+}
+
 // ---------- Phases ----------
 
 // One function per phase of factory.json, picked by its name. It gets the ticket, its state (ctx) and its entry (ph) and
@@ -392,6 +435,8 @@ for (const t of tickets) byNum[t.number] = t
 // first that fails and returns each one it ran with its exit code and output. The runner names no project data; the
 // commands come from here. The results it ran, or null if it returned nothing.
 async function runList(label, commands, phase, own = {}) {
+  const off = commands.map(plainProblem).find(Boolean)
+  if (off) throw new Error(`a command is not plain ASCII: ${off}`)
   const r = await agent(`Run these commands, in this order:
 ${commands.map((c, i) => `${i + 1}. ${c}`).join('\n')}`,
   { ...SMALL, ...own, agentType: 'runner', label, phase, schema: RUN_SCHEMA })
@@ -428,14 +473,14 @@ async function moveCard(n, column, group) {
 
 // A comment the script wrote, posted from stdin (so it travels as base64) and read back from the ticket.
 const postCommand = (n, body) => fromText(body, `gh issue comment ${n} -R ${P.repo} --body-file -`)
-const lastCommentCommand = n => `gh issue view ${n} -R ${P.repo} --json comments --jq '.comments[-1].body'`
+const lastCommentCommand = n => asBase64(`gh issue view ${n} -R ${P.repo} --json comments --jq '.comments[-1].body'`) // the body holds non-ASCII text
 
 // What closes a ticket's step in one `runner` call: the done label (if any), the card in its column (if any) and the
 // comment, each read back; the runner stops at the first command that fails, so a second call repeats only what is
 // still missing (a comment that was posted is never posted twice). Returns what could not be confirmed, in notes.
 async function settle(tag, n, group, { label, column, body }) {
   const need = { label: !!label, card: !!column, comment: true }
-  const state = { card: !column, commentMatches: false }
+  const state = { card: !column, commentMatches: false, readError: null }
   for (let attempt = 1; attempt <= 2 && (need.label || need.card || need.comment); attempt++) {
     const cmds = [], at = {}
     if (need.label) { at.label = cmds.length; cmds.push(`gh issue edit ${n} -R ${P.repo} --add-label ${P.doneLabel}`) }
@@ -451,14 +496,16 @@ async function settle(tag, n, group, { label, column, body }) {
     if (post && post.exitCode === 0) {
       need.comment = false
       const rb = got(at.post + 1)
-      state.commentMatches = !!rb && rb.exitCode === 0 && norm(rb.output) === norm(body)
+      const back = rb && rb.exitCode === 0 ? fromBase64(rb.output) : null
+      if (back && back.error) state.readError = back.error
+      state.commentMatches = !!back && !back.error && norm(back.text) === norm(body)
     }
   }
   const notes = []
   if (need.label) notes.push(`the label ${P.doneLabel} could not be added to #${n}: add it by hand`)
   if (need.card) notes.push(`the card of #${n} could not be moved to ${column}: check it by hand`)
   if (need.comment) notes.push(`the comment on #${n} could not be posted`)
-  else if (!state.commentMatches) notes.push(`the last comment on #${n} could not be confirmed to be the script's report: read it`)
+  else if (!state.commentMatches) notes.push(`the last comment on #${n} could not be confirmed to be the script's report${state.readError ? ` (the read-back is not valid base64 and UTF-8: ${state.readError})` : ''}: read it`)
   for (const m of notes) log(m)
   return { notes, card: state.card }
 }

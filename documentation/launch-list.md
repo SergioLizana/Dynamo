@@ -228,6 +228,12 @@ says why (`checkFactory` and the read of the JSON in `board.js`, and the `PHASES
   (`printf %s <text> | base64 --decode | gh issue comment N --body-file -`), so no character of it reaches a shell, and
   the script reads it back. The prompts do not ask any agent to read the `project` block: the script passes the values
   (the documents language to the Builder and the reviewer).
+- **Text through the `runner` stays exact:** an agent that copies text by hand loses escapes and non-ASCII characters
+  (`·` came back as `�`). So every command the three workflows send is plain ASCII with no escape sequence (a filter
+  that needs another character is done in the script), and a read whose output can hold other text (comments, bodies,
+  titles, the PR body, commit subjects, `factory.json`) is asked as `sh -c '… | base64'` and decoded by the script. An
+  output that is not valid base64 and UTF-8 is a plumbing failure with its reason: the report is not written, and a
+  comment read back that way is told as not confirmed. A command that is not plain ASCII is refused before it is sent.
 - **What a checkbox asks for outside the code:** *Build* publishes it during its step; *Merge* publishes only the
   final report and does not repeat it.
 
