@@ -148,6 +148,12 @@ The tickets still open when 0.1.0 was frozen are closed as superseded; what they
   - The two failing tests of `tests/workflows/` go with that folder.
   - The `__MACOSX` folders of `documentation/Research/dynamo-analisis/` are deleted.
   - The human updates the local `main` (`git fetch origin main:main`): it is behind `origin/main` since PR #66.
+  - `.claude/settings.json`: the six `git -C */.claude/worktrees/* …` rules go with the `sh -c` ones. They served the
+    workflow's reviewer in a copy, and the wildcard before the subcommand also lets options such as `-c` through.
+  - `/implement`, «Hard limits»: the line «If the base is the main branch, stop as blocked» reads as if a base could be
+    chosen; since #85 the base is always the working branch.
+  - `dynamo copy` (#87): `remove` does not see a copy left detached at `.claude/worktrees/ticket-<n>` (`add` does, by
+    path), and `add` gives git's generic error when the folder exists on disk without being a registered worktree.
 - Compare the first lists of the program with the comments of the past `/run` runs: agents per ticket, plumbing
   failures, cost, duration. Write it down as `workflow-trial.md` was.
 - **Done when:** there is one implementation of the loop and the documentation describes only it.
