@@ -1,7 +1,7 @@
 ---
 name: implement
 description: Build one GitHub ticket end to end without the human - branch from the release branch, implement, run the automatic check, get the reviewer's verdict, retry at most once, then merge into the release branch or send the ticket to *Needs Human*. Use when the human, or the /run workflow, launches /implement with a ticket number.
-argument-hint: <ticket number> [base branch]
+argument-hint: <ticket number>
 disable-model-invocation: true
 ---
 
@@ -11,8 +11,9 @@ One ticket in, one checked and reviewed change out, merged into the release bran
 ask the human anything. When something is missing or unclear, stop as blocked (step 7) with the reason.
 
 Ticket: `$0`. Project data is in `.claude/factory.md`: repo, main and working branch, board,
-labels, automatic check, documents language and where the backlog goes. Base branch: `$1` if given, else the working
-branch. Write GitHub comments in the documents language; code, commits and files follow `CLAUDE.md`.
+labels, automatic check, documents language and where the backlog goes. Base branch (`<base>` below): always the
+working branch, `project.workingBranch` of `.claude/factory.json`, since `dynamo merge` only merges there. Write
+GitHub comments in the documents language; code, commits and files follow `CLAUDE.md`.
 Column names come only from `.claude/factory.json`: the `column` of the phases *Build*, *Verify*, *Review* and
 *Merge*, and `columns.needsHuman` and `columns.done`. Below, «the Build column» is the `column` of the phase
 *Build*, and so on.
@@ -53,9 +54,7 @@ comment and in the final summary.
 A stop in this step (every «stop as blocked» below, and the hard limit on the main branch) is a stop at `start`: step 7
 only comments, because nothing is built yet and the tree may hold the human's own work.
 
-1. `git status --porcelain` must be empty. If not, stop as blocked («working tree not clean»). If `$1` is given and
-   is not `project.workingBranch` of `.claude/factory.json`, stop as blocked too («base is not the working branch:
-   `dynamo merge` only merges there»).
+1. `git status --porcelain` must be empty. If not, stop as blocked («working tree not clean»).
 2. Read `.claude/factory.md` and `CLAUDE.md`. No automatic check defined: stop as blocked. Never treat a missing
    check as passed.
 3. `node dynamo/dynamo.ts board $0`: stop as blocked if the exit is not 0 or the ticket's row has `ready: false`
@@ -109,7 +108,8 @@ uncommitted change in the current directory, and from round 2 its previous verdi
 One comment on the ticket, in the documents language, with this shape. It does not repeat what step 2 already
 published for a checkbox. Write it to a file in the scratchpad (outside the repository, so the tree stays clean) and
 run `node dynamo/dynamo.ts comment $0 --body-file <file>`. If it exits 1 or 2, never run it again (a second comment
-could be posted): the failure goes in the final summary.
+could be posted): the failure goes in the final summary. The file holds the lines of the template as plain text,
+without the ```text fence that marks them here and in step 7: inside it `dynamo report` does not see the comment.
 
 ```text
 /implement · <PASS and merged into <base> | not merged>
