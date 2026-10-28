@@ -154,3 +154,12 @@ Small things found when reviewing the list #53-#58. None is a problem yet; each 
   as a `/` command; and what a resume does with a child.
 - **When:** only if `run.js` grows again after #53-#58. Then the findings and a recommendation go in
   `documentation/launch-list.md`, «The phases».
+
+## The board read brings the tickets already in the release
+
+- **Origin:** question during run `wf_0a4017b2-50d` (2026-10-28). With no numbers, `board.js` reads the first 100 open
+  tickets, and a merged ticket stays open with `in-release` until the release reaches `main`: of about 40 open tickets,
+  about 30 are already done. They travel through the read only to be dropped by the script.
+- **Verified:** the query is `issues(states:OPEN, first:100)` in `board.js`; it has no label filter.
+- **Option:** ask GitHub only for the open tickets without the done label (a search such as `is:open -label:in-release`).
+- **When:** if the read is still slow or heavy after #76 moves the big reads to a command.
