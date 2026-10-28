@@ -4,7 +4,8 @@ The `run` workflow (`.claude/workflows/run.js`) builds a list of tickets without
 GitHub, builds each ready ticket in its own copy, reviews it with the `reviewer`, merges them one at a time into the
 working branch, and blocks or skips whatever gets in the way. It reads the project data (`project`), the
 board columns and the phases from `.claude/factory.json`, with the script and no agent (see «The phases»). It is the design of
-`documentation/workflow-trial.md`. It is launched with `/run`.
+`documentation/workflow-trial.md`. It is launched with `/run`. To see before launching which tickets are ready, blocked,
+in *Needs Human* or done, `/board` shows them (see «The start»).
 
 ## Before launching
 
@@ -107,8 +108,22 @@ The human fills in the `/cost` of the session and decides about the backlog line
 
 ## The start
 
-No agent interprets the start: it is two literal reads, each a `runner` call, and the script decides (one agent per
-phase, not per command).
+The start is a third workflow, `.claude/workflows/board.js`, that `run.js` calls as a child before anything else. No
+agent interprets it: it is two literal reads, each a `runner` call, and the script decides (one agent per phase, not
+per command). It has two ways to run, like the end of a list.
+
+**Alone,** as `/board`: it takes the same `args` as `/run` (no args: every open ticket; or ticket numbers in the forms
+of «Launching»; `{ tickets, base }`) and returns a table, one row per ticket: its card, whether it is ready, and why not
+(*done*, in *Needs Human*, or the blockers that are not done). It changes nothing, and it is the way to see what a run
+would find before launching it. It also tells when the main folder is not ready for a run (see below), and still shows
+the table. If the command does not appear, the session was opened before the workflow was saved: ask Claude to run it by
+its script path.
+
+**As a child of `run.js`** (`workflow({ scriptPath }, args)`, one level only): `run.js` passes its own `args` and gets
+back what it used to read itself, so nothing is read twice: `factory` (the parsed and validated `.claude/factory.json`),
+`base`, `wanted` (the ticket numbers asked for), `tickets` (as GitHub gave them: state, labels, card `status` and
+blockers) and `mainFolder` (`problem`, null if the main folder can take a run). The table comes along too. The agents
+are the same as before, two reads, and they show under the group *Start* in `/workflows`.
 
 1. `.claude/factory.json`, read by the `runner`, which returns the file as it is.
 2. One `runner` call runs the commands and returns each one's exit code and output as they are: `git status --porcelain
@@ -117,20 +132,24 @@ phase, not per command).
    Every list is checked against its total, so nothing is cut off silently. The report at the end reads its own state
    (see «The end of a list»).
 
-   The query has caps (`TICKET_FIELDS` in `run.js`): 20 labels per ticket, 5 board cards per ticket, 20 blockers per
+   The query has caps (`TICKET_FIELDS` in `board.js`): 20 labels per ticket, 5 board cards per ticket, 20 blockers per
    ticket and 10 labels per blocker, and 100 open tickets when no numbers are given. A ticket with more than that
-   cannot be read whole: the run stops before any *Build* and names the ticket, it does not go on with a cut list.
+   cannot be read whole: it stops before any *Build* and names the ticket, it does not go on with a cut list.
 
-The script then stops the run, before any *Build*, if the main folder has changes in tracked files, is not on the base,
-or the base is the main branch, and if a requested ticket cannot be read (it is named in the result). With no numbers,
-more than 100 open tickets also stops it. The rules for which tickets are ready (done, in *Needs Human*, blocked)
-are the script's, not an agent's.
+`board.js` stops, and so does the run before any *Build*, if `factory.json` cannot be read or is not valid, if the base
+is the main branch, if something in `args` is not a ticket number, and if a requested ticket cannot be read (it is
+named in the result). With no numbers, more than 100 open tickets also stops it. The main folder (changes in tracked
+files, not on the base) is data: `board.js` reports it in `mainFolder.problem` and `run.js` stops on it.
+
+The rules for which tickets a run builds (done, in *Needs Human*, blocked, waiting) are the script's, not an agent's,
+and they stay in `run.js` (`doneOnBoard`, `onNeedsHuman`, `runTicket`). The table of `/board` shows the same rules; if
+they change, change both. `run.js` also checks that every phase of the JSON has its function in `PHASES`.
 
 ## The phases
 
 `.claude/factory.json` gives the project data (`project`; the file is rejected without it), the columns *Todo*, *Needs Human* and *Done* (`columns`), the small agents (`small`, see below) and the phases, in order (`phases`). One phase = one
 column = one agent. `small` is the model and effort of every `runner` call that has no phase of its own: the start's reads, the card
-moves, the comments, the report and the cleanup (`SMALL` in `run.js`). A phase takes its own `model` and `effort`, and
+moves, the comments, the report and the cleanup (`SMALL` in `run.js` and `board.js`). A phase takes its own `model` and `effort`, and
 `small` never overrides them. The first read, the one that gets this file, runs before `small` is known, so it uses the
 `runner`'s own model.
 
@@ -155,7 +174,7 @@ Changing a model, an effort or the name of a column means editing only the JSON.
 3. Add it to `PHASES` with the same name. The loop (`runPhases`) is not touched.
 
 If the function is missing, or the JSON is missing, cannot be read or is not valid, the workflow stops at the start and
-says why (`checkFactory` and the read of the JSON at the start of `run.js`).
+says why (`checkFactory` and the read of the JSON in `board.js`, and the `PHASES` check at the start of `run.js`).
 
 ## How it decides
 
@@ -255,6 +274,10 @@ Still untested:
   `runner` does, running the commands in a real shell (real `git log`, real `gh`), not with a Haiku agent copying the
   long `printf %s <base64> | …` command (the read-back says when the file differs); the `workflow({ scriptPath })` call
   of `run.js` was tried with simulated agents only;
+- `board.js` launched for real (`/board`, or the workflow by its script path), and the `workflow({ scriptPath })` call
+  of `run.js` that runs it: same reason, the Builder never launches a workflow. It was tried with a script that answers
+  each `agent()` call the way the `runner` does, running the commands in a real shell (real `git`, real `gh`); the next
+  `/run` tests the call from `run.js`;
 - the closing of the issues by the `Closes #n` lines when the release PR reaches the main branch;
 - a list with more tickets than the machine or the plan's usage limit can take at once: the workflow has no cap on
   parallel builds (`documentation/backlog.md`).

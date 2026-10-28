@@ -5,30 +5,23 @@ export const meta = {
 }
 
 // A dumb orchestrator: the script only decides what runs next. State comes from GitHub and from what the agents
-// return. Project data (repo, branches, board, labels, check, language, document paths) comes from the `project`
-// block of .claude/factory.json, read by the script without an agent's summary; so do the board columns and the phases
-// (order, column, model, effort, agent type, where a failure goes). The Builder and the Reviewer are the only agents
-// that think; every other step is a list of literal commands in one `runner` call (.claude/agents/runner.md), one agent
-// per phase and not per command, and the script decides from the exit codes and the outputs. Text an agent wrote
-// (the Builder's notes, the reviewer's report) reaches a prompt of the others never, and a GitHub comment only as quoted data.
-// One phase = one column = one agent. To add one: an entry in factory.json and a function in PHASES
-// (documentation/launch-list.md, «The phases»).
+// return. Project data, board columns and phases come from .claude/factory.json, read by board.js (the start) without an
+// agent's summary. The Builder and the Reviewer are the only agents that think; every other step is a list of literal
+// commands in one `runner` call (.claude/agents/runner.md), one agent per phase and not per command, and the script
+// decides from the exit codes and the outputs. Text an agent wrote reaches a prompt of the others never, and a GitHub
+// comment only as quoted data. One phase = one column = one agent. To add one: an entry in factory.json and a function
+// in PHASES (documentation/launch-list.md, «The phases»).
 
 const NAME = 'run' // the same as meta.name
 const FACTORY_JSON = '.claude/factory.json'
-const REPORT_WORKFLOW = '.claude/workflows/release-report.js' // the end of the list, run as a child
+const BOARD_WORKFLOW = '.claude/workflows/board.js' // the start, run as a child
+const REPORT_WORKFLOW ='.claude/workflows/release-report.js' // the end of the list, run as a child
 const MAX_ROUNDS = 2
 
 // Trial failure 4: a commit must be a sha, not «HEAD of …».
 const SHA = { type: 'string', pattern: '^[0-9a-f]{7,40}$' }
-const CHECKS = {
-  type: 'array',
-  items: {
-    type: 'object',
-    required: ['command', 'exitCode', 'output'],
-    properties: { command: { type: 'string' }, exitCode: { type: 'integer' }, output: { type: 'string' } },
-  },
-}
+const CHECKS = { type: 'array', items: { type: 'object', required: ['command', 'exitCode', 'output'],
+  properties: { command: { type: 'string' }, exitCode: { type: 'integer' }, output: { type: 'string' } } } }
 
 // What the `runner` returns: each command it ran, in order, up to the first that failed. Run wf_41e0b269-ab2: an
 // agent's summary of a command is not the command, so the runner returns the literal output and the script parses it.
@@ -40,17 +33,14 @@ const resultsOf = r => r && Array.isArray(r.results)
   ? r.results.map(x => x && String(x.output).trim() === NO_OUTPUT ? { ...x, output: '' } : x)
   : null
 
+const STRINGS = { type: 'array', items: { type: 'string' } }
 const BUILD_SCHEMA = {
   type: 'object',
-  required: ['worktreePath', 'worktreeBranch', 'branch', 'commit', 'needsHuman', 'needsHumanReason', 'published',
-    'noTrace', 'outOfTicket'],
+  required: ['worktreePath', 'worktreeBranch', 'branch', 'commit', 'needsHuman', 'needsHumanReason', 'published', 'noTrace', 'outOfTicket'],
   properties: {
     worktreePath: { type: 'string' }, worktreeBranch: { type: 'string' }, branch: { type: 'string' },
-    commit: { anyOf: [SHA, { type: 'null' }] },
-    needsHuman: { type: 'boolean' }, needsHumanReason: { type: 'string' },
-    published: { type: 'array', items: { type: 'string' } },
-    noTrace: { type: 'array', items: { type: 'string' } },
-    outOfTicket: { type: 'array', items: { type: 'string' } },
+    commit: { anyOf: [SHA, { type: 'null' }] }, needsHuman: { type: 'boolean' }, needsHumanReason: { type: 'string' },
+    published: STRINGS, noTrace: STRINGS, outOfTicket: STRINGS,
   },
 }
 
@@ -112,12 +102,11 @@ const fromText = (text, tail) => `sh -c ${shq(`printf %s ${base64(text)} | base6
 
 // ---------- Phases ----------
 
-// One function per phase of factory.json, picked by its name. It gets the ticket, its state (ctx) and its entry (ph) and returns:
-// prompt; schema, isolation and serial (one at a time in the main folder), if it needs them; step, the word for
-// «Parado en»; exec(), instead of the prompt, for a phase the script decides itself from `runner` calls (it moves
-// its own card, and runs in the serial slot if serial is set); and read(result) → { pass: true } or
-// { pass: false, failure, stop?, step? }. On a failure the ticket goes where the phase's onFail says; stop blocks it
-// whatever onFail says, and step is the word for «Stopped at» if it is not the phase's own.
+// One function per phase of factory.json, picked by its name. It gets the ticket, its state (ctx) and its entry (ph) and
+// returns: prompt; schema, isolation and serial (one at a time in the main folder), if it needs them; step, the word for
+// «Stopped at»; exec(), instead of the prompt, for a phase the script decides itself from `runner` calls (it moves its
+// own card); and read(result) → { pass: true } or { pass: false, failure, stop?, step? }. On a failure the ticket goes
+// where the phase's onFail says; stop blocks it whatever onFail says.
 
 // The Builder's rules live in one place, .claude/agents/builder.md (the phase's agentType); here only the data of this
 // ticket goes in. Trial failure 2 (in the definition): round 2 brings round 1's commits with cherry-pick, only if any.
@@ -153,11 +142,10 @@ ${ctx.failure}`
 // Verify is decided here, not by an agent: one `runner` call runs the card move with its read-back, the folder the
 // checks run in, the state of the copy, its commit and the commands of the check, and the script decides from the exit
 // codes and from which commands ran. `<base>` in the check is the sha the copy started from (ctx.baseSha), not the
-// branch name, which moves while other tickets merge. A call that did not run what it should is plumbing: it is
-// retried once, and a second time stops the ticket as «infrastructure» without using a round.
-// The runner runs each command alone in its own Bash call and the folder does not carry over between calls, so a `cd`
-// would be lost: each check goes inside `sh -c 'cd <copy> && <command>'`, one literal command that runs in the
-// Builder's copy whatever the folder of the call (sh exists on Linux, macOS and Git Bash).
+// branch name, which moves while other tickets merge. A call that did not run what it should is plumbing: retried once,
+// and a second time it stops the ticket as «infrastructure» without using a round.
+// The folder does not carry over between the runner's Bash calls, so each check goes inside `sh -c 'cd <copy> && <command>'`,
+// one literal command that runs in the Builder's copy (sh exists on Linux, macOS and Git Bash).
 // The call ends with the card move of the next phase when that phase moves it at its start: the runner stops at the
 // first failed command, so the card only moves if every check passed, and one agent less is launched.
 const inCopy = (dir, command) => `sh -c '${`cd ${dir} && ${command}`.split("'").join("'\\''")}'`
@@ -253,11 +241,10 @@ Round ${ctx.round}.${ctx.prevVerdict ? `\nYour previous verdict, word for word:\
 //           command that fails, so a failed check never reaches the proof.
 //   abort / revert: one more call, only when the merge conflicts or a check fails.
 //   call 2: the label, the card to its column read back, and the comment the script wrote, read back.
-// If call 1 returns nothing (or not what was asked) after a real merge, the state is read, not guessed: a branch that
-// is an ancestor of HEAD is merged, and the checks are run again; an agent that died does not turn a merge into a block.
+// If call 1 returns nothing (or not what was asked), the state is read, not guessed: a branch that is an ancestor of HEAD
+// is merged, and the checks are run again.
 function mergePhase(t, ctx, ph) {
-  const b = ctx.build
-  const branch = b.branch
+  const branch = ctx.build.branch
   const mergeChecks = P.checks.map(c => c.split('<base>').join('HEAD~1'))
   const n = mergeChecks.length
   const optsM = optsOf({ model: ph.model, effort: ph.effort })
@@ -318,8 +305,7 @@ function mergePhase(t, ctx, ph) {
     if (off) return { kind: 'lost', reason: `infrastructure: the read-back of the merge ran the wrong commands (${off}): check ${base} by hand` }
     if (rs.length < 3) return { kind: 'lost', reason: `infrastructure: the Merge call failed (${why}) and the main folder could not be read: check ${base} by hand` }
     if (rs[2].exitCode !== 0) {
-      const clean = rs[0].exitCode === 0 && !rs[0].output.trim() && rs[1].exitCode === 0 && rs[1].output.trim() === base
-      if (clean) return { kind: 'retry' }
+      if (rs[0].exitCode === 0 && !rs[0].output.trim() && rs[1].exitCode === 0 && rs[1].output.trim() === base) return { kind: 'retry' }
       return { kind: 'lost', reason: `infrastructure: the Merge call failed (${why}) and ${branch} is not in ${base}. The main folder is not clean on ${base} (\`${rs[0].command}\` printed «${squash(rs[0].output)}», the branch is «${squash(rs[1].output)}»): if it is in the middle of a merge, \`git merge --abort\` there` }
     }
     const checks = rs.slice(3, 3 + n)
@@ -331,8 +317,7 @@ function mergePhase(t, ctx, ph) {
   }
 
   return {
-    step: 'merge',
-    serial: true,
+    step: 'merge', serial: true,
     exec: async () => {
       if (!/^[A-Za-z0-9._\/-]+$/.test(branch)) return { blocked: true, step: 'merge', failure: `the Builder's branch name is not safe to run (${JSON.stringify(branch)}): nothing was merged` }
       let s = judge(await runList(tag, first, ph.name, optsM))
@@ -343,9 +328,8 @@ function mergePhase(t, ctx, ph) {
         if (s.kind === 'retry') s = { kind: 'lost', reason: `infrastructure: the Merge call returned nothing usable twice and ${branch} is not in ${base}` }
       }
       if (s.checks) ctx.mergeChecks = s.checks
-      if (s.kind === 'start') return { blocked: true, step: 'merge', failure: s.reason }
+      if (s.kind === 'start' || s.kind === 'bad') return { blocked: true, step: 'merge', failure: s.reason }
       if (s.kind === 'lost') return { blocked: true, step: 'infrastructure', failure: s.reason }
-      if (s.kind === 'bad') return { blocked: true, step: 'merge', failure: s.reason }
       if (s.kind === 'conflict') {
         const ab = await runListRetry(`${tag}:abort`, ['git diff --name-only --diff-filter=U', 'git merge --abort'], ph.name, optsM)
         const files = ab && ab[0] && ab[0].exitCode === 0 ? ab[0].output.trim() : ''
@@ -372,41 +356,6 @@ const PHASES = { Build: buildPhase, Verify: verifyPhase, Review: reviewPhase, Me
 
 // ---------- factory.json ----------
 
-// What the run needs from factory.json; the reason it is invalid, or null.
-function checkFactory(f) {
-  const str = v => typeof v === 'string' && v.length > 0
-  const opt = v => v === null || str(v)
-  if (!f || typeof f !== 'object') return 'it is not a JSON object'
-  const pr = f.project
-  if (!pr || typeof pr !== 'object') return 'project is missing: it holds the project data (repo, branches, board, check, documents)'
-  for (const k of ['repo', 'mainBranch', 'workingBranch', 'boardOwner', 'boardId', 'boardName', 'statusFieldId',
-    'boardCommands', 'doneLabel', 'documentsLanguage', 'plan', 'backlog', 'specifications', 'launchOneTicket']) {
-    if (!str(pr[k])) return `project.${k} must be a non-empty string`
-  }
-  if (!Number.isInteger(pr.boardNumber)) return 'project.boardNumber must be an integer'
-  if (!Array.isArray(pr.checks) || !pr.checks.length || !pr.checks.every(str)) return 'project.checks must be a list of commands with at least one'
-  const c = f.columns
-  if (!c || !str(c.todo) || !str(c.needsHuman) || !str(c.done)) return 'columns needs todo, needsHuman and done'
-  const s = f.small
-  if (!s || !opt(s.model) || !opt(s.effort)) return 'small needs a model and an effort (a string or null)'
-  if (!Array.isArray(f.phases) || !f.phases.length) return 'phases must be a list with at least one phase'
-  const seen = []
-  for (const p of f.phases) {
-    if (!p || !str(p.name)) return 'every phase needs a name'
-    const at = `phase «${p.name}»`
-    if (seen.includes(p.name)) return `${at} is named twice`
-    if (!PHASES[p.name]) return `${at} has no function in PHASES of .claude/workflows/run.js`
-    if (!str(p.column)) return `${at} needs a column`
-    if (p.moveCard !== 'start' && p.moveCard !== 'end') return `${at}: moveCard is "start" or "end"`
-    if (!opt(p.model) || !opt(p.effort) || !opt(p.agentType)) return `${at}: model, effort and agentType are a string or null`
-    // An agent type brings its own model and effort (its definition): setting them here would silently override it.
-    if (p.agentType && (p.model || p.effort)) return `${at}: agentType «${p.agentType}» takes its model and effort from its definition; model and effort must be null`
-    if (p.onFail !== c.needsHuman && !seen.includes(p.onFail)) return `${at}: onFail is an earlier phase or «${c.needsHuman}»`
-    seen.push(p.name)
-  }
-  return null
-}
-
 // Only what factory.json sets: a null model or effort leaves the agent's own (its definition's, or the session's).
 function optsOf(step) {
   const o = {}
@@ -416,113 +365,26 @@ function optsOf(step) {
   return o
 }
 
-// Without a valid factory.json nothing runs. No model here: it is not read yet, so the runner's own (its definition's).
-const rawFactory = await agent(`Run these commands, in this order:
-1. cat ${FACTORY_JSON}`, { agentType: 'runner', label: 'factory.json', schema: RUN_SCHEMA })
-const factoryRead = (resultsOf(rawFactory) || [])[0] || null
-if (!factoryRead || factoryRead.exitCode !== 0) return { stopped: `${FACTORY_JSON} is missing or cannot be read` }
-let F
-try { F = JSON.parse(factoryRead.output.trim()) } catch (e) { return { stopped: `${FACTORY_JSON} is not valid JSON: ${e.message}` } }
-const invalid = checkFactory(F)
-if (invalid) return { stopped: `${FACTORY_JSON} is invalid: ${invalid}` }
+// ---------- The start ----------
+
+// board.js reads it (documentation/launch-list.md, «The start»): factory.json parsed and validated, the base, the tickets
+// with their card and blockers, and the problem of the main folder, if any. The same args as /run go to it. Which tickets
+// are built, and the check of every phase having its function, stay here.
+let board
+try { board = await workflow({ scriptPath: BOARD_WORKFLOW }, args !== null && typeof args === 'object' && !Array.isArray(args) ? args : args == null ? {} : { tickets: args }) } catch (e) { return { stopped: `the start could not be read (${e})` } }
+if (!board || board.stopped) return { stopped: board ? board.stopped : 'the start returned nothing' }
+const { factory: F, base } = board
 const C = F.columns
 const P = F.project
 const SMALL = optsOf(F.small) // the script's small agents: every `runner` call that has no phase of its own
-
-// ---------- Frontier ----------
-
-// /run passes the tickets as text («38», «38 43», «38,43»); a call by script path, as a number, an array or { tickets, base }.
-// Any args that is not an object is the ticket list, and a single value is a list of one.
-// Something that is not a ticket number stops the run: an empty list would take every ticket.
-const isObject = args !== null && typeof args === 'object' && !Array.isArray(args)
-const input = isObject ? args : args == null ? {} : { tickets: args }
-const given = input.tickets == null ? [] : [].concat(input.tickets)
-const tokens = given.flatMap(t => String(t).split(/[\s,]+/)).filter(t => t !== '')
-const unreadable = tokens.filter(t => !/^\d+$/.test(t))
-if (unreadable.length) return { stopped: `these are not ticket numbers: ${unreadable.join(', ')}` }
-const wanted = tokens.map(Number)
-
-// The base is known from factory.json and the call: the main branch stops the run before any other agent.
-const base = input.base ? String(input.base) : P.workingBranch
-if (base === P.mainBranch) return { stopped: `the base is the main branch (${base})` }
-
-// The reads of the start in one `runner` call, each with its literal output: the state of the main folder, the branch,
-// and the tickets with their labels, card status and native blockers (one GraphQL query, every list with its total
-// checked, so nothing is cut off silently). The report at the end reads its own state (release-report.js). The query
-// exits non-zero when a ticket is missing; the script parses and decides.
-const [OWNER, REPO_NAME] = P.repo.split('/')
-const TICKET_FIELDS = 'number title state labels(first:20){totalCount nodes{name}} '
-  + 'projectItems(first:5){totalCount nodes{fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}} '
-  + 'blockedBy(first:20){totalCount nodes{number state labels(first:10){totalCount nodes{name}}}}'
-const wantedSet = [...new Set(wanted)]
-const query = `query { repository(owner:"${OWNER}", name:"${REPO_NAME}") { ${wantedSet.length
-  ? wantedSet.map(n => `t${n}: issue(number:${n}) { ${TICKET_FIELDS} }`).join(' ')
-  : `issues(states:OPEN, first:100) { pageInfo{hasNextPage} nodes { ${TICKET_FIELDS} } }`} } }`
-
-const startCommands = [
-  'git status --porcelain --untracked-files=no', // 0
-  'git branch --show-current', // 1
-  `gh api graphql -f query='${query}'`, // 2
-]
-const startRs = await runListRetry('start', startCommands, 'Start')
-if (!startRs || !startRs.length) return { stopped: 'the read of the tickets and of the main folder returned nothing' }
-for (let i = 0; i < startRs.length; i++) {
-  if (i >= startCommands.length || loose(startRs[i].command) !== loose(startCommands[i])) return { stopped: `the start read ran «${oneLine(startRs[i].command, 120)}» where «${oneLine(startCommands[i] || 'nothing', 120)}» was expected` }
-}
-const [rStatus, rBranch, rTickets] = startRs
-if (rStatus.exitCode !== 0) return { stopped: 'the state of the main folder could not be read' }
-if (rStatus.output.trim()) return { stopped: `the main folder has changes in tracked files:\n${rStatus.output.trimEnd()}` }
-if (!rBranch || rBranch.exitCode !== 0) return { stopped: 'the current branch of the main folder could not be read' }
-if (rBranch.output.trim() !== base) return { stopped: `the main folder is on «${rBranch.output.trim()}», not on the base (${base})` }
-if (!rTickets) return { stopped: 'the tickets could not be read: the runner stopped before the query' }
-const read = { tickets: { exitCode: rTickets.exitCode, stdout: rTickets.output } }
-
-// GitHub prints the data and the errors together (a missing ticket is null with an error), then exits non-zero: the
-// output is parsed whatever the code, and a stray line before or after the JSON is ignored.
-let answer = null
-const out = read.tickets.stdout
-for (const text of [out.trim(), out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)]) {
-  try { answer = JSON.parse(text); break } catch (e) { /* the next text */ }
-}
-const repository = answer && answer.data && answer.data.repository
-if (!repository) return { stopped: `the tickets could not be read: GitHub's answer is not usable (exit code ${read.tickets.exitCode})` }
-
-const whole = c => (c && Array.isArray(c.nodes) && c.nodes.length === c.totalCount ? c.nodes : null)
-// A ticket as the run uses it, or null if what GitHub returned is incomplete or malformed.
-function toTicket(n) {
-  if (!n || !Number.isInteger(n.number) || typeof n.title !== 'string' || typeof n.state !== 'string') return null
-  const labels = whole(n.labels), items = whole(n.projectItems), blocked = whole(n.blockedBy)
-  if (!labels || !items || !blocked) return null
-  const blockers = []
-  for (const b of blocked) {
-    const bl = b && whole(b.labels)
-    if (!bl || !Number.isInteger(b.number) || typeof b.state !== 'string') return null
-    blockers.push({ number: b.number, state: b.state, labels: bl.map(l => l.name) })
-  }
-  const status = items.map(i => i && i.fieldValueByName && i.fieldValueByName.name).find(x => typeof x === 'string')
-  return { number: n.number, title: n.title, state: n.state, labels: labels.map(l => l.name), status: status || '', blockers }
-}
+const noFunction = F.phases.find(p => !PHASES[p.name])
+if (noFunction) return { stopped: `${FACTORY_JSON} is invalid: phase «${noFunction.name}» has no function in PHASES of .claude/workflows/run.js` }
+if (board.mainFolder.problem) return { stopped: board.mainFolder.problem }
 
 const doneOnBoard = t => t.state.toLowerCase() === 'closed' || t.labels.includes(P.doneLabel)
 const onNeedsHuman = t => t.status === C.needsHuman
-
-// A requested ticket that cannot be read stops the run here, before any Build, and is named.
-let tickets
-if (wantedSet.length) {
-  tickets = wantedSet.map(n => toTicket(repository[`t${n}`]))
-  const unreadableTickets = wantedSet.filter((n, i) => !tickets[i] || tickets[i].number !== n)
-  if (unreadableTickets.length) return { stopped: `these tickets cannot be read on GitHub: ${unreadableTickets.map(n => `#${n}`).join(', ')}` }
-} else {
-  const open = repository.issues
-  if (!open || !Array.isArray(open.nodes) || !open.pageInfo) return { stopped: 'the list of open tickets could not be read' }
-  if (open.pageInfo.hasNextPage) return { stopped: 'there are more than 100 open tickets: name the ones to run' }
-  tickets = open.nodes.map(toTicket)
-  const bad = open.nodes.map((n, i) => (tickets[i] ? null : n && Number.isInteger(n.number) ? `#${n.number}` : 'one of them')).filter(Boolean)
-  if (bad.length) return { stopped: `these tickets cannot be read on GitHub: ${bad.join(', ')}` }
-  tickets = tickets.filter(t => !doneOnBoard(t) && !onNeedsHuman(t))
-}
-if (read.tickets.exitCode !== 0 && !(answer.errors || []).length) return { stopped: `the tickets query failed (exit code ${read.tickets.exitCode}) with no error to show` }
-
+// Asked for by number: all of them, and the run says what it does with each. Asked for none: the open ones that are neither.
+const tickets = board.wanted.length ? board.tickets : board.tickets.filter(t => !doneOnBoard(t) && !onNeedsHuman(t))
 const byNum = {}
 for (const t of tickets) byNum[t.number] = t
 
@@ -537,42 +399,31 @@ ${commands.map((c, i) => `${i + 1}. ${c}`).join('\n')}`,
 }
 
 // A null read is plumbing, not the ticket's fault: it is asked once more; null again means nothing could be read.
-async function runListRetry(label, commands, phase, own) {
-  return (await runList(label, commands, phase, own)) || (await runList(`${label}:retry`, commands, phase, own))
-}
+const runListRetry = async (label, commands, phase, own) => (await runList(label, commands, phase, own)) || (await runList(`${label}:retry`, commands, phase, own))
 
 // A ticket stopped by the plumbing, not by its work: it stops where it is, uses no round and its comment says so.
-function infrastructure(reason) {
-  return { pass: false, stop: true, step: 'infrastructure', failure: `infrastructure: ${reason}` }
-}
+const infrastructure = reason => ({ pass: false, stop: true, step: 'infrastructure', failure: `infrastructure: ${reason}` })
 
 // The script moves every card, by issue URL, and checks it on GitHub: the board always shows the real step.
 // The two commands that move a card and read it back; the script decides from the read-back, not from the edit.
-function cardCommands(n, column) {
-  return [
-    `gh project item-edit ${P.boardNumber} --owner ${P.boardOwner} --url https://github.com/${P.repo}/issues/${n} --field "Status" --value "${column}"`,
-    `gh issue view ${n} -R ${P.repo} --json projectItems`,
-  ]
-}
+const cardCommands = (n, column) => [
+  `gh project item-edit ${P.boardNumber} --owner ${P.boardOwner} --url https://github.com/${P.repo}/issues/${n} --field "Status" --value "${column}"`,
+  `gh issue view ${n} -R ${P.repo} --json projectItems`,
+]
 
-// The parsed read-back of a card (the output of `gh issue view --json projectItems`), or null if it is not JSON.
-function cardSeen(output) {
-  try { return JSON.parse(String(output).trim()) } catch (e) { return null }
-}
+// Whether the read-back of a card (the output of `gh issue view --json projectItems`) shows it in the column.
 const cardIn = (output, column) => {
-  const seen = cardSeen(output)
-  const items = seen && Array.isArray(seen.projectItems) ? seen.projectItems : []
-  return items.some(i => i && i.status && i.status.name === column)
+  let seen = null
+  try { seen = JSON.parse(String(output).trim()) } catch (e) { /* not JSON: no card seen */ }
+  return !!seen && Array.isArray(seen.projectItems) && seen.projectItems.some(i => i && i.status && i.status.name === column)
 }
 
 async function moveCard(n, column, group) {
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const results = await runList(`card:#${n}:${column}:${attempt}`, cardCommands(n, column), group)
-    const back = results && results.length === 2 && results[1].exitCode === 0 ? results[1] : null
-    if (back && cardIn(back.output, column)) return { moved: true }
+    const rs = await runList(`card:#${n}:${column}:${attempt}`, cardCommands(n, column), group)
+    if (rs && rs.length === 2 && rs[1].exitCode === 0 && cardIn(rs[1].output, column)) return
   }
   log(`#${n} could not be moved to ${column}: check it by hand`)
-  return { moved: false }
 }
 
 // A comment the script wrote, posted from stdin (so it travels as base64) and read back from the ticket.
@@ -609,7 +460,7 @@ async function settle(tag, n, group, { label, column, body }) {
   if (need.comment) notes.push(`the comment on #${n} could not be posted`)
   else if (!state.commentMatches) notes.push(`the last comment on #${n} could not be confirmed to be the script's report: read it`)
   for (const m of notes) log(m)
-  return { notes, card: state.card, commented: !need.comment }
+  return { notes, card: state.card }
 }
 
 // ---------- One ticket ----------
@@ -660,9 +511,7 @@ function block(t, ctx, step, reason, group) {
     if (rs && rs.length === 2 && rs.every(r => r.exitCode === 0)) {
       const branches = rs[0].output.split('\n').map(l => l.replace(/^[*+]?\s*/, '').trim()).filter(Boolean)
       const copies = mine.map(b => b.worktreePath).filter(p => p && rs[1].output.split('\n').some(l => normPath(l).startsWith(`${normPath(p)} `)))
-      left = branches.length || copies.length
-        ? [branches.length ? `branch ${branches.join(', ')}` : '', copies.length ? `copy ${copies.join(', ')}` : ''].filter(Boolean).join('; ')
-        : 'nothing'
+      left = [branches.length ? `branch ${branches.join(', ')}` : '', copies.length ? `copy ${copies.join(', ')}` : ''].filter(Boolean).join('; ') || 'nothing'
     }
     const body = `${ticketComment(t, ctx, 'not merged: see the reason', { step, left })}\nReason, quoted:\n${fence(reason)}`
     const fin = await settle(`block:#${t.number}`, t.number, group, { column: C.needsHuman, body })
@@ -682,18 +531,12 @@ async function runTicket(t) {
   if (onNeedsHuman(t)) return { number: t.number, status: 'blocked', note: `already in ${C.needsHuman}` }
 
   // Wait for blockers in this run; a blocker outside the run must already be done.
-  const blockers = t.blockers
-  for (const bl of blockers) {
-    if (!byNum[bl.number] && bl.state.toLowerCase() !== 'closed' && !bl.labels.includes(P.doneLabel)) {
-      return skip(t, `depends on #${bl.number}, which is not in the release`)
-    }
-  }
-  const inRun = blockers.filter(bl => byNum[bl.number])
+  const outside = t.blockers.find(bl => !byNum[bl.number] && !doneOnBoard(bl))
+  if (outside) return skip(t, `depends on #${outside.number}, which is not in the release`)
+  const inRun = t.blockers.filter(bl => byNum[bl.number])
   const results = await Promise.all(inRun.map(bl => start(bl.number)))
   const failed = inRun.filter((bl, i) => !results[i] || results[i].status !== 'done')
-  if (failed.length) {
-    return skip(t, `depends on ${failed.map(bl => `#${bl.number}`).join(', ')}, which did not reach the release`)
-  }
+  if (failed.length) return skip(t, `depends on ${failed.map(bl => `#${bl.number}`).join(', ')}, which did not reach the release`)
 
   // The phases of factory.json, in order. The card enters a phase's column when the phase starts (moveCard
   // "start") or when it passes ("end"), never earlier.
@@ -727,20 +570,17 @@ async function runPhases(t, ctx, at) {
     const out = r ? await spec.read(r) : { pass: false, stop: true, failure: `the ${ph.name} agent returned nothing` }
     if (out.pass) {
       if (ph.moveCard === 'end' && !spec.exec) await moveCard(t.number, ph.column, ph.name)
-      i++
-      continue
+      i++; continue
     }
     // Every failure that sends the ticket back to an earlier phase is a new round, up to MAX_ROUNDS in total.
     const back = F.phases.findIndex(p => p.name === ph.onFail)
     if (!out.stop && back >= 0 && ctx.round < MAX_ROUNDS) {
-      ctx.round++
-      ctx.failure = out.failure
+      ctx.round++; ctx.failure = out.failure
       ctx.prev = ctx.build ? { branch: ctx.build.branch, commit: ctx.build.commit } : null
       // What belongs to a round dies with it: a block in round 2 quotes only round 2. prevVerdict is the one thing that
       // is meant to cross, so the reviewer sees its own previous verdict.
       ctx.build = null; ctx.baseSha = null; ctx.checks = []; ctx.mergeChecks = []; ctx.verdict = null; ctx.verdictWord = null; ctx.cardAt = null
-      i = back
-      continue
+      i = back; continue
     }
     return block(t, ctx, out.step || spec.step, out.failure, ph.name)
   }
@@ -763,15 +603,13 @@ log(`${order.length} tickets on ${base}: ${order.map(n => `#${n}`).join(', ')}`)
 const results = await Promise.all(order.map(start))
 await queue
 
-
 // ---------- The end of the list ----------
 
-// The report is the child workflow release-report.js (documentation/launch-list.md, «The end of a list»): it reads git and
-// GitHub, writes the report file and returns the commands for the human; the run never pushes and never opens a PR. The
-// cleanup of the copies (trial failure 1) rides in the child's `runner` call that writes the file, so the end of the list
-// is two agents (the child's read and write). Copies: removed if their ticket is done or the Builder committed (the branch
-// keeps the work); kept otherwise, a copy with no commit holds the only copy. The branches left are the copies' own and
-// those of rounds that did not end their ticket: the human deletes them.
+// The report is the child workflow release-report.js (documentation/launch-list.md, «The end of a list»): it writes the
+// report file and returns the commands for the human; the run never pushes and never opens a PR. The cleanup of the copies
+// rides in the child's `runner` call that writes the file. Copies: removed if their ticket is done or the Builder
+// committed (the branch keeps the work); kept otherwise, a copy with no commit holds the only copy. The branches left are
+// the copies' own and those of rounds that did not end their ticket: the human deletes them.
 const statusOf = n => (results.find(r => r.number === n) || {}).status
 const removable = builds.filter(b => b.worktreePath && (statusOf(b.number) === 'done' || b.commit))
 const branchNames = [...new Set(builds.flatMap(b => [b.worktreeBranch, builds.some(o => o.number === b.number && o.round > b.round) ? b.branch : null]).filter(Boolean))]
@@ -803,16 +641,8 @@ if (rep && !listing) notes.push('the copies could not be listed after the cleanu
 if (rep && branchNames.length && !branchRead) notes.push('the branches of the run could not be listed: look at `git branch --list`')
 
 return {
-  base,
-  tickets: results,
-  copiesRemoved,
-  copiesKept,
-  branchesForTheHuman: branchesLeft,
-  report: rep ? rep.report : null,
-  pullRequest: rep ? rep.pullRequest : null,
-  baseOnRemote: rep ? rep.baseOnRemote : null,
-  remote: rep ? rep.remote : null,
-  reportFile: rep ? rep.reportFile : null,
-  commandsForTheHuman: rep ? rep.commandsForTheHuman : [],
+  base, tickets: results, copiesRemoved, copiesKept, branchesForTheHuman: branchesLeft,
+  report: rep ? rep.report : null, pullRequest: rep ? rep.pullRequest : null, baseOnRemote: rep ? rep.baseOnRemote : null,
+  remote: rep ? rep.remote : null, reportFile: rep ? rep.reportFile : null, commandsForTheHuman: rep ? rep.commandsForTheHuman : [],
   notes,
 }
