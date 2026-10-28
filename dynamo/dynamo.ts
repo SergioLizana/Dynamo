@@ -8,12 +8,14 @@ import { readFactory } from './factory.ts';
 import { gh } from './gh.ts';
 import { git } from './git.ts';
 import { board } from './board.ts';
+import { merge } from './merge.ts';
 import { verify } from './verify.ts';
 
 // Each subcommand comes with its own ticket: its module, and its line here.
 const subcommands = new Map<string, Subcommand>([
   ['board', board],
   ['verify', verify],
+  ['merge', merge],
 ]);
 
 function main(argv: string[]): number {
