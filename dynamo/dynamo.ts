@@ -3,14 +3,17 @@
 // exits with a real code: 0 when the subcommand did what it says, 1 when it failed, 2 when it was called wrong.
 import type { Output, Subcommand } from './cli.ts';
 import { UsageError } from './cli.ts';
+import { exec } from './exec.ts';
 import { readFactory } from './factory.ts';
 import { gh } from './gh.ts';
 import { git } from './git.ts';
 import { board } from './board.ts';
+import { verify } from './verify.ts';
 
 // Each subcommand comes with its own ticket: its module, and its line here.
 const subcommands = new Map<string, Subcommand>([
   ['board', board],
+  ['verify', verify],
 ]);
 
 function main(argv: string[]): number {
@@ -21,7 +24,7 @@ function main(argv: string[]): number {
     return 2;
   }
   try {
-    const out = run(args, { gh, git, factory: () => readFactory() });
+    const out = run(args, { gh, git, exec, factory: () => readFactory() });
     print(out);
     return out.ok ? 0 : 1;
   } catch (e) {
