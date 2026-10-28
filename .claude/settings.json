@@ -71,7 +71,9 @@
       "Bash(sh -c 'git branch -d * || true')",
       "Bash(git branch -d *)",
       "Bash(node .claude/workflows/lib/*)",
-      "Bash(sh -c 'cd * && node --test dynamo/tests/')"
+      "Bash(sh -c 'cd * && node --test dynamo/tests/')",
+      "Bash(node --test dynamo/tests/)",
+      "Bash(node dynamo/dynamo.ts *)"
     ],
     "deny": [
       "Bash(git reset --hard*)",
