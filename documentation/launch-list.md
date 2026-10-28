@@ -53,35 +53,55 @@ label, the card and the comment of each ticket. It also leaves the report of the
 
 ## The end of a list
 
-The script builds the report of the list from the results (not from what an agent remembers), and everything that
-closes the list is **one `runner` call**: the cleanup of the copies, the branches left, the report file, the remote and
-the body of the release PR. **The run never pushes and never opens a PR** (plan §6.1, `CLAUDE.md`, «Limits»).
+The end of a list is a second workflow, `.claude/workflows/release-report.js`, that `run.js` calls as a child at the
+end. **It never pushes and never opens or edits a PR** (plan §6.1, `CLAUDE.md`, «Limits»): it writes the report file and
+returns the commands the human runs. It has two ways to run.
 
-The report keeps one section per run, and the release PR body is complete:
+**Alone,** as `/release-report` (no args: the working branch of `.claude/factory.json`; or a base: `/release-report
+release/0.1.0`, `args = "release/0.1.0"` or `{ base }`). It reads `factory.json` itself (one `runner` call), and is the
+way to get the report of a release again at any time, with no run: it rebuilds it from state. If the command does not
+appear, the session was opened before the workflow was saved: ask Claude to run it by its script path.
 
-- Each run adds a section («run 1», «run 2», …) with: per ticket the result, the rounds and the merge commit; the
-  blocked tickets and the skipped ones, each with its reason; the «Out of the ticket» lines the Builders noted; and a
-  `/cost` line for the human to fill in. The earlier sections stay: the file is one per base,
-  `.claude/worktrees/run-report-<base>.md` (the base with `/` as `-`, ignored by git), read at the start and written
-  back with the new section, not overwritten. Only the sections whose header names this base count (also when the file
-  holds others): «run k» is the number of those plus one, and a report of another release never shows in this one.
-- Then comes one `Closes #n` line for every ticket merged into the base since the main branch (the first-parent log of
-  the base read at the start, where a merge that was reverted does not count, plus this run's merges). The file's
-  `Closes` lines are used only when that log could not be read, and only from this base's sections: a merge reverted by
-  hand between two runs does not come back.
+**As a child of `run.js`** (`workflow({ scriptPath }, args)` in Claude Code's workflows, code.claude.com/docs/en/workflows):
+one level only (a child cannot call another), it shares the run's agent counter, concurrency and budget, and its agents
+show under their own group in `/workflows`. A child receives its data as `args` and returns a value, nothing else:
+`run.js` passes `{ base, project, columns, small, results, cleanup }`. `project`, `columns` and `small` are the blocks of
+`factory.json` that `run.js` already read, so nothing reads the file twice; `results` are the tickets of the run (the
+blocked and the skipped ones go in the report, and a merge the git log does not show is a note); `cleanup` is the list of
+commands that remove the copies of the run, which the child runs in its own `runner` call that writes the file and
+returns their output untouched (so the cleanup costs no agent of its own). `run.js` reads the copies and branches left
+from that output, and returns the report next to them.
 
-- **A PR exists:** this run's section is added to the end of its body (what the body had stays, the earlier sections
-  too), with a `Closes #n` line only for a ticket the body does not close already. The script reads the body back from
-  GitHub and says in `pullRequest.updated` whether it matches. The human fills in the cost line in the PR, reads it, and
-  decides when to merge it.
-- **No PR exists:** the run changes nothing on GitHub. It returns the report, also in the file, and
-  `commandsForTheHuman`: `gh pr create ... --body-file .claude/worktrees/run-report-<base>.md`.
-- **The remote against the local base:** the script compares the tip `git ls-remote` printed with the local one and
-  counts the commits not on `origin`. When the remote is behind (`remote.state: "behind"`) or does not have the base
-  (`"missing"`), the **first** command for the human is the push (`git push -u origin <base>`), with a PR or without
-  one, and `notes` says how many commits are missing. If the remote could not be read, or has a different tip with
-  nothing to push, `notes` says that too. After the push, a person (not the run) approves and merges into the main
-  branch.
+**The report is rebuilt from state, not from what a run remembers** (the first report of the release was overwritten, and
+a report built from memory lost the earlier runs). Two `runner` calls:
+
+1. *Read:* the merge commits of the base since the main branch (`git log --first-parent`), the last run comment of every
+   ticket with the done label (one `gh api graphql` query, cut down by `--jq` to the first line, the `Rounds:` line and
+   the «Out of the ticket» lines), the cards in *Needs Human* (`gh project item-list`), the open PR of the base, and the
+   remote: the tip `git ls-remote` printed against the local one and the commits not on `origin`.
+2. *Write:* the cleanup of the copies (if the run passed it), the report file and its read-back.
+
+They cannot be one call: the report is built from the read's output, and the script has no way to use a result inside
+the same `runner` call. So the end of a list launches two agents, one more than the single `end` call that built the
+report from memory.
+
+The tickets are the `(#n)` that ends the subject of every merge commit, whatever the language of the subject (the older
+merges say `Fusiona ticket/… en … (#n)`); a `Revert "<merge subject>"` takes its ticket out. The report has: the
+tickets merged with the last run comment of each (its result and its rounds, quoted: a ticket merged by hand after a
+blocked run shows that blocked comment, and the git log says it is merged); what the run blocked or skipped (only with
+`results`); the tickets whose card is in *Needs Human*; the «Out of the ticket» lines for the backlog; a `/cost` line;
+and one `Closes #n` line for every ticket merged since the main branch. A `/cost` line the human filled in on the PR is
+kept in the rebuilt report. The file is `.claude/worktrees/release-report-<base>.md` (the base with `/` as `-`, ignored by
+git). The read-back must match what was written, or `reportFile` is `null` and `notes` says so.
+
+What it returns for the human (`commandsForTheHuman`), in order:
+
+- **The push** (`git push -u origin <base>`) first, with a PR or without one, when the remote is behind
+  (`remote.state: "behind"`) or does not have the base (`"missing"`); `notes` says how many commits are missing. If the
+  remote could not be read, or has a different tip with nothing to push, `notes` says that too.
+- **No PR exists:** `gh pr create ... --body-file .claude/worktrees/release-report-<base>.md`.
+- **A PR exists:** `gh pr edit <n> -R <repo> --body-file .claude/worktrees/release-report-<base>.md`, which replaces the
+  body with the report. The release PR is reviewed by a person (not the run), who also merges into the main branch.
 
 The human fills in the `/cost` of the session and decides about the backlog lines.
 
@@ -92,10 +112,10 @@ phase, not per command).
 
 1. `.claude/factory.json`, read by the `runner`, which returns the file as it is.
 2. One `runner` call runs the commands and returns each one's exit code and output as they are: `git status --porcelain
-   --untracked-files=no`, `git branch --show-current`, the report file of the earlier runs, one `gh api graphql` query
-   with every ticket (the requested ones, or the first 100 open ones), its labels, the status of its card and its native
-   blockers (with their state and labels), and, for the report at the end, the first-parent log of the base since the
-   main branch and the open PR of the base. Every list is checked against its total, so nothing is cut off silently.
+   --untracked-files=no`, `git branch --show-current` and one `gh api graphql` query with every ticket (the requested ones, or
+   the first 100 open ones), its labels, the status of its card and its native blockers (with their state and labels).
+   Every list is checked against its total, so nothing is cut off silently. The report at the end reads its own state
+   (see «The end of a list»).
 
    The query has caps (`TICKET_FIELDS` in `run.js`): 20 labels per ticket, 5 board cards per ticket, 20 blockers per
    ticket and 10 labels per blocker, and 100 open tickets when no numbers are given. A ticket with more than that
@@ -159,9 +179,9 @@ says why (`checkFactory` and the read of the JSON at the start of `run.js`).
   3. The done label, the card to *Done* read back, and the ticket's comment, read back.
   A merge is *merged* because `is-ancestor` said so, not because an agent did: if call 1 returns nothing after a real
   merge, one more call reads `is-ancestor` and runs the checks again, and the ticket still ends *done* with its label.
-  On success that is two `runner` calls. A ticket that passes in round 1 launches ten agents in the whole run: the two
+  On success that is two `runner` calls. A ticket that passes in round 1 launches eleven agents in the whole run: the two
   reads of the start, the card to *Build*, the Builder, the base read, *Verify*, the reviewer, the two of *Merge* and the
-  one at the end.
+  two of the end (the report's read and its write, with the cleanup of the copies).
 - **Plumbing does not cost a round:** a call that returns nothing, or that did not run what it should, is repeated once;
   a second time the ticket stops as «infrastructure» (that is its «Stopped at») and uses no round. The fields of a round
   (build, base sha, checks, verdict) are reset when the next round starts, so a block in round 2 quotes only round 2.
@@ -225,10 +245,16 @@ Still untested:
 - what the trial left pending: a check that fails after merging, a permission asked in the middle of the run, a pause at
   the usage limit;
 - the changes of #56-#58 (*Verify* decided by the script against a pinned base, the Builder's one definition, the *Merge*
-  sequence proved by literal reads, the comments sent as base64, the report that accumulates, the end of the list in one
-  call) with real tickets: they were tried in a dry run with simulated agents. A real run still has to show that the
-  `runner` copies a long `printf %s <base64> | …` command without a change (the script reads the comment and the files
-  back and says when they differ) and that `sh -c` and `base64` are allowed without a prompt;
+  sequence proved by literal reads, the comments sent as base64, the report that accumulates) with real tickets: they
+  were tried in a dry run with simulated agents. A real run still has to show that the `runner` copies a long
+  `printf %s <base64> | …` command without a change (the script reads the comment and the files back and says when they
+  differ) and that `sh -c` and `base64` are allowed without a prompt;
+- `release-report.js` launched for real (`/release-report`, or the workflow by its script path): the Builder never
+  launches a workflow (a subagent has no Workflow tool, and `claude -p` stops at «Review dynamic workflow before
+  running»), so the human launches it once. It was tried with a script that answers each `agent()` call the way the
+  `runner` does, running the commands in a real shell (real `git log`, real `gh`), not with a Haiku agent copying the
+  long `printf %s <base64> | …` command (the read-back says when the file differs); the `workflow({ scriptPath })` call
+  of `run.js` was tried with simulated agents only;
 - the closing of the issues by the `Closes #n` lines when the release PR reaches the main branch;
 - a list with more tickets than the machine or the plan's usage limit can take at once: the workflow has no cap on
   parallel builds (`documentation/backlog.md`).
