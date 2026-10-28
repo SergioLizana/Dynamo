@@ -1,5 +1,13 @@
 {
   "worktree": { "baseRef": "head" },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/outside-writes.js\"" }]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Edit(/**)",

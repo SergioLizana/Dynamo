@@ -79,3 +79,24 @@ The `sh -c '…'` rules are the exact shapes the workflows build (`run.js`, `boa
 `fromText` and `asBase64`): a rule for a `sh -c` command matches its whole text, so each one ends where the command ends. A
 `*` inside one stands for the part that varies (a path, a query, the base64 text) and cannot be narrowed further. A check added to `project.checks` needs its own
 `sh -c 'cd * && <check>'` rule.
+
+## Writes outside the repository
+
+Nothing keeps an agent's files inside the repository except this (found 2026-10-28, source
+https://code.claude.com/docs/en/sandboxing):
+
+- Claude Code's sandbox (`sandbox.enabled`) limits the writes of shell commands to the working folder and the temp
+  folder. It runs on macOS, Linux and WSL2 (not WSL1). On native Windows, where the factory runs, there is no sandbox:
+  the page says «On native Windows, Claude Code runs commands unsandboxed», and the same when it cannot start unless
+  `sandbox.failIfUnavailable` is `true`. So it cannot be the one guard, and it is not turned on.
+- The guard is the `PreToolUse` hook for Bash in `.claude/settings.json`, `.claude/hooks/outside-writes.js` (node, as
+  the workflow scripts are JavaScript; the same on every system). It reads the command text and refuses, with exit 2,
+  a write or delete (redirections, `touch`, `mkdir`, `rm`, `mv`, `cp`, `tee`, `sed -i`, `tar`, `curl -o`, `git clone`,
+  `git worktree add`, `find -delete`, `mktemp`, `sh -c` and `eval` strings, and any absolute or `../` path inside
+  `node -e` or `python -c` code) whose target is not inside the working tree of the session (the repository, or the copy
+  the session runs in) or in a `claude*` folder of the temp folder (the scratchpad). A target it cannot expand
+  (`$UNSET/x`) is refused. Reads are not checked.
+- It is a guard against an agent's mistake, not a jail: a script file that writes elsewhere, a path built in code, and
+  the `Edit` and `Write` tools (which `allow` opens with `Edit(/**)`) and the PowerShell tool are not seen. Claude Code
+  reads the hook when a session starts, so a session already open does not get it.
+- To change what is allowed, edit `allowed` in the hook; to test it, `node --test .claude/hooks/outside-writes.test.js`.
