@@ -163,3 +163,17 @@ Small things found when reviewing the list #53-#58. None is a problem yet; each 
 - **Verified:** the query is `issues(states:OPEN, first:100)` in `board.js`; it has no label filter.
 - **Option:** ask GitHub only for the open tickets without the done label (a search such as `is:open -label:in-release`).
 - **When:** if the read is still slow or heavy after #76 moves the big reads to a command.
+
+## A skill to close a release
+
+- **Origin:** ticket #74 (2026-10-28), closed when 0.1.0 was frozen (`documentation/orchestrator-review.md`). Closing a
+  version is a fixed sequence with delicate steps: the release PR must close every ticket merged since the main branch
+  (PR #66 had 2 `Closes` of 50 when 0.1.0 was frozen), only the human merges it, and afterwards nothing records which
+  tickets shipped in which version, and `workingBranch` in `factory.json` still points to the closed release.
+- **Decided by the human (2026-10-28):** the version goes in a milestone and a git tag, «closed» keeps meaning «in the
+  main branch», and no label is added for it.
+- **What the ticket asked:** an interactive `close-release` skill: before the merge, check the `Closes` lines against
+  the merged tickets and stop for the human; after it, the milestone, the tag `v<x.y.z>` on the merge commit, a GitHub
+  Release with the report and the next `release/<x.y.z>` with `workingBranch` set, in one commit.
+- **When:** 0.1.0 is closed by hand. If closing 0.2.0 hurts again, it becomes a ticket, as a `dynamo` subcommand or a
+  skill that calls it.

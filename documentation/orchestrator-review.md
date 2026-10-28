@@ -93,6 +93,16 @@ with `/implement`, which works today without the runner.
 - The plan (§6.1, §6.2, §6.3) is updated with the decision: the loop is a program; agents only where there is judgment.
 - **Done when:** a new `release/0.2.0` exists and the plan says what replaces the workflow.
 
+The tickets still open when 0.1.0 was frozen are closed as superseded; what they ask for goes into the program:
+
+| Ticket | What it asked | Where it goes |
+|---|---|---|
+| #71 | The end of a list deletes the merged branches of the run (its permission, `git branch -d`, is already in) | `dynamo run`, phase 2: delete the merged ticket branches and the copies; never a blocked ticket's |
+| #72 | An *In Progress* column, so the board shows which tickets a run has taken | Phase 2, only if the first runs show the need |
+| #73 | The run pushes the release branch and opens or updates its PR | `dynamo report`, phase 1: the PR body with every `Closes`; the push stays with the human unless the human decides otherwise |
+| #77 | A ticket relaunched from *Needs Human* resumes its branch | `dynamo run`, phases 2 and 4: the same resume as after a usage limit |
+| #74 | A skill to close a release | `documentation/backlog.md`, «A skill to close a release»: 0.1.0 is closed by hand |
+
 ### Phase 1. The deterministic steps as a CLI (tickets with `/implement`)
 
 - `dynamo board [n ...]`: reads tickets, blockers and labels with `gh` directly; the frontier as a pure function with
