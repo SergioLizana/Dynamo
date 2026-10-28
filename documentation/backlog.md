@@ -177,3 +177,28 @@ Small things found when reviewing the list #53-#58. None is a problem yet; each 
   Release with the report and the next `release/<x.y.z>` with `workingBranch` set, in one commit.
 - **When:** 0.1.0 is closed by hand. If closing 0.2.0 hurts again, it becomes a ticket, as a `dynamo` subcommand or a
   skill that calls it.
+
+## The multi-project harness (ideas of the external diagnosis)
+
+- **Origin:** part 2 of the diagnosis in `documentation/Research/` (2026-10-28), reviewed in
+  `documentation/orchestrator-review.md`, phase 6. None is built before a real project asks for it (plan §3, rule 2).
+- **Ideas, each with its trigger:**
+  - A QA step with browser screenshots against the criteria: a ticket passes checks and review but fails in the browser.
+  - A review panel by risk, with confidence scores and finding ids: failures found in the release PR that the reviewer
+    let through, counted.
+  - A human gate in a step (schema, payments): a project with changes that must not merge without a person.
+  - Stack profiles (KMP, Android, iOS in CI): the KMM app starts.
+  - Knowledge from Obsidian or Confluence: a project keeps its docs there.
+  - Another backend (Agent SDK, Codex): a second backend is needed, or data says another model reviews better.
+  - A single binary (Bun): a project where Node is not available.
+  - A declarative pipeline in YAML with `when` conditions: two projects need different pipelines. Until then the
+    pipeline stays in code.
+- **Not before:** formal interfaces (`Board`, `Runner`, `Knowledge`) with a single implementation each.
+
+## The live view of a run: a Claude Code mod
+
+- **Origin:** question of the human, 2026-10-28. With `claude -p` processes there is no `/workflows` view.
+- **Idea:** a mod with a «Dynamo» pane beside the chat that refreshes from `dynamo status --json`, one row per ticket
+  (column, round, last step, turns, cost). Details in `documentation/orchestrator-review.md`, phase 2.
+- **When:** the logs and `dynamo status --json` exist and the first real list shows that the log and the board are not
+  enough.
