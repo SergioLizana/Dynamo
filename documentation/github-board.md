@@ -103,16 +103,19 @@ after a few minutes (seen 2026-10-26 with #9 and #10): nothing to do.
 ## Moving a card
 
 ```bash
-move_card() { # $1 = issue number, $2 = option id
-  ITEM=$(gh project item-list <number> --owner <owner> --limit 100 --format json \
-    --jq ".items[]|select(.content.number==$1)|.id")
-  gh project item-edit --id "$ITEM" --project-id <project-id> \
-    --field-id <status-field-id> --single-select-option-id "$2"
+move_card() { # $1 = issue number, $2 = column name (from .claude/factory.json)
+  gh project item-edit <number> --owner <owner> --url https://github.com/<repo>/issues/$1 \
+    --field "Status" --value "$2"
+  gh issue view $1 -R <repo> --json projectItems --jq '.projectItems[0].status.name'
 }
 ```
 
-The project and Status field ids are in `project` of `.claude/factory.json`; those of each state, in `options` of
-`.claude/factory.json`.
+The second command reads back only that issue: it must print the column. It never lists the board (`gh project
+item-list` returns every card ever made and fills the context; `documentation/board-guide.md`). The column names are
+in `.claude/factory.json` (`columns` and the `column` of each phase); the option ids in `options` are only needed to
+check the columns again (below).
+
+Until 2026-10-28 `move_card` looked up the card id in `gh project item-list` and moved it by option id.
 
 Tested 2026-10-26 on test issue #6 (since deleted, so no history remains): Todo → In Progress → Verify → In Review →
 In Progress → In Review → Done. If a state is renamed or recreated, read them again with

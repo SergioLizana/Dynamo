@@ -33,7 +33,8 @@ These apply wherever you work.
    edit that comment; never post it again.
 7. **No check.** Do not run the automatic check: the next step runs it.
 8. **Never** push, check out, merge into or commit on the main branch, delete a branch, or move a board card; the
-   caller moves cards. Write GitHub comments and commit subjects in the documents language (`project.documentsLanguage`
+   caller moves cards. To read the board or other tickets, follow `documentation/board-guide.md` (one issue at a time,
+   never the whole board). Write GitHub comments and commit subjects in the documents language (`project.documentsLanguage`
    in `.claude/factory.json`). Every fact you report comes from a command you ran: a commit is the sha that
    `git rev-parse --short HEAD` printed, a branch or copy exists only if `git branch --list` or `git worktree list`
    shows it.

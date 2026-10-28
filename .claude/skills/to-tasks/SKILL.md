@@ -90,7 +90,8 @@ If a command fails, stop. Report what was created and what was not; do not retry
 ## 6. Verify and report
 
 Read back from GitHub, not from memory. For each created issue: number, title, link, blockers from
-`.../dependencies/blocked_by`, and board status from `gh project item-list`. Show it as a table and flag any
+`.../dependencies/blocked_by`, and board status from that issue alone (`documentation/board-guide.md`: never list
+the board). Show it as a table and flag any
 mismatch with the approved list.
 
 Do not close, edit or relabel existing issues, and do not touch a parent issue.

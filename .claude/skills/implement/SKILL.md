@@ -106,7 +106,7 @@ Out of the ticket (for the backlog): <what was seen> | nothing
 - Stopped at `start` (step 0): post only the comment, with `Stopped at: start` and `Left: nothing`. No card move (a
   card already in *Needs Human* stays there; the `run` workflow skips a ticket whose blocker is not done), no stash, no
   checkout. Skip the rest of this step.
-- Move the card to the Needs Human column (option id in `.claude/factory.json`, by URL as the board commands file says).
+- Move the card to the Needs Human column (`move_card`, by URL as the board commands file says).
 - Post the step 6 comment with the reason (the literal failing output or verdict), and these three lines after
   `Reviewer:`:
 
