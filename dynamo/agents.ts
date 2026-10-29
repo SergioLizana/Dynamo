@@ -70,7 +70,7 @@ export function parseStream(text: string): AgentResult {
 }
 
 // A line of the stream as an object, or null when it is blank, not JSON, or JSON that is not an object.
-function parseLine(line: string): Line | null {
+export function parseLine(line: string): Line | null {
   if (line.trim() === '') return null;
   try {
     const value: unknown = JSON.parse(line);

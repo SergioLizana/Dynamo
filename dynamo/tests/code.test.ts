@@ -97,3 +97,12 @@ test('run gets gh, git, claude and the config as parameters: it imports none of 
 test('the scheduling of a list is pure: lists.ts imports nothing but types and the frontier', () => {
   assert.deepEqual(imports('lists.ts').filter((i) => !i.type && i.from !== './frontier.ts'), []);
 });
+
+test('reading the logs is pure: statuses.ts imports nothing but types and the stream reader of agents.ts', () => {
+  assert.deepEqual(imports('statuses.ts').filter((i) => !i.type && i.from !== './agents.ts'), []);
+});
+
+test('status reads the log folder only: it imports neither gh, git, exec nor claude', () => {
+  const edges = ['./exec.ts', './gh.ts', './git.ts', './claude.ts', 'node:child_process'];
+  for (const name of ['status.ts', 'statuses.ts']) assert.deepEqual(imports(name).filter((i) => !i.type && edges.includes(i.from)), [], name);
+});
