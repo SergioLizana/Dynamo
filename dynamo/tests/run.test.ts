@@ -233,7 +233,8 @@ test('an agent that ends with an unknown error pauses the list: no round, no Nee
   assert.deepEqual(moves(f.ghCalls(), 1), ['Build']);
   assert.equal(f.issue(1).column, 'Build');
   assert.deepEqual([3, 4].map((n) => f.issue(n).column), ['Todo', 'Todo']);
-  assert.deepEqual(f.claudeCalls().map((c) => [c.agent, c.ticket]), [['builder', 1], ['builder', 2], ['reviewer', 2]]);
+  // Sorted: builders 1 and 2 start at once, so either can reach the fake claude first.
+  assert.deepEqual(f.claudeCalls().map((c) => `${c.agent} ${c.ticket}`).sort(), ['builder 1', 'builder 2', 'reviewer 2']);
   assert.equal(f.claudeCalls().filter((c) => c.ticket === 1).length, 1, 'no second round');
   assert.deepEqual(branches(f.dir), ['ticket/1-ticket-1']);
 
