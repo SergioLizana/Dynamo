@@ -12,7 +12,6 @@ printf '/implement 12' | claude -p --max-budget-usd 5 --permission-mode auto --p
 
 - The prompt goes through standard input: this way the `/` reaches `claude` unchanged and the skill is launched as a
   skill. Passed as an argument, some consoles rewrite it as a path.
-- To test on another base: `printf '/implement 12 release/0.0.0-prueba' | claude -p …`, with the same options.
 - Cost cap per ticket: 5 USD to start; adjusted after the first 3 tickets (plan §10.6).
 - Several tickets are launched one at a time, with one command each.
 

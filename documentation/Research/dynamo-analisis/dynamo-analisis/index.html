@@ -1,0 +1,1691 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dynamo · diagnóstico de la factoría (release/0.1.0)</title>
+<meta name="description" content="Análisis de Dynamo: workflow vs skills vs orquestador propio, harness multi-proyecto, con evidencias del repositorio y un plan.">
+<style>
+:root{
+  --bg:#ffffff; --soft:#f6f8fa; --fg:#1f2328; --muted:#59636e; --border:#d1d9e0;
+  --accent:#0969da; --pri:#1f883d; --pri-fg:#ffffff;
+  --lane-gray:#8c959f; --lane-blue:#0969da; --lane-orange:#bc4c00; --lane-purple:#8250df;
+  --lane-teal:#087e8b; --lane-green:#1f883d; --lane-red:#cf222e; --lane-mix:9%; --warn:#9a6700;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){--bg:#0d1117;--soft:#151b23;--fg:#f0f6fc;--muted:#9198a1;--border:#3d444d;--accent:#4493f8;--pri:#238636;--lane-gray:#9198a1;--lane-blue:#4493f8;--lane-orange:#f0883e;--lane-purple:#a371f7;--lane-teal:#39c5cf;--lane-green:#3fb950;--lane-red:#f85149;--lane-mix:14%;--warn:#d29922;color-scheme:dark}
+}
+:root[data-theme="dark"]{--bg:#0d1117;--soft:#151b23;--fg:#f0f6fc;--muted:#9198a1;--border:#3d444d;--accent:#4493f8;--pri:#238636;--lane-gray:#9198a1;--lane-blue:#4493f8;--lane-orange:#f0883e;--lane-purple:#a371f7;--lane-teal:#39c5cf;--lane-green:#3fb950;--lane-red:#f85149;--lane-mix:14%;--warn:#d29922;color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 var(--sans)}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font:13px var(--mono);background:var(--soft);border:1px solid var(--border);border-radius:4px;padding:0 5px}
+pre code{border:0;padding:0;background:none}
+.sec{padding:64px 32px;border-top:1px solid var(--border);scroll-margin-top:56px}
+.in{max-width:1080px;margin:0 auto;min-width:0}
+h1.big{font:700 50px/1.08 var(--sans);letter-spacing:-.02em;margin:0 0 14px}
+h2{font:650 28px/1.2 var(--sans);letter-spacing:-.01em;margin:0 0 6px}
+h3{font:600 17px/1.3 var(--sans);margin:0 0 6px}
+.lead{color:var(--muted);margin:0 0 24px;font-size:16px;max-width:820px}
+.small{color:var(--muted);font-size:13px;margin:12px 0 0}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:var(--soft);color:var(--fg)!important;font:600 14px/1.2 var(--sans);text-decoration:none!important;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.pri{background:var(--pri);border-color:var(--pri);color:var(--pri-fg)!important}
+.btn[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.ctas{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.pill{display:inline-block;font:600 11px var(--mono);border:1px solid var(--border);border-radius:999px;padding:1px 8px;color:var(--muted);white-space:nowrap}
+.pill.ok{color:var(--pri);border-color:color-mix(in srgb,var(--pri) 50%,var(--border))}
+.pill.bad{color:var(--lane-red);border-color:color-mix(in srgb,var(--lane-red) 50%,var(--border))}
+.pill.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--border))}
+.pill.inf{color:var(--lane-purple);border-color:color-mix(in srgb,var(--lane-purple) 50%,var(--border))}
+.ref{font:11.5px var(--mono);color:var(--muted)}
+
+/* nav */
+.nav{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border)}
+.nav .row{max-width:1144px;margin:0 auto;display:flex;align-items:center;gap:14px;padding:12px 32px}
+.logo{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:17px;color:var(--fg)!important;text-decoration:none!important}
+.logo svg{width:24px;height:24px}
+.nav .lk{display:flex;gap:18px;margin-left:auto;align-items:center;font-size:14px;flex-wrap:wrap}
+.nav .lk a{color:var(--fg)}
+.tbtn{background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);width:30px;height:30px;display:grid;place-items:center;cursor:pointer;padding:0}
+.tbtn svg{fill:currentColor}
+
+/* hero */
+.hero{text-align:center;padding-top:72px;padding-bottom:72px;border-top:0}
+.hero .mark{width:72px;height:72px;display:block;margin:0 auto 18px}
+.pitch{font:600 22px/1.35 var(--sans);margin:0 auto 10px;max-width:780px}
+.sub{color:var(--muted);margin:0 auto;font-size:15px;max-width:760px}
+.hero .ctas{justify-content:center}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:34px auto 0;max-width:920px}
+.kpi{border:1px solid var(--border);border-radius:8px;background:var(--soft);padding:12px 10px}
+.kpi b{display:block;font:700 26px/1.1 var(--sans)}
+.kpi span{color:var(--muted);font-size:12.5px}
+
+/* verdict cards */
+.vgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.vcard{border:1px solid var(--border);border-top:3px solid var(--lane);border-radius:8px;padding:16px;background:var(--bg)}
+.vcard .tag{font:600 12px var(--mono);color:var(--lane)}
+.vcard p{margin:6px 0 0;color:var(--muted);font-size:14px}
+.vcard.keep{--lane:var(--lane-green)}.vcard.move{--lane:var(--lane-orange)}.vcard.no{--lane:var(--lane-red)}
+.callout{border-left:3px solid var(--accent);background:var(--soft);padding:12px 16px;border-radius:0 6px 6px 0;margin:22px 0 0;font-size:14.5px}
+.callout b{color:var(--fg)}
+
+/* board */
+.board{display:grid;grid-template-columns:repeat(6,minmax(128px,1fr));gap:8px;overflow-x:auto;padding:12px 0 4px}
+.bcol{background:var(--soft);border:1px solid var(--border);border-top:3px solid var(--lane);border-radius:8px;padding:8px;min-height:190px}
+.bcol.todo{--lane:var(--lane-gray)}.bcol.build{--lane:var(--lane-orange)}.bcol.verify{--lane:var(--lane-purple)}
+.bcol.review{--lane:var(--lane-teal)}.bcol.needs{--lane:var(--lane-red)}.bcol.done{--lane:var(--lane-green)}
+.bhead{margin:-8px -8px 8px;padding:8px;border-radius:5px 5px 0 0;background:color-mix(in srgb,var(--lane) var(--lane-mix),var(--soft))}
+.bhead b{font-size:12.5px;display:block;white-space:nowrap}
+.bhead .who{display:block;font:11px var(--mono);color:var(--accent)}
+.slot{min-height:60px}
+.card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;margin-bottom:6px;position:relative}
+.card.dim{color:var(--muted)}
+.card.live{border:2px solid var(--pri);z-index:3;will-change:transform}
+.card .id{font:600 11px var(--mono);color:var(--muted)}
+.card .ev{display:block;font:11px var(--mono);color:var(--pri);margin-top:3px}
+.card .ev.bad{color:var(--lane-red)}
+.agents{margin-top:16px;border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--soft)}
+.agents .hdr{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.agents .count{font:600 13px var(--mono)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-height:34px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:3px 10px;font:12px var(--mono);background:var(--bg);opacity:0;transform:translateY(6px) scale(.96);transition:opacity .35s,transform .35s}
+.chip.on{opacity:1;transform:none}
+.chip.think{border-color:var(--lane-orange);color:var(--lane-orange)}
+.chip.think.rev{border-color:var(--lane-purple);color:var(--lane-purple)}
+.chip.io{color:var(--muted)}
+.chip.sp{color:var(--pri);border-style:dashed}
+.chip i{font-style:normal;width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
+.modes{display:flex;gap:8px;flex-wrap:wrap}
+
+/* pipe */
+.pipe{position:relative;border:1px solid var(--border);border-radius:10px;background:var(--soft);height:300px;overflow:hidden;margin-top:6px}
+.node{position:absolute;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:8px 10px;font-size:12.5px;width:170px;text-align:center}
+.node b{display:block;font:600 12.5px var(--mono)}
+.node span{color:var(--muted);font-size:11.5px}
+.node.haiku{border-color:var(--warn)}
+.node.py{border-color:var(--pri)}
+.lane-label{position:absolute;left:12px;font:600 11px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.wire{position:absolute;height:2px;background:repeating-linear-gradient(90deg,var(--border) 0 8px,transparent 8px 14px)}
+.pkt{position:absolute;font:600 11px var(--mono);padding:3px 7px;border-radius:5px;background:var(--bg);border:1px solid var(--accent);color:var(--accent);transition:left .7s cubic-bezier(.3,.7,.2,1),opacity .4s,background .3s;white-space:nowrap;z-index:2}
+.pkt.bad{border-color:var(--lane-red);color:var(--lane-red);background:color-mix(in srgb,var(--lane-red) 10%,var(--bg))}
+.pkt.ok{border-color:var(--pri);color:var(--pri)}
+.plog{position:absolute;right:12px;bottom:10px;left:12px;font:11.5px var(--mono);color:var(--muted);text-align:right;min-height:16px}
+.plog.bad{color:var(--lane-red)}
+.plog.ok{color:var(--pri)}
+.statgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:18px}
+.stat{border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--bg)}
+.stat b{display:block;font:700 22px/1.15 var(--sans)}
+.stat p{margin:4px 0 0;color:var(--muted);font-size:13px}
+
+/* timeline */
+.tl{position:relative;margin:8px 0 0;padding:0 0 0 26px;list-style:none}
+.tl:before{content:"";position:absolute;left:8px;top:4px;bottom:4px;width:2px;background:var(--border)}
+.tl li{position:relative;margin:0 0 16px}
+.tl li:before{content:"";position:absolute;left:-23px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--bg);border:2px solid var(--lane-red)}
+.tl li.root:before{border-color:var(--accent);background:var(--accent)}
+.tl b{display:block}
+.tl p{margin:2px 0 0;color:var(--muted);font-size:14px}
+
+/* waffle + bars */
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start}
+.waffle{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.sq{border:1px solid var(--border);border-radius:6px;padding:8px 6px;font:11px var(--mono);background:var(--bg);opacity:.25;transform:scale(.92);transition:opacity .4s,transform .4s,background .4s}
+.sq.on{opacity:1;transform:none}
+.sq b{display:block;font-size:12px}
+.sq.pl.on{background:color-mix(in srgb,var(--lane-orange) 14%,var(--bg));border-color:var(--lane-orange)}
+.sq.gd.on{background:color-mix(in srgb,var(--lane-purple) 12%,var(--bg));border-color:var(--lane-purple)}
+.sq.ft.on{background:color-mix(in srgb,var(--lane-blue) 10%,var(--bg));border-color:var(--lane-blue)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0 0;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.bars{display:flex;flex-direction:column;gap:9px}
+.bar{display:grid;grid-template-columns:170px 1fr 60px;gap:10px;align-items:center;font-size:13px}
+.bar .t{height:14px;border-radius:4px;background:var(--soft);border:1px solid var(--border);overflow:hidden}
+.bar .t,.bar .f,.meter .t,.meter .f{display:block}
+.bar .f{height:100%;width:0;background:var(--lane);transition:width 1.1s cubic-bezier(.2,.8,.2,1)}
+.bar .n{font:12px var(--mono);color:var(--muted);text-align:right}
+.bar .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* options */
+.otabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px;overflow-x:auto}
+.otabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:9px 12px;font:600 14px var(--sans);cursor:pointer;white-space:nowrap}
+.otabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:#fd8c73}
+.opanel{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:24px}
+.meter{display:grid;grid-template-columns:190px 1fr 26px;gap:10px;align-items:center;font-size:13px;margin-bottom:8px}
+.meter .t{height:10px;border-radius:5px;background:var(--soft);border:1px solid var(--border);overflow:hidden}
+.meter .f{height:100%;width:0;transition:width .8s cubic-bezier(.2,.8,.2,1);background:var(--accent)}
+.meter .n{font:12px var(--mono);color:var(--muted)}
+.plist{margin:0;padding-left:18px;font-size:14px}
+.plist li{margin-bottom:5px}
+.verdict{font:600 13px var(--mono);margin:0 0 10px}
+
+/* references */
+.rgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.rcard{border:1px solid var(--border);border-radius:8px;padding:16px;background:var(--bg);display:flex;flex-direction:column;gap:8px}
+.rcard .nm{font:700 15px var(--mono)}
+.rcard p{margin:0;color:var(--muted);font-size:14px}
+.rcard .lesson{margin-top:auto;border-top:1px dashed var(--border);padding-top:8px;font-size:13.5px;color:var(--fg)}
+
+/* architecture */
+.arch{border:1px solid var(--border);border-radius:10px;background:var(--soft);overflow-x:auto}
+.arch svg{display:block;width:100%;min-width:860px;height:auto}
+.arch .bx{fill:var(--bg);stroke:var(--border);stroke-width:1.2}
+.arch .bx.llm{stroke:var(--lane-orange);stroke-width:1.8}
+.arch .bx.llm.rev{stroke:var(--lane-purple)}
+.arch .bx.det{stroke:var(--pri);stroke-width:1.6}
+.arch .bx.gh{stroke:var(--accent);stroke-width:1.6}
+.arch .bx.hum{stroke:var(--lane-gray);stroke-dasharray:4 3}
+.arch .frame{fill:none;stroke:var(--pri);stroke-width:1.4;stroke-dasharray:6 4}
+.arch text{fill:var(--fg);font:12px var(--sans)}
+.arch text.m{font:11px var(--mono);fill:var(--muted)}
+.arch text.h{font:600 13px var(--sans)}
+.arch text.k{font:600 11px var(--mono)}
+.arch .ln{fill:none;stroke:var(--muted);stroke-width:1.4}
+.arch .flow{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:7 7;animation:dash 1.2s linear infinite}
+.arch .flow.back{stroke:var(--lane-red);animation-duration:1.6s}
+.arch .dot{fill:var(--accent)}
+.arch .dot.r{fill:var(--lane-red)}
+@keyframes dash{to{stroke-dashoffset:-28}}
+
+/* code */
+.code{position:relative;background:var(--soft);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:0;overflow-x:auto}
+.code pre{margin:0;font:12.8px/1.65 var(--mono)}
+.tok-c{color:var(--muted);font-style:italic}.tok-s{color:var(--lane-teal)}.tok-k{color:var(--lane-purple);font-weight:600}
+
+/* plan */
+.steps{counter-reset:s;display:grid;gap:12px}
+.step{display:grid;grid-template-columns:44px 1fr;gap:14px;border:1px solid var(--border);border-radius:8px;padding:14px;background:var(--bg)}
+.step .num{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font:700 15px var(--mono);border:2px solid var(--lane,var(--accent));color:var(--lane,var(--accent))}
+.step p{margin:4px 0 0;color:var(--muted);font-size:14px}
+.step ul{margin:6px 0 0;padding-left:18px;font-size:14px;color:var(--muted)}
+
+/* grid of improvements */
+.igrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.icard{border:1px solid var(--border);border-radius:8px;padding:14px;background:var(--bg)}
+.icard p{margin:4px 0 0;color:var(--muted);font-size:14px}
+.icard .why{font:11.5px var(--mono);color:var(--muted);margin-top:6px}
+
+table.t{border-collapse:collapse;width:100%;font-size:14px}
+table.t th,table.t td{border-bottom:1px solid var(--border);padding:8px 10px;text-align:left;vertical-align:top}
+table.t th{font-weight:600;background:var(--soft)}
+
+/* ---------- parte 2 ---------- */
+.part{background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 7%,var(--bg)),var(--bg))}
+.kicker{font:600 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
+.qgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.qcard{border:1px solid var(--border);border-radius:8px;padding:12px 14px;background:var(--bg);color:var(--fg)!important;text-decoration:none!important;display:flex;flex-direction:column;gap:4px}
+.qcard:hover{border-color:var(--accent)}
+.qcard .q{font:600 12px var(--mono);color:var(--accent)}
+.qcard b{font-size:16px}
+.qcard p{margin:0;color:var(--muted);font-size:13.5px}
+.lang{display:grid;gap:9px;align-content:start}
+.lrow{display:grid;grid-template-columns:minmax(0,1.5fr) 1fr 1fr;gap:12px;align-items:center;font-size:13.5px}
+.lrow.h{font:600 12px var(--mono);color:var(--muted)}
+.lbar{display:flex;align-items:center;gap:8px}
+.lbar .t{flex:1;height:10px;border-radius:5px;background:var(--soft);border:1px solid var(--border);overflow:hidden;display:block}
+.lbar .f{display:block;height:100%;width:0;transition:width .9s cubic-bezier(.2,.8,.2,1)}
+.lbar .n{font:12px var(--mono);color:var(--muted);width:14px;text-align:right}
+.lrow.tot{border-top:1px solid var(--border);padding-top:8px;font-weight:600}
+.layers{display:flex;flex-direction:column}
+.layer{border:1px solid var(--border);border-left:4px solid var(--lane);border-radius:8px;padding:14px 16px;background:var(--bg);display:grid;grid-template-columns:230px 1fr;gap:16px;align-items:center}
+.layer b{font:700 15px var(--sans)}
+.layer .sm{font:12px var(--mono);color:var(--muted);margin-top:3px}
+.layer ul{margin:0;padding-left:18px;font-size:13.5px;color:var(--muted)}
+.lconn{height:40px;position:relative;margin-left:120px;border-left:2px dashed var(--border)}
+.lconn span{position:absolute;left:12px;top:11px;font:11.5px var(--mono);color:var(--muted);white-space:nowrap}
+.lconn i{position:absolute;left:-6px;top:0;width:10px;height:10px;border-radius:50%;background:var(--accent);animation:drop 1.6s linear infinite}
+@keyframes drop{from{top:-4px;opacity:0}20%{opacity:1}80%{opacity:1}to{top:34px;opacity:0}}
+.pb{display:grid;grid-template-columns:280px minmax(0,1fr);gap:22px;align-items:start}
+.pb .opts label{display:flex;gap:9px;align-items:flex-start;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;cursor:pointer;font-size:13.5px;background:var(--bg)}
+.pb .opts label.fixed{opacity:.75;cursor:default}
+.pb .opts label small{display:block;color:var(--muted);font-size:12px}
+.pb .opts input{margin-top:3px}
+.chain{display:flex;flex-wrap:wrap;gap:8px;align-items:center;min-height:60px;border:1px dashed var(--border);border-radius:8px;padding:10px;background:var(--soft)}
+.st{border:1.5px solid var(--lane);border-radius:8px;padding:5px 10px;font:12px var(--mono);background:color-mix(in srgb,var(--lane) 9%,var(--bg));animation:pop .35s ease}
+.st small{display:block;color:var(--muted);font-size:10.5px}
+.st.llm{--lane:var(--lane-orange)}.st.cmd{--lane:var(--pri)}.st.par{--lane:var(--lane-purple)}
+.st .sub{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap}
+.st .sub span{border:1px solid var(--lane-purple);border-radius:4px;padding:0 4px;font-size:10.5px}
+.arrow{color:var(--muted);font:12px var(--mono)}
+@keyframes pop{from{transform:scale(.85);opacity:0}to{transform:none;opacity:1}}
+.pbstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+.rv{display:grid;grid-template-columns:170px minmax(0,1fr) 240px;gap:18px;align-items:center}
+.rvdiff,.rvout{border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--bg);font-size:13px;line-height:1.6}
+.rvout.fail{border-color:var(--lane-red)}.rvout.pass{border-color:var(--pri)}
+.rvrows{display:grid;gap:12px}
+.rvrow{display:grid;grid-template-columns:150px minmax(0,1fr);gap:4px 10px;align-items:center;font:12px var(--mono)}
+.rvrow .t{height:8px;border-radius:4px;background:var(--soft);border:1px solid var(--border);overflow:hidden;display:block}
+.rvrow .f{display:block;height:100%;width:0;background:var(--lane-purple);transition:width linear}
+.rvrow.skip{opacity:.45}
+.finds{display:flex;flex-wrap:wrap;gap:6px;grid-column:2;min-height:18px}
+.fd{font:11px var(--mono);border:1px solid var(--border);border-radius:5px;padding:1px 6px;opacity:0;transition:opacity .3s,color .3s,border-color .3s}
+.fd.on{opacity:1}.fd.keep{border-color:var(--lane-red);color:var(--lane-red)}.fd.drop{text-decoration:line-through;color:var(--muted)}
+.roles{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:20px;align-items:start}
+.contract{border:2px solid var(--accent);border-radius:10px;padding:16px;background:var(--bg)}
+.contract dl{margin:10px 0 0;display:grid;grid-template-columns:96px 1fr;gap:8px 10px;font-size:13.5px}
+.contract dt{font:600 12px var(--mono);color:var(--muted)}
+.contract dd{margin:0}
+.impls{display:grid;gap:8px}
+.impl{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--bg);font-size:13.5px;transition:border-color .35s,box-shadow .35s,transform .35s}
+.impl.on{border-color:var(--pri);box-shadow:0 0 0 3px color-mix(in srgb,var(--pri) 22%,transparent);transform:translateX(4px)}
+.impl b{font:600 13px var(--mono)}
+.impl p{margin:2px 0 0;color:var(--muted);font-size:12.5px}
+.spanel table td:first-child{width:170px;font-weight:600}
+@media (max-width:900px){
+  .qgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pb,.rv,.roles{grid-template-columns:minmax(0,1fr)}
+  .layer{grid-template-columns:minmax(0,1fr)}
+}
+
+.flow5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;counter-reset:f}
+.f5{position:relative;border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--bg);font-size:13px;opacity:.35;transform:translateY(6px);transition:opacity .5s,transform .5s,border-color .5s}
+.f5.on{opacity:1;transform:none}
+.f5.key{border:2px solid var(--pri)}
+.f5 .n{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;border:2px solid var(--accent);color:var(--accent);font:700 12px var(--mono);margin-bottom:6px}
+.f5.key .n{border-color:var(--pri);color:var(--pri)}
+.f5 b{display:block;font-size:14px;margin-bottom:4px}
+.f5 p{margin:0;color:var(--muted)}
+.f5:not(:last-child):after{content:"→";position:absolute;right:-9px;top:14px;color:var(--muted);font:12px var(--mono)}
+.canary{border:1px solid var(--border);border-radius:10px;background:var(--soft);padding:12px;display:grid;gap:8px}
+.crow{display:grid;grid-template-columns:210px minmax(0,1fr) 260px;gap:12px;align-items:center;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:8px 12px;transition:border-color .4s,box-shadow .4s}
+.cfile{font:12px var(--mono);color:var(--muted)}
+.ccode{font:12px var(--mono);display:flex;flex-direction:column}
+.ccode .old{color:var(--fg)}
+.ccode .new{color:var(--lane-orange);max-height:0;overflow:hidden;opacity:0;transition:max-height .4s,opacity .4s}
+.crow.mut .old{text-decoration:line-through;color:var(--muted)}
+.crow.mut .new{max-height:40px;opacity:1}
+.cstat{font:12px var(--mono);display:flex;flex-direction:column}
+.cstat small{color:var(--muted);font-size:11px}
+.crow.run{box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent)}
+.crow.caught{border-color:var(--pri)}.crow.caught .cs{color:var(--pri);font-weight:600}
+.crow.blind{border-color:var(--lane-red)}.crow.blind .cs{color:var(--lane-red);font-weight:600}
+.csum{font:12.5px var(--mono);color:var(--muted);padding:4px 2px}
+.f2p{border:1px solid var(--border);border-radius:10px;background:var(--soft);padding:12px;display:grid;gap:6px}
+.f2h,.f2r{display:grid;grid-template-columns:minmax(0,1.6fr) 150px 150px minmax(0,1.2fr);gap:12px;align-items:center;font-size:13px}
+.f2h{font:600 12px var(--mono);color:var(--muted)}
+.f2r{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:7px 10px;transition:border-color .4s}
+.f2r .cell{font:12px var(--mono);color:var(--muted)}
+.f2r .cell.fail{color:var(--lane-red)}.f2r .cell.pass{color:var(--pri)}
+.f2r .vd{font:12px var(--mono);opacity:0;transition:opacity .4s}
+.f2r.ok{border-color:var(--pri)}.f2r.ok .vd{opacity:1;color:var(--pri)}
+.f2r.bad{border-color:var(--lane-red)}.f2r.bad .vd{opacity:1;color:var(--lane-red)}
+.tok-h{color:var(--accent);font-weight:700}
+@media (max-width:900px){
+  .flow5{grid-template-columns:minmax(0,1fr)}
+  .f5:after{display:none}
+  .crow,.f2h,.f2r{grid-template-columns:minmax(0,1fr)}
+}
+
+.reveal{opacity:0;transform:translateY(14px);transition:opacity .6s,transform .6s}
+.reveal.in-view{opacity:1;transform:none}
+
+.foot{padding:26px 32px;border-top:1px solid var(--border);color:var(--muted);font-size:13.5px}
+.foot .row{max-width:1080px;margin:0 auto}
+.src{columns:2;font-size:13px;color:var(--muted);padding-left:18px}
+.src li{margin-bottom:4px;break-inside:avoid}
+
+@media (max-width:900px){
+  .vgrid,.rgrid,.statgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .two,.opanel,.igrid{grid-template-columns:minmax(0,1fr)}
+  .src{columns:1}
+}
+@media (max-width:640px){
+  .sec{padding:40px 16px}
+  .vgrid,.rgrid,.statgrid,.kpis{grid-template-columns:minmax(0,1fr)}
+  h1.big{font-size:34px}
+  .nav .lk{display:none}
+  .bar{grid-template-columns:120px 1fr 50px}
+  .meter{grid-template-columns:130px 1fr 22px}
+}
+@media (prefers-reduced-motion: reduce){
+  *{transition:none!important;animation:none!important}
+  .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav" aria-label="Principal">
+  <div class="row">
+    <a class="logo" href="#top"><svg viewBox="0 0 96 96" aria-hidden="true"><rect x="4" y="4" width="88" height="88" rx="20" fill="#0d1117" stroke="#3d444d" stroke-width="2"/><rect x="17" y="20" width="14" height="10" rx="2.5" fill="#f0883e"/><rect x="41" y="20" width="14" height="10" rx="2.5" fill="#a371f7"/><rect x="65" y="20" width="14" height="10" rx="2.5" fill="#3fb950"/><path d="M20 66 h56" stroke="#4493f8" stroke-width="5" stroke-linecap="round" stroke-dasharray="6 6"/></svg>Dynamo · diagnóstico</a>
+    <span class="pill">release/0.1.0 · ad7f3ed</span>
+    <div class="lk">
+      <a href="#veredicto">Veredicto</a>
+      <a href="#hoy">Hoy</a>
+      <a href="#impuesto">El impuesto</a>
+      <a href="#opciones">Opciones</a>
+      <a href="#propuesta">Propuesta</a>
+      <a href="#plan">Plan</a>
+      <a href="#parte2">Multi-proyecto</a>
+      <button class="tbtn" id="tt" type="button" aria-label="Cambiar tema claro/oscuro"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM8 13V3a5 5 0 0 1 0 10Z"/></svg></button>
+    </div>
+  </div>
+</nav>
+
+<main id="top">
+
+<!-- HERO -->
+<section class="sec hero"><div class="in">
+  <svg class="mark" viewBox="0 0 96 96" role="img" aria-label="Logo"><rect x="4" y="4" width="88" height="88" rx="20" fill="#0d1117" stroke="#3d444d" stroke-width="2"/><rect x="14" y="16" width="20" height="64" rx="5" fill="#fff" fill-opacity=".08"/><rect x="38" y="16" width="20" height="64" rx="5" fill="#fff" fill-opacity=".08"/><rect x="62" y="16" width="20" height="64" rx="5" fill="#fff" fill-opacity=".08"/><rect x="17" y="20" width="14" height="10" rx="2.5" fill="#f0883e"/><rect x="41" y="20" width="14" height="10" rx="2.5" fill="#a371f7"/><rect x="65" y="20" width="14" height="10" rx="2.5" fill="#3fb950"/><rect x="65" y="33" width="14" height="10" rx="2.5" fill="#3fb950"/><path d="M66 70.5 l4 4 l8 -9" fill="none" stroke="#3fb950" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <h1 class="big">¿Workflow, skills o un programa propio?</h1>
+  <p class="pitch">La pregunta real no es «workflow o skills». Es: <em>¿quién ejecuta la parte determinista del bucle?</em> Hoy la ejecuta un LLM copiando texto a mano.</p>
+  <p class="sub">Análisis de <code>SergioLizana/Dynamo</code>, rama <code>release/0.1.0</code> (HEAD <code>ad7f3ed</code>), contrastado con super-board, Matt Pocock (skills + Sandcastle) y Lauren Tan (pstack). 28-oct-2026.</p>
+  <div class="kpis">
+    <div class="kpi"><b data-count="134">0</b><span>commits en 3 días</span></div>
+    <div class="kpi"><b data-count="76">0</b><span>tickets, todos de la propia factoría</span></div>
+    <div class="kpi"><b data-count="1751">0</b><span>líneas de JS de workflow</span></div>
+    <div class="kpi"><b data-count="9" data-suffix="/11">0</b><span>agentes por ticket que no piensan</span></div>
+    <div class="kpi"><b data-count="131">0</b><span>commits que aún no han llegado a <code>main</code></span></div>
+  </div>
+  <div class="ctas">
+    <a class="btn pri" href="#veredicto">Ver el veredicto</a>
+    <a class="btn" href="#hoy">▶ Ver cómo viaja un ticket</a>
+    <a class="btn" href="#plan">Ir al plan</a>
+  </div>
+</div></section>
+
+<!-- VEREDICTO -->
+<section class="sec" id="veredicto"><div class="in">
+  <h2>Veredicto en 30 segundos</h2>
+  <p class="lead">Lo que hay que conservar, lo que hay que sacar del workflow y lo que no conviene hacer.</p>
+  <div class="vgrid">
+    <div class="vcard keep reveal"><span class="tag">✅ CONSERVA</span><h3>Las skills y los agentes que piensan</h3>
+      <p><code>/discover</code> → <code>/to-request</code> → <code>/to-tasks</code> son interactivas, cortas (55–96 líneas) y siguen a Pocock. El <code>reviewer</code> (alcance, «fuera del ticket», evidencia <code>file:line</code>) y las reglas del <code>builder</code> están muy bien hechas. El tope de 2 rondas, Verify decidido por script y el estado en GitHub también.</p></div>
+    <div class="vcard move reveal"><span class="tag">🔁 SACA DEL WORKFLOW</span><h3>El bucle, a un programa (<code>dynamo</code>)</h3>
+      <p>El script de un dynamic workflow no puede ejecutar comandos ni leer ficheros. Por eso cada <code>git</code>/<code>gh</code> pasa por un agente Haiku (<code>runner</code>) que lo copia a mano. Pásalo a un orquestador propio (recomiendo TypeScript, ver <a href="#lenguaje">Python o Node</a>) que llame a <code>git</code>/<code>gh</code> directamente y use <code>claude -p</code> solo para el Builder y el Reviewer.</p></div>
+    <div class="vcard no reveal"><span class="tag">⛔ NO HAGAS</span><h3>«Solo skills» para el modo desatendido</h3>
+      <p>Si un LLM orquesta el bucle, el bucle deja de ser determinista y vuelves a lo que tu plan descarta (regla 6, §3; research §3.2): permisos que se quedan esperando en la sesión, sin coste en USD por ticket y con el contexto del coordinador llenándose. El propio Pocock usa <strong>código</strong> para el modo AFK: Sandcastle (TypeScript, <code>run({ maxIterations })</code>).</p></div>
+  </div>
+  <div class="callout reveal"><b>Sobre lo de que «los workflows son para tareas enormes»:</b> es verdad a medias. Un dynamic workflow rinde cuando hay muchos agentes <em>que piensan</em> repartidos en abanico (migraciones: un agente por fichero más un revisor adversarial). Tu bucle tiene 2 pasos que piensan por ticket y unos 9 que son entrada/salida. El problema no es el tamaño. Es que el script no puede ejecutar, y has metido un LLM donde debería ir una llamada a función.
+    <div class="ref" style="margin-top:6px">verificado: workflow-trial.md:68-69 · launch-list.md:246-252 · run.js:7-15 · commit fd80252</div></div>
+</div></section>
+
+<!-- HOY: board animation -->
+<section class="sec" id="hoy"><div class="in">
+  <h2>Así viaja hoy un ticket</h2>
+  <p class="lead">El ticket #34 pasa a la primera por <code>run.js</code>. Fíjate en el contador: cada paso lanza un agente, también los que solo copian un comando. Cambia de modo para ver el mismo recorrido con un orquestador propio.</p>
+  <div class="modes" role="group" aria-label="Modo">
+    <button class="btn" id="m-today" aria-pressed="true" type="button">Hoy: workflow + runner Haiku</button>
+    <button class="btn" id="m-py" aria-pressed="false" type="button">Propuesta: orquestador dynamo + claude -p</button>
+    <button class="btn" id="m-replay" type="button">↻ Repetir</button>
+  </div>
+  <div class="board" id="board" aria-label="Tablero animado: el ticket pasa de Todo a Build, Verify, Review y Done">
+    <div class="bcol todo"><div class="bhead"><b>📥 Todo</b><span class="who">tú · /to-tasks</span></div><div class="slot" data-col="todo"><div class="card dim">#35 Cap N=2</div></div></div>
+    <div class="bcol build"><div class="bhead"><b>🔨 Build</b><span class="who" data-who="build">builder · Sonnet</span></div><div class="slot" data-col="build"></div></div>
+    <div class="bcol verify"><div class="bhead"><b>🧪 Verify</b><span class="who" data-who="verify">runner · Haiku</span></div><div class="slot" data-col="verify"></div></div>
+    <div class="bcol review"><div class="bhead"><b>🧐 Review</b><span class="who">reviewer · Opus</span></div><div class="slot" data-col="review"></div></div>
+    <div class="bcol needs"><div class="bhead"><b>🙋 Needs Human</b><span class="who">tú</span></div><div class="slot" data-col="needs"></div></div>
+    <div class="bcol done"><div class="bhead"><b>🎉 Done</b><span class="who" data-who="done">runner · Haiku</span></div><div class="slot" data-col="done"><div class="card dim">#33 in-release</div></div></div>
+  </div>
+  <div class="agents">
+    <div class="hdr"><span class="count" id="acount">agentes lanzados: 0</span><span class="small" id="anote" style="margin:0">Cada chip es un <code>agent()</code> del workflow.</span></div>
+    <div class="chips" id="chips"></div>
+  </div>
+  <p class="small">Recuento según launch-list.md:206-209: «A ticket that passes in round 1 launches eleven agents in the whole run». Solo el Builder y el Reviewer razonan; el resto son llamadas al <code>runner</code> (Haiku), más una por cada 8 páginas de lectura larga.</p>
+</div></section>
+
+<!-- IMPUESTO -->
+<section class="sec" id="impuesto"><div class="in">
+  <h2>El impuesto del runner</h2>
+  <p class="lead">Así se publica hoy un comentario de 4,5 KB. El script no tiene shell ni <code>Buffer</code>: codifica el texto en base64, lo parte en trozos de ≤1.500 caracteres, el <code>runner</code> copia cada trozo a mano y un <code>cksum</code> comprueba que no se ha colado ningún cambio. Debajo, lo mismo con <code>subprocess</code>.</p>
+  <div class="pipe" id="pipe">
+    <span class="lane-label" style="top:12px">hoy</span>
+    <div class="node" style="left:3%;top:34px"><b>run.js</b><span>no puede ejecutar</span></div>
+    <div class="wire" style="left:calc(3% + 170px);right:calc(38% + 170px);top:58px"></div>
+    <div class="node haiku" style="left:calc(50% - 85px);top:34px"><b>runner · Haiku</b><span>copia cada carácter a mano</span></div>
+    <div class="wire" style="left:calc(50% + 85px);right:calc(3% + 170px);top:58px"></div>
+    <div class="node" style="right:3%;top:34px"><b>shell → gh</b><span>gh issue comment</span></div>
+    <span class="lane-label" style="top:168px">propuesta</span>
+    <div class="node py" style="left:3%;top:190px"><b>dynamo (CLI)</b><span>execFile('gh', …)</span></div>
+    <div class="wire" style="left:calc(3% + 170px);right:calc(3% + 170px);top:214px"></div>
+    <div class="node" style="right:3%;top:190px"><b>gh</b><span>--body-file -</span></div>
+    <div class="plog" id="plog">…</div>
+  </div>
+  <div class="statgrid">
+    <div class="stat reveal"><b>CRC32 + base64</b><p>Implementados a mano en JS porque «the script has no Buffer» <span class="ref">run.js:93-130</span></p></div>
+    <div class="stat reveal"><b>×3 copias</b><p>Los mismos helpers copiados en run.js, board.js y release-report.js: «a script cannot import» <span class="ref">launch-list.md:252</span></p></div>
+    <div class="stat reveal"><b>21 formas <code>sh -c</code></b><p>sin regla en settings.json: el único test que no pasa (63/64, 1 todo) <span class="ref">dry-run.test.js:215</span></p></div>
+    <div class="stat reveal"><b>30 KB</b><p>de launch-list.md, casi todo describiendo cómo esquivar al runner <span class="ref">launch-list.md</span></p></div>
+  </div>
+</div></section>
+
+<!-- EVIDENCIA -->
+<section class="sec" id="evidencia"><div class="in">
+  <h2>La evidencia, en tus propias ejecuciones</h2>
+  <p class="lead">Cada fallo se arregló con más maquinaria alrededor del runner. Ninguno ataca la causa: un agente haciendo de <code>subprocess</code>.</p>
+  <div class="two">
+    <ol class="tl">
+      <li class="reveal"><b>Ensayo del workflow (27-oct): fallo 6</b><p>«The script does not run commands… The checks stop being commands that nobody can falsify: they rely on what the agent says.»</p><span class="ref">workflow-trial.md:68-69</span></li>
+      <li class="reveal"><b>wf_41e0b269-ab2: <code>"blockers": []</code></b><p>El agente lector devolvió #38 sin bloqueadores (en GitHub lo bloqueaba #37). Se construyó fuera de orden; el agente de Merge afirmó algo falso y dejó #36 sin etiqueta.</p><span class="ref">launch-list.md:325-333</span></li>
+      <li class="reveal"><b>wf_fb8329e5-d57: el placeholder</b><p>El runner devolvió «(Bash completed with no output)», y un <code>git status</code> limpio se leyó como si hubiera cambios.</p><span class="ref">run.js:31-33</span></li>
+      <li class="reveal"><b>wf_c3e19634-96a: <code>·</code> → <code>�</code></b><p>Se pierden los escapes y los caracteres no ASCII. Desde entonces todo comando tiene que ser ASCII puro.</p><span class="ref">run.js:155-159</span></li>
+      <li class="reveal"><b>wf_cec30c76-5dd: publicado dos veces</b><p>Una errata en un comando de 4,5 KB, un bloque de código perdido y una lectura de 30 KB recortada a 2 KB.</p><span class="ref">launch-list.md:248-251</span></li>
+      <li class="reveal root"><b>wf_0a4017b2-50d (28-oct): se cae la regla</b><p>«the runner miscopied pages of 1440 characters in three tries» → «Drop the "no own scripts" rule». Ya estás llegando a la conclusión por tu cuenta.</p><span class="ref">commit fd80252 · ad7f3ed (#76)</span></li>
+    </ol>
+    <div>
+      <h3>Los 15 últimos tickets fusionados (#53–#75)</h3>
+      <div class="waffle" id="waffle"></div>
+      <div class="legend"><span><i style="background:var(--lane-orange)"></i>Fontanería del runner o del sandbox: <b id="w-pl">8</b></span><span><i style="background:var(--lane-purple)"></i>Guardas: <b id="w-gd">2</b></span><span><i style="background:var(--lane-blue)"></i>Funcionalidad de la factoría: <b id="w-ft">5</b></span><span><i style="background:var(--border)"></i>Proyecto real: <b>0</b></span></div>
+      <p class="small"><span class="pill inf">inferido</span> Clasificación mía, hecha con el nombre de la rama y el mensaje de cada merge. La plantilla está en el código (array <code>TICKETS</code>).</p>
+      <div class="callout" style="margin-top:16px"><b>Señal de alarma de tu propio plan (§8.1):</b> «if a ticket serves to fix how tickets are created and no measured failure asks for it, it is Cadenza's path». Aquí sí hay fallos medidos que lo piden, pero salen de haber elegido el runtime equivocado. <code>main</code> tiene 3 commits y <code>release/0.1.0</code> le saca 131. La etapa 2 todavía no ha llegado a «reach <code>main</code> in the PR I accept» (plan §8).</div>
+    </div>
+  </div>
+</div></section>
+
+<!-- TAMAÑO -->
+<section class="sec" id="tamano"><div class="in">
+  <h2>Cuánto pesa cada pieza</h2>
+  <p class="lead">Las líneas de los workflows frente al <code>super-board-wave.js</code> de super-board, que solo coordina agentes que piensan y deja lo determinista a 30 scripts bash/Python.</p>
+  <div class="two">
+    <div class="bars" id="bars1">
+      <div class="bar" style="--lane:var(--lane-orange)"><span class="l">run.js</span><span class="t"><span class="f" data-w="768"></span></span><span class="n">768</span></div>
+      <div class="bar" style="--lane:var(--lane-orange)"><span class="l">release-report.js</span><span class="t"><span class="f" data-w="573"></span></span><span class="n">573</span></div>
+      <div class="bar" style="--lane:var(--lane-orange)"><span class="l">board.js</span><span class="t"><span class="f" data-w="410"></span></span><span class="n">410</span></div>
+      <div class="bar" style="--lane:var(--lane-purple)"><span class="l">hooks/outside-writes.js</span><span class="t"><span class="f" data-w="365"></span></span><span class="n">365</span></div>
+      <div class="bar" style="--lane:var(--lane-gray)"><span class="l">tests/workflows/*</span><span class="t"><span class="f" data-w="423"></span></span><span class="n">423</span></div>
+      <div class="bar" style="--lane:var(--lane-green)"><span class="l">super-board-wave.js</span><span class="t"><span class="f" data-w="359"></span></span><span class="n">359</span></div>
+      <div class="bar" style="--lane:var(--lane-blue)"><span class="l">las 4 skills juntas</span><span class="t"><span class="f" data-w="362"></span></span><span class="n">362</span></div>
+    </div>
+    <div class="bars" id="bars2">
+      <div class="bar" style="--lane:var(--lane-gray)"><span class="l">agent-factory-research.md</span><span class="t"><span class="f" data-w="69.6" data-max="70"></span></span><span class="n">70 KB</span></div>
+      <div class="bar" style="--lane:var(--lane-orange)"><span class="l">launch-list.md</span><span class="t"><span class="f" data-w="30.5" data-max="70"></span></span><span class="n">31 KB</span></div>
+      <div class="bar" style="--lane:var(--lane-gray)"><span class="l">agent-factory-plan.md</span><span class="t"><span class="f" data-w="29.3" data-max="70"></span></span><span class="n">29 KB</span></div>
+      <div class="bar" style="--lane:var(--lane-gray)"><span class="l">backlog.md</span><span class="t"><span class="f" data-w="12.9" data-max="70"></span></span><span class="n">13 KB</span></div>
+      <div class="bar" style="--lane:var(--lane-orange)"><span class="l">factory.md (permisos)</span><span class="t"><span class="f" data-w="10.1" data-max="70"></span></span><span class="n">10 KB</span></div>
+      <p class="small">En naranja, lo que existe para dar soporte al runner. Con un orquestador que ejecuta directamente, la mayor parte sobra. <span class="pill inf">inferido</span></p>
+    </div>
+  </div>
+</div></section>
+
+<!-- OPCIONES -->
+<section class="sec" id="opciones"><div class="in">
+  <h2>Las cuatro opciones, comparadas</h2>
+  <p class="lead">Puntuación de 1 a 5 (5 = mejor). En «esfuerzo de migración», 5 significa menos trabajo. <span class="pill inf">juicio propio</span>, con la evidencia que aparece debajo de cada opción.</p>
+  <div class="otabs" role="tablist" id="otabs"></div>
+  <div class="opanel" id="opanel"></div>
+</div></section>
+
+<!-- REFERENTES -->
+<section class="sec" id="referentes"><div class="in">
+  <h2>Qué hacen de verdad tus referentes</h2>
+  <p class="lead">Ninguno pone a un LLM a hacer de shell. Los tres separan lo que piensa de lo que solo ejecuta.</p>
+  <div class="rgrid">
+    <div class="rcard reveal"><span class="nm">Matt Pocock</span>
+      <p><b>Con el humano delante:</b> skills en Markdown sin harness (<code>grill</code> → <code>to-spec</code> → <code>to-tickets</code> → <code>implement</code> / <code>implement-spec</code>).</p>
+      <p><b>Desatendido (AFK):</b> <a href="https://github.com/mattpocock/sandcastle">Sandcastle</a>, «Orchestrate sandboxed coding agents in TypeScript with <code>sandcastle.run()</code>», con <code>maxIterations</code>, estrategias de rama y Docker/Podman.</p>
+      <p class="lesson">→ Cuando nadie mira, el bucle con X intentos es <b>código</b>. «Solo skills» es su modo atendido.</p></div>
+    <div class="rcard reveal"><span class="nm">Lauren Tan · pstack</span>
+      <p>Principios como <i>Prove It Works</i>, <i>Fix Root Causes</i> y <i>Subtract Before You Add</i>. Todos los agentes usan el mismo comando de verificación, y las evidencias se piden antes de dar algo por terminado.</p>
+      <p>Las skills (<code>poteto-mode</code>, <code>arena</code>, <code>interrogate</code>) delegan en subagentes, pero la verificación la hacen comandos.</p>
+      <p class="lesson">→ El runner es un parche sobre un síntoma. <i>Fix root cause</i> y <i>subtract</i>: quítalo.</p></div>
+    <div class="rcard reveal"><span class="nm">super-board</span>
+      <p>Un dynamic workflow (<code>super-board-wave.js</code>, 359 líneas) solo para los carriles que piensan (build, QA, review). Todo lo determinista va en ~30 scripts: <code>wave-plan.sh</code>, <code>merge-gate.sh</code> (lock atómico con <code>mkdir</code>), <code>github-read.py</code>, <code>status.py</code>. También tiene un backend <code>claude -p</code>.</p>
+      <p>«State lives on the GitHub Project board», y el orquestador no hace trabajo de producto.</p>
+      <p class="lesson">→ Si te quedas con workflows, copia esta separación: el script coordina y los comandos ejecutan.</p></div>
+  </div>
+</div></section>
+
+<!-- PROPUESTA -->
+<section class="sec" id="propuesta"><div class="in">
+  <h2>La arquitectura propuesta</h2>
+  <p class="lead">Skills para la parte humana, GitHub como estado (como ahora) y un programa <code>dynamo</code> (TypeScript, ver <a href="#lenguaje">por qué</a>) que hace el bucle. El LLM aparece solo en las dos cajas naranja/morada.</p>
+  <div class="arch">
+    <svg viewBox="0 0 1000 575" role="img" aria-label="Arquitectura: skills humanas, GitHub como estado, orquestador dynamo con builder y reviewer en claude -p y el resto en subprocess">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor" style="color:var(--muted)"/></marker>
+      </defs>
+      <text class="k" x="30" y="30" style="fill:var(--muted)">TÚ, EN SESIÓN · SKILLS</text>
+      <rect class="bx hum" x="30" y="42" width="150" height="56" rx="8"/><text class="h" x="105" y="66" text-anchor="middle">/discover</text><text class="m" x="105" y="84" text-anchor="middle">cierra decisiones</text>
+      <rect class="bx hum" x="210" y="42" width="150" height="56" rx="8"/><text class="h" x="285" y="66" text-anchor="middle">/to-request</text><text class="m" x="285" y="84" text-anchor="middle">spec</text>
+      <rect class="bx hum" x="390" y="42" width="150" height="56" rx="8"/><text class="h" x="465" y="66" text-anchor="middle">/to-tasks</text><text class="m" x="465" y="84" text-anchor="middle">apruebas la lista</text>
+      <path class="ln" d="M180 70 H208" marker-end="url(#ah)"/><path class="ln" d="M360 70 H388" marker-end="url(#ah)"/>
+      <rect class="bx gh" x="600" y="30" width="370" height="80" rx="10"/><text class="h" x="785" y="58" text-anchor="middle">GitHub: issues + Project + blocked_by</text><text class="m" x="785" y="78" text-anchor="middle">la única fuente de estado (reanudable)</text><text class="m" x="785" y="96" text-anchor="middle">6 columnas: Todo → … → Needs Human · Done</text>
+      <path class="flow" d="M540 70 H598"/>
+      <rect class="frame" x="20" y="150" width="960" height="322" rx="12"/>
+      <rect class="bx det" x="36" y="200" width="124" height="70" rx="8"/><text class="h" x="98" y="226" text-anchor="middle">Leer tablero</text><text class="m" x="98" y="244" text-anchor="middle">gh api graphql</text><text class="m" x="98" y="259" text-anchor="middle">sin in-release</text>
+      <rect class="bx det" x="170" y="200" width="124" height="70" rx="8"/><text class="h" x="232" y="226" text-anchor="middle">Frontera</text><text class="m" x="232" y="244" text-anchor="middle">función pura</text><text class="m" x="232" y="259" text-anchor="middle">+ tests</text>
+      <rect class="bx det" x="304" y="200" width="124" height="70" rx="8"/><text class="h" x="366" y="226" text-anchor="middle">Worktree</text><text class="m" x="366" y="244" text-anchor="middle">git worktree add</text><text class="m" x="366" y="259" text-anchor="middle">desde la base</text>
+      <rect class="bx llm" x="438" y="200" width="124" height="70" rx="8"/><text class="h" x="500" y="226" text-anchor="middle">Builder</text><text class="m" x="500" y="244" text-anchor="middle">claude -p</text><text class="m" x="500" y="259" text-anchor="middle">Sonnet · schema</text>
+      <rect class="bx det" x="572" y="200" width="124" height="70" rx="8"/><text class="h" x="634" y="226" text-anchor="middle">Verify</text><text class="m" x="634" y="244" text-anchor="middle">subprocess</text><text class="m" x="634" y="259" text-anchor="middle">exit codes reales</text>
+      <rect class="bx llm rev" x="706" y="200" width="124" height="70" rx="8"/><text class="h" x="768" y="226" text-anchor="middle">Reviewer</text><text class="m" x="768" y="244" text-anchor="middle">claude -p · Opus</text><text class="m" x="768" y="259" text-anchor="middle">solo lectura</text>
+      <rect class="bx det" x="840" y="200" width="124" height="70" rx="8"/><text class="h" x="902" y="226" text-anchor="middle">Merge (lock)</text><text class="m" x="902" y="244" text-anchor="middle">--no-ff + checks</text><text class="m" x="902" y="259" text-anchor="middle">revert si falla</text>
+      <path class="flow" d="M160 235 H170 M294 235 H304 M428 235 H438 M562 235 H572 M696 235 H706 M830 235 H840"/>
+      <path class="flow back" d="M768 270 C768 330, 500 330, 500 272"/>
+      <path class="flow back" d="M634 270 C634 305, 520 305, 512 272"/>
+      <text class="m" x="634" y="342" text-anchor="middle" style="fill:var(--lane-red)">FAIL o checks ✗ → ronda 2 (MAX_ROUNDS = 2) · luego Needs Human</text>
+      <rect class="bx" x="36" y="354" width="452" height="84" rx="8"/><text class="h" x="52" y="378">Por ticket, gratis, del JSON de claude -p</text><text class="m" x="52" y="398">total_cost_usd · num_turns</text><text class="m" x="52" y="414">--max-budget-usd · --max-turns</text><text class="m" x="52" y="430">→ al comentario del ticket</text>
+      <rect class="bx" x="512" y="354" width="452" height="84" rx="8"/><text class="h" x="528" y="378">Desatendido de verdad</text><text class="m" x="528" y="398">--permission-prompts none: deniega, no espera</text><text class="m" x="528" y="414">GH_TOKEN fine-grained solo en estos procesos</text><text class="m" x="528" y="430">límite de uso → duerme y reanuda (idempotente)</text>
+      <text class="k" x="36" y="462" style="fill:var(--pri)">dynamo run 34 35 · TypeScript · cron / launchd / Task Scheduler · N=2 en paralelo · merge en serie con lock</text>
+      <path class="flow" d="M902 200 C902 160, 905 140, 905 112"/>
+      <path class="flow" d="M650 112 C650 150, 98 150, 98 198"/>
+      <rect class="bx hum" x="270" y="500" width="460" height="56" rx="8"/><text class="h" x="500" y="524" text-anchor="middle">Tú, al final: PR release/x.y.z → main</text><text class="m" x="500" y="542" text-anchor="middle">dynamo imprime el push y el gh pr create; nunca los ejecuta</text>
+      <path class="flow" d="M500 472 V498"/>
+      <circle class="dot" r="5"><animateMotion dur="5s" repeatCount="indefinite" path="M98 235 H902"/></circle>
+      <circle class="dot r" r="4"><animateMotion dur="3.2s" repeatCount="indefinite" path="M768 270 C768 330, 500 330, 500 272"/></circle>
+      <circle class="dot" r="4"><animateMotion dur="3.6s" repeatCount="indefinite" path="M650 112 C650 150, 98 150, 98 198"/></circle>
+    </svg>
+  </div>
+  <div class="legend" style="margin-top:12px"><span><i style="background:var(--pri)"></i>Código determinista (gratis, exit codes reales)</span><span><i style="background:var(--lane-orange)"></i>LLM que construye</span><span><i style="background:var(--lane-purple)"></i>LLM que juzga</span><span><i style="background:var(--accent)"></i>Estado en GitHub</span></div>
+</div></section>
+
+<!-- CODIGO -->
+<section class="sec" id="codigo"><div class="in">
+  <h2>El bucle con X intentos, en código</h2>
+  <p class="lead">Un boceto del núcleo, en TypeScript. Lo que en <code>run.js</code> necesita <code>runner</code>, páginas y fingerprints aquí es una llamada a <code>execFile</code>. <span class="pill warn">boceto sin probar</span> <code>--agent</code>, <code>--agents</code>, <code>--json-schema</code>, <code>--max-budget-usd</code> y <code>--permission-prompts</code> son flags documentados de <code>claude</code>; compruébalos con <code>claude --help</code> en tu versión.</p>
+  <div style="display:grid;gap:14px">
+    <div class="code"><pre><code class="hl">const MAX_ROUNDS = 2
+const mergeLock = new Mutex()                        // merge en serie, carpeta principal
+
+async function runTicket(t: Ticket, base: string): Promise&lt;Outcome&gt; {
+  const wt = await worktreeAdd(t, base)             // git worktree add (execFile)
+  await moveCard(t, 'Build')
+  let failure: string | undefined
+  for (let round = 1; round &lt;= MAX_ROUNDS; round++) {
+    const b = await agent('builder', buildPrompt(t, base, round, failure),
+                          { cwd: wt, schema: BuildOut, budgetUsd: 3 })
+    if (b.data.needsHuman) return block(t, 'build', b.data.needsHumanReason)
+    await moveCard(t, 'Verify')
+    const sha = await git(wt, 'merge-base', 'HEAD', base)
+    const bad = (await runChecks(wt, sha)).filter(r =&gt; r.code !== 0)
+    if (bad.length) { failure = render(bad); await moveCard(t, 'Build'); continue }
+    await moveCard(t, 'Review')
+    const r = await agent('reviewer', reviewPrompt(t, base),
+                          { cwd: wt, schema: ReviewOut, tools: READ_ONLY })
+    if (r.data.verdict === 'PASS')
+      return mergeLock.run(() =&gt; merge(t, wt, base, { costUsd: b.costUsd + r.costUsd }))
+    failure = r.data.report; await moveCard(t, 'Build')
+  }
+  return block(t, 'rounds', failure)
+}</code></pre></div>
+    <div class="code"><pre><code class="hl">async function agent&lt;T&gt;(role: string, prompt: string, o: AgentOpts&lt;T&gt;) {
+  const def = resolveRole(role)                      // .dynamo/agents/ &gt; plugin/agents/
+  const args = ['-p', prompt, '--agents', JSON.stringify({ [role]: def }), '--agent', role,
+    '--output-format', 'json', '--json-schema', JSON.stringify(toJsonSchema(o.schema)),
+    '--max-budget-usd', String(o.budgetUsd ?? 2),
+    '--permission-mode', 'auto', '--permission-prompts', 'none']
+  if (o.tools) args.push('--allowedTools', o.tools.join(','))
+  const { stdout } = await execFileAsync('claude', args, { cwd: o.cwd, env: AGENT_ENV })
+  const out = JSON.parse(stdout)
+  if (isUsageLimit(out)) throw new UsageLimit(out)   // el bucle duerme y reanuda
+  return { data: o.schema.parse(structured(out)),    // zod valida el contrato
+           costUsd: out.total_cost_usd, turns: out.num_turns }
+}
+
+export async function main(tickets: number[], base: string, parallel = 2) {
+  for (;;) {
+    const state = await readBoard(tickets, base)     // GitHub = estado
+    const ready = frontier(state)                    // función pura, testeada
+    if (!ready.length) break
+    await pMap(ready, t =&gt; runTicket(t, base), { concurrency: parallel })
+  }
+  console.log(await releaseReport(base))             // push y PR: los haces tú
+}</code></pre></div>
+  </div>
+  <p class="small">Tamaño estimado del orquestador completo: unas 400–600 líneas, frente a las 1.751 actuales. <span class="pill inf">estimación</span> Tus tests de <code>fake-gh.js</code> se reutilizan casi tal cual.</p>
+</div></section>
+
+<!-- PLAN -->
+<section class="sec" id="plan"><div class="in">
+  <h2>Qué haría, en orden</h2>
+  <p class="lead">Los primeros pasos no tienen arrepentimiento posible: valen tanto si al final te quedas con workflows (opción B) como si te pasas al orquestador (opción C). La decisión final la toman los datos (tu regla 4).</p>
+  <div class="steps">
+    <div class="step reveal" style="--lane:var(--lane-red)"><span class="num">0</span><div><h3>Cierra la etapa 2 y congela la autorreparación</h3><p>Abre el PR <code>release/0.1.0 → main</code> y apruébalo (<code>main</code> tiene 3 commits y ni siquiera tiene <code>.claude/</code>). Hasta terminar la migración no entran tickets de fontanería del runner. <span class="pill bad">#76 se para aquí</span></p></div></div>
+    <div class="step reveal" style="--lane:var(--pri)"><span class="num">1</span><div><h3>CLI <code>dynamo</code> con los pasos deterministas <span class="pill ok">sin arrepentimiento</span></h3><p>Subcomandos <code>board</code>, <code>verify</code>, <code>merge</code>, <code>comment</code> y <code>report</code>, cada uno con salida JSON corta. Es el port de la lógica de board.js y release-report.js (frontera, saltos y «skipped: depends on #n»), con tests y un <code>gh</code> falso. En TypeScript, que es donde #76 ya empezó (<code>.claude/workflows/lib/</code>); ver <a href="#lenguaje">Python o Node</a>.</p></div></div>
+    <div class="step reveal" style="--lane:var(--pri)"><span class="num">2</span><div><h3><code>dynamo run 34 35</code>: el bucle</h3><ul><li><code>git worktree add</code> desde la base, y <code>claude -p</code> para builder y reviewer con <code>--json-schema</code></li><li>Semáforo N=2 (backlog #59) y lock para el merge</li><li><code>total_cost_usd</code> y <code>num_turns</code> en el comentario de cada ticket</li><li>Límite de uso: dormir, releer el tablero y seguir</li></ul></div></div>
+    <div class="step reveal" style="--lane:var(--warn)"><span class="num">3</span><div><h3>Ensayo cara a cara <span class="pill warn">decide con datos</span></h3><p>Los mismos 3 tickets reales con <code>/run</code> y con <code>dynamo run</code>. Compara coste, duración, fallos de fontanería y rondas. Apúntalo en <code>documentation/</code> como hiciste en workflow-trial.md.</p></div></div>
+    <div class="step reveal" style="--lane:var(--lane-orange)"><span class="num">4</span><div><h3>Resta</h3><p>Borra <code>runner.md</code>, run.js, board.js y release-report.js (si gana C), las 21+ reglas <code>sh -c</code> y la sección «Long text and the runner». Deja <strong>una</strong> sola implementación del bucle: <code>/implement N</code> pasa a ser el modo manual de <code>dynamo run N</code> o se queda solo para sesiones atendidas.</p></div></div>
+    <div class="step reveal" style="--lane:var(--accent)"><span class="num">5</span><div><h3>Desatendido de verdad</h3><p>El programador de tareas del sistema lanza <code>dynamo run</code>. Pasa un <code>GH_TOKEN</code> fine-grained (Contents read-only; Issues y Projects con escritura) solo al entorno de los procesos <code>claude -p</code> y vacía <code>credential.helper</code>. Así se cierra «Protect main» del backlog sin pagar GitHub Pro.</p></div></div>
+    <div class="step reveal" style="--lane:var(--lane-green)"><span class="num">6</span><div><h3>Al proyecto real (etapa 4)</h3><p>«Complete» = una lista con dependencias acaba en un PR sin intervención. Con <code>dynamo</code> eso está a una o dos listas. Las mejoras de la etapa 5 tienen que salir de lo que duela allí.</p></div></div>
+  </div>
+</div></section>
+
+<!-- MEJORAS -->
+<section class="sec" id="mejoras"><div class="in">
+  <h2>Otras mejoras concretas</h2>
+  <p class="lead">Ordenadas por lo que desbloquean. Varias son entradas de tu backlog que con un orquestador propio se vuelven triviales.</p>
+  <div class="igrid">
+    <div class="icard reveal"><h3>Permisos por agente, por fin</h3><p>Cada <code>claude -p</code> es un proceso con sus propios <code>--allowedTools</code>/<code>--disallowedTools</code>. El reviewer queda sin Edit ni Write por flag, no por buena fe. Hoy no se puede: «settings.json apply to the whole session, subagents included».</p><div class="why">backlog.md:27-34 «Different permissions per agent»</div></div>
+    <div class="icard reveal"><h3>Medición por ticket real</h3><p>CLAUDE.md pide «turns per ticket». El workflow solo da tokens y <code>/implement</code> a mano no registra nada. <code>claude -p --output-format json</code> te da <code>total_cost_usd</code> y <code>num_turns</code> gratis.</p><div class="why">parallel-launch-trial.md:75 · workflow-trial.md:75</div></div>
+    <div class="icard reveal"><h3>Una sola implementación del bucle</h3><p>Hoy hay dos (<code>/implement</code> y <code>run.js</code>) y ya divergen: <code>/implement</code> sigue leyendo <code>factory.md</code> y usa <code>move_card</code>, que es solo bash. Que la skill llame al programa.</p><div class="why">backlog.md:107-133 · implement/SKILL.md:13-14</div></div>
+    <div class="icard reveal"><h3>Lectura del tablero filtrada</h3><p>De ~40 tickets abiertos, ~30 ya están en la release. En código es un <code>-label:in-release</code> en la búsqueda, sin páginas ni base64.</p><div class="why">backlog.md:158-165</div></div>
+    <div class="icard reveal"><h3>Tests de la lógica, no del transporte</h3><p>Hoy la mayoría de los tests simulan un runner que se equivoca al copiar. Con funciones puras (frontera, rondas, saltos, informe) se testea lo que importa, sin LLM y en milisegundos.</p><div class="why">dry-run.test.js: 16 de 17 tests son de transporte <span class="pill inf">inferido</span></div></div>
+    <div class="icard reveal"><h3>Visibilidad sin <code>/workflows</code></h3><p><code>--output-format stream-json</code> a <code>logs/&lt;ticket&gt;.jsonl</code>, más un <code>dynamo status</code> que imprime tablero, rondas y coste. El tablero sigue siendo tu UI (regla 5: «No interface of its own»).</p><div class="why">spec-pendientes-etapa-2.md:3 (el motivo del cambio a workflow)</div></div>
+    <div class="icard reveal"><h3>Dieta de documentación</h3><p>Unos 175 KB de docs para unas 1.750 líneas de JS. Cuando el runner desaparece, sobran launch-list.md y la tabla de permisos de factory.md. Lo demás, en un README del orquestador de 1 página.</p><div class="why">tamaños de ficheros en ad7f3ed</div></div>
+    <div class="icard reveal"><h3>Mantén lo que funciona</h3><p>El reviewer que caza «fuera del ticket», Verify sin LLM, el tope de 2 rondas, el estado en GitHub, el backlog como barrera y el hook <code>outside-writes.js</code> (los procesos <code>claude -p</code> también lo cargan). Esto ya se parece a Stripe y Spotify.</p><div class="why">plan §3, §6 · reviewer.md</div></div>
+  </div>
+</div></section>
+
+<!-- ================= PARTE 2 ================= -->
+<section class="sec part" id="parte2"><div class="in">
+  <p class="kicker">Parte 2 · el harness para todos tus proyectos</p>
+  <h2>De la factoría de Dynamo a tu harness multi-proyecto</h2>
+  <p class="lead">Quieres un harness con bucle que puedas instalar en tu web, en una app KMM o en lo que venga, con más pasos, una review más rica y agentes intercambiables. Abajo va cada pregunta con su respuesta corta y luego el detalle.</p>
+  <div class="qgrid">
+    <a class="qcard reveal" href="#lenguaje"><span class="q">1 · Python o Node</span><b>TypeScript</b><p>Reutilizas lo que ya tienes, puedes sacar un binario único para cualquier SO y comparte lenguaje con los workflows y Sandcastle.</p></a>
+    <a class="qcard reveal" href="#capas"><span class="q">2 · Multi-proyecto</span><b>3 capas</b><p>Un motor versionado, un plugin de Claude Code y una carpeta <code>.dynamo/</code> en cada repo.</p></a>
+    <a class="qcard reveal" href="#stacks"><span class="q">3 · Cualquier stack</span><b>Plantillas de AGENTS.md</b><p>Web, KMP, Android, Python o CI: cada plantilla trae su bloque <code>verify</code>, cómo se escriben allí los tests y sus trampas.</p></a>
+    <a class="qcard reveal" href="#pasos"><span class="q">4 · Más pasos</span><b>Pipeline declarativo</b><p>Pasos de tipo <code>role</code>, <code>run</code>, <code>parallel</code> o <code>gate</code>, con condiciones <code>when</code>.</p></a>
+    <a class="qcard reveal" href="#review"><span class="q">5 · Review múltiple</span><b>Panel por riesgo</b><p>Fan-out de revisores especializados, un paso que filtra por confianza y un agregador que decide.</p></a>
+    <a class="qcard reveal" href="#roles"><span class="q">6 · Agentes modulares</span><b>Rol = contrato</b><p>Cada paso pide un rol con entrada, salida y permisos fijos. Quién lo implementa se puede cambiar.</p></a>
+    <a class="qcard reveal" href="#setup"><span class="q">7 · /dynamo-setup</span><b>AGENTS.md demostrado</b><p>Investiga, te entrevista, redacta el <code>AGENTS.md</code> y demuestra con canarios que los tests detectan fallos.</p></a>
+    <a class="qcard reveal" href="#conocimiento"><span class="q">+ · Conocimiento</span><b>Adaptadores + context pack</b><p>Sirve igual si tus docs están en el repo, en Obsidian o en Confluence: los agentes siempre leen ficheros.</p></a>
+  </div>
+  <div class="callout reveal"><b>La regla que impide repetir Cadenza:</b> diseña ahora los <em>puntos de extensión</em> (el esquema de config, los tipos de paso, el contrato de rol y la interfaz de runner y de conocimiento), pero implementa solo lo que pida el proyecto real que tengas delante. Tu plan ya lo dice (regla 2, §3; barrera §8.1). Más abajo, en la <a href="#ruta">hoja de ruta</a>, cada capacidad lleva el disparador que la justifica.</div>
+</div></section>
+
+<!-- 1 · LENGUAJE -->
+<section class="sec" id="lenguaje"><div class="in">
+  <p class="kicker">1 · ¿Python o Node?</p>
+  <h2>TypeScript sobre Node (y Bun para el binario)</h2>
+  <p class="lead">Los dos valen y la arquitectura es idéntica en ambos. Lo que inclina la balanza son tres cosas. Ya tienes código y tests en JS. Los dynamic workflows y Sandcastle son TypeScript. Y con <code>bun build --compile</code> sacas un ejecutable único para Windows, macOS y Linux, que es lo más cómodo para instalarlo en proyectos sin Node, como una app KMM. <span class="pill inf">juicio propio</span></p>
+  <div class="two">
+    <div class="lang reveal" id="lang">
+      <div class="lrow h"><span>Criterio</span><span>TypeScript</span><span>Python</span></div>
+    </div>
+    <div>
+      <h3>Qué decide</h3>
+      <ul class="plist">
+        <li><b>Continuidad:</b> <code>outside-writes.js</code>, <code>fake-gh.js</code>, <code>harness.js</code> y la lib de #76 ya son Node. Con Python lo reescribes todo.</li>
+        <li><b>Distribución:</b> <code>npx dynamo</code>, o un binario con <code>bun build --compile --target=bun-windows-x64</code>. En Python el equivalente es <code>uv tool install</code>, que también funciona bien.</li>
+        <li><b>Contratos tipados:</b> <code>zod</code> valida la config y genera el JSON Schema para <code>--json-schema</code>. En Python, <code>pydantic</code> hace lo mismo.</li>
+        <li><b>Opción B viva:</b> si algún día quieres fan-out dentro de una sesión con <code>/workflows</code>, se escribe en el mismo lenguaje.</li>
+        <li><b>Para ti:</b> vienes de Kotlin, y TS te da tipos estáticos y <code>async/await</code>, muy parecido a las corrutinas.</li>
+      </ul>
+      <p class="small">Si prefieres Python, nada del diseño cambia: <code>asyncio</code> + <code>pydantic</code> + <code>uv</code>. super-board es Python + bash y funciona.</p>
+    </div>
+  </div>
+  <h3 style="margin-top:26px">El backend del agente: <code>claude -p</code> primero, el SDK como opción</h3>
+  <table class="t reveal">
+    <thead><tr><th>Backend</th><th>Autenticación</th><th>Qué te da</th><th>Cuándo</th></tr></thead>
+    <tbody>
+      <tr><td><code>claude -p</code> (CLI)</td><td>Tu sesión de Claude Code (plan Pro/Max)</td><td>JSON con <code>total_cost_usd</code> y <code>num_turns</code>, <code>--json-schema</code>, <code>--agent</code>/<code>--agents</code>, <code>--max-budget-usd</code>, <code>--permission-prompts none</code></td><td><span class="pill ok">por defecto</span></td></tr>
+      <tr><td>Claude Agent SDK (TS o Python)</td><td>La quickstart pide <code>ANTHROPIC_API_KEY</code>: «Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login…». El help center (7-oct-2026) dice que el SDK y <code>claude -p</code> tiran de los límites del plan si inicias sesión con él</td><td>Hooks y permisos como callbacks en proceso, streaming tipado, herramientas propias en proceso</td><td><span class="pill warn">con API key</span> o cuando confirmes la política</td></tr>
+      <tr><td>Otros (p. ej. <code>codex exec</code>)</td><td>La de cada proveedor</td><td>Diversidad de modelos en la review (super-board soporta Codex)</td><td><span class="pill">más adelante</span></td></tr>
+    </tbody>
+  </table>
+  <p class="small">Diseño: una interfaz <code>Runner</code> con <code>run(role, prompt, opts) → { data, costUsd, turns }</code>. El bucle no sabe qué backend hay debajo. <span class="pill warn">política cambiante</span> Revisa los términos antes de usar el SDK con tu suscripción.</p>
+</div></section>
+
+<!-- 2 · CAPAS -->
+<section class="sec" id="capas"><div class="in">
+  <p class="kicker">2 · Un harness, muchos proyectos</p>
+  <h2>Tres capas: motor, plugin y proyecto</h2>
+  <p class="lead">Es la misma idea que tu plan (§6.4: «They are taken out into a plugin when the real project arrives»), separando además el motor, que es código versionado, del plugin, que es Markdown y hooks. El proyecto solo guarda datos.</p>
+  <div class="layers reveal">
+    <div class="layer" style="--lane:var(--pri)"><div><b>Motor <code>dynamo</code></b><div class="sm">npm · binario Bun · semver</div></div>
+      <ul><li>Bucle, máquina de estados, rondas, frontera, merge con lock</li><li>Interfaces: <code>Board</code> (GitHub Projects), <code>Runner</code> (claude -p, SDK…), <code>Knowledge</code> (repo, Obsidian, Confluence)</li><li><code>dynamo run | board | status | doctor | knowledge sync | report</code></li></ul></div>
+    <div class="lconn"><i></i><span>publicas una versión · el plugin fija la versión mínima</span></div>
+    <div class="layer" style="--lane:var(--lane-orange)"><div><b>Plugin de Claude Code</b><div class="sm">marketplace propio · scope project</div></div>
+      <ul><li>Skills: <code>/dynamo-setup</code>, <code>/discover</code>, <code>/to-request</code>, <code>/to-tasks</code>, <code>/implement</code>, <code>/dynamo-status</code></li><li>Agentes por defecto: <code>builder</code>, <code>reviewer-scope</code>, <code>reviewer-security</code>, <code>qa</code>, <code>approver</code>…</li><li>Hooks (<code>outside-writes</code>), plantillas de <code>AGENTS.md</code> por stack, presets de pipeline y plantillas de ticket</li></ul></div>
+    <div class="lconn"><i></i><span>/plugin install dynamo@dynamo --scope project · /dynamo-setup</span></div>
+    <div class="layer" style="--lane:var(--accent)"><div><b>Tu proyecto</b><div class="sm">web · KMM · lo que sea</div></div>
+      <ul><li><code>AGENTS.md</code> (anidado por módulo): cómo se trabaja, cómo se testea y el bloque <code>dynamo</code> con <code>setup</code>, <code>verify</code> y <code>tests</code></li><li><code>.dynamo/config.yaml</code> (repo, tablero, ramas, conocimiento, límites) y <code>.dynamo/pipeline.yaml</code></li><li><code>.dynamo/agents/</code>: overrides o roles propios del proyecto</li><li><code>CLAUDE.md</code> = <code>@AGENTS.md</code> + lo específico de Claude; skills propias en <code>.claude/skills/</code></li></ul></div>
+  </div>
+  <div style="display:grid;gap:14px;margin-top:22px">
+    <div class="code"><pre><code class="hl"># el repo de Dynamo (monorepo)
+dynamo/
+  packages/engine/            # CLI TS: loop, steps, roles, board, knowledge
+  plugin/
+    .claude-plugin/plugin.json
+    skills/dynamo-setup/ discover/ to-request/ to-tasks/ implement/
+    agents/builder.md reviewer-scope.md reviewer-security.md qa.md ...
+    hooks/hooks.json          # outside-writes
+    templates/agents-md/web.md kmp.md android.md python.md ci.md
+    pipelines/minimal.yaml standard.yaml strict.yaml
+    templates/ticket.md request.md
+  .claude-plugin/marketplace.json
+  .dynamo/                    # Dynamo se construye con Dynamo</code></pre></div>
+    <div class="code"><pre><code class="hl"># cualquier proyecto, tras /dynamo-setup
+mi-web/
+  .dynamo/
+    config.yaml               # infraestructura (antes factory.json)
+    pipeline.yaml             # preset + ajustes
+    agents/                   # opcional: overrides de rol
+    context/                  # gitignored: context packs por ticket
+  .claude/
+    settings.json             # plugin en scope project + allow mínimo
+    skills/                   # skills propias del proyecto
+  .githooks/pre-push          # main protegido
+  AGENTS.md                   # cómo se trabaja + bloque dynamo
+  shared/AGENTS.md            # anidado: comandos de ese módulo
+  CLAUDE.md                   # @AGENTS.md</code></pre></div>
+  </div>
+  <div class="igrid" style="margin-top:16px">
+    <div class="icard reveal"><h3>Qué puede llevar un plugin</h3><p>Skills, agentes, hooks, servidores MCP, <code>workflows/</code> y <code>bin/</code>. Los ejecutables de <code>bin/</code> se añaden al <code>PATH</code> de la herramienta Bash mientras el plugin está activo.</p><div class="why">code.claude.com/docs/en/plugins-reference · plugins/components</div></div>
+    <div class="icard reveal"><h3>Instálalo en scope project</h3><p>Un plugin instalado en <code>settings.local.json</code> no llega a las worktrees. Instalado a nivel de proyecto sí.</p><div class="why">plan §6.4 · research §3.3</div></div>
+    <div class="icard reveal"><h3>El tablero, desde una plantilla</h3><p>Marcas tu tablero «Dynamo» como plantilla (<code>gh project mark-template</code>). En cada proyecto haces <code>gh project copy</code>, que copia campos, vistas y automatizaciones, y luego <code>gh project link</code> al repo.</p><div class="why">cli.github.com/manual/gh_project_copy · GitHub blog</div></div>
+    <div class="icard reveal"><h3>Los ids cambian en cada copia</h3><p>El setup los lee con <code>gh project field-list --format json</code> y los guarda en la config. Ninguna skill los menciona, igual que hoy con <code>factory.json</code>.</p><div class="why">factory.md:38-39 (mismo procedimiento)</div></div>
+  </div>
+</div></section>
+
+<!-- 7 · SETUP -->
+<section class="sec" id="setup"><div class="in">
+  <p class="kicker">7 · /dynamo-setup, otro enfoque</p>
+  <h2>El proyecto se describe en <code>AGENTS.md</code> y Dynamo comprueba que es verdad</h2>
+  <p class="lead">Adivinar el stack por los ficheros y lanzar un comando para ver si sale con 0 es débil. Un <code>pnpm test</code> en verde no dice si los tests detectan algo, ni cuáles cubren el cambio, ni cómo se escribe un buen test en ese proyecto. Tu idea va bien encaminada: que cada proyecto tenga un <code>AGENTS.md</code> que cuente cómo se hacen allí las cosas. Le añado dos piezas: <b>un bloque que el motor pueda ejecutar</b> y <b>unas pruebas que demuestren que ese bloque sirve</b>.</p>
+
+  <div class="igrid">
+    <div class="icard reveal"><h3>Por qué <code>AGENTS.md</code></h3><p>Es un formato abierto que gestiona la Agentic AI Foundation de la Linux Foundation, de la que Anthropic es miembro fundador. Lo usan más de 60.000 proyectos, y lo leen Codex, Cursor, Copilot, Devin, Jules, Gemini CLI y otros. Vale para cualquier backend (<code>Runner</code>) que conectes más adelante.</p><div class="why">agents.md · linuxfoundation.org (AAIF, 9-dic-2025)</div></div>
+    <div class="icard reveal"><h3>Claude Code lo lee</h3><p>Desde v2.1.277 lee <code>AGENTS.md</code> si no hay <code>CLAUDE.md</code>. Si hay los dos, lee solo <code>CLAUDE.md</code>, así que importa el otro con <code>@AGENTS.md</code>. La fuente de verdad es <code>AGENTS.md</code>, y <code>CLAUDE.md</code> queda para lo específico de Claude.</p><div class="why">code.claude.com/docs/en/memory · «AGENTS.md»</div></div>
+    <div class="icard reveal"><h3>Anidado por módulo</h3><p>«Agents automatically read the nearest file in the directory tree». En KMP, <code>shared/AGENTS.md</code>, <code>androidApp/AGENTS.md</code> e <code>iosApp/AGENTS.md</code> pueden tener cada uno sus comandos y sus límites (p. ej. «requiere macOS»).</p><div class="why">agents.md §4 · openai/codex: hierarchical_agents_message.md</div></div>
+    <div class="icard reveal"><h3>Un solo sitio para los tres lectores</h3><p>Tú lees el texto, los agentes leen el texto y los ejemplos, y el motor lee solo el bloque <code>dynamo</code>. Nada de stack, checks ni comandos queda en <code>config.yaml</code>: allí solo va la infraestructura (repo, tablero, límites).</p><div class="why">propuesta</div></div>
+  </div>
+
+  <h3 style="margin-top:28px">El onboarding en cinco pasos</h3>
+  <div class="flow5" id="flow5">
+    <div class="f5"><span class="n">1</span><b>Investigar</b><p>Lo que se ejecuta de verdad: los workflows de CI primero, luego los scripts (<code>package.json</code>, tareas de Gradle, Makefile), luego README y CONTRIBUTING. También el <code>git log</code>, para ver dónde y con qué nombre se añaden los tests. Cada dato se apunta con su fuente.</p></div>
+    <div class="f5"><span class="n">2</span><b>Entrevistar</b><p>Solo lo que no se puede deducir, como hace <code>/discover</code>: qué no se toca, cuál es el ejemplo canónico, qué tests son lentos o inestables y qué necesita macOS o secretos.</p></div>
+    <div class="f5"><span class="n">3</span><b>Redactar</b><p>Un borrador de <code>AGENTS.md</code>. Si ya existe, propone un diff en vez de reescribirlo. El bloque <code>dynamo</code> va entre marcadores.</p></div>
+    <div class="f5 key"><span class="n">4</span><b>Demostrar</b><p>Cuatro pruebas por comando: que se reproduce, que detecta un fallo (el canario), que la selección por cambios no oculta fallos y que cabe en el tiempo. Los resultados se anotan en el propio fichero.</p></div>
+    <div class="f5"><span class="n">5</span><b>Aprobar</b><p>Tú revisas el diff de <code>AGENTS.md</code>: una sola puerta, como la de <code>/to-tasks</code>. La fontanería (tablero desde plantilla, ramas y <code>pre-push</code>, etiquetas, plugin) va en una línea.</p></div>
+  </div>
+
+  <h3 style="margin-top:28px">La prueba del canario: ¿tus tests detectan algo?</h3>
+  <p class="small" style="margin:0 0 10px">En una copia desechable, Dynamo mete un fallo pequeño en una línea con cobertura (le da la vuelta a una comparación o cambia un valor devuelto) y lanza <code>verify.fast</code>. Si sigue en verde, esa red no atrapa nada. Es la idea del mutation testing, reducida a tres o cinco canarios.</p>
+  <div class="canary" id="canary"></div>
+  <div class="callout reveal" id="canary-out"><b>Qué se hace con una zona ciega:</b> va a <code>AGENTS.md</code> como «Zonas sin red». Un ticket que la toque pide el test primero (la regla 2 del Builder pasa de aconsejarse a exigirse con un <code>when</code>), o pasa por un <code>gate</code>. Y abre un ticket de deuda en el backlog. <span class="pill inf">propuesta</span></div>
+
+  <div class="ctas"><button class="btn" id="canary-replay" type="button">↻ Repetir los canarios</button></div>
+</div></section>
+
+<!-- AGENTS.md -->
+<section class="sec" id="agentsmd"><div class="in">
+  <p class="kicker">La plantilla</p>
+  <h2>Un <code>AGENTS.md</code> que sirve a la vez a personas, agentes y motor</h2>
+  <p class="lead">Unas 150 líneas como mucho, como tus skills. Lo largo se enlaza a <code>docs/</code> o a las fuentes de <a href="#conocimiento">conocimiento</a>. Lo que más ayuda a un agente es un <b>ejemplo canónico</b> por cada tipo de cambio: «para un endpoint nuevo, copia <code>src/api/users.ts</code>». Funciona mejor que diez reglas abstractas. <span class="pill inf">propuesta</span></p>
+  <div class="two">
+    <div class="code"><pre><code class="hl"># AGENTS.md · mi-web
+
+## Qué es
+Tienda web: Next.js + API en src/api. Pagos vía Stripe.
+
+## Mapa
+- src/app/       páginas (App Router)
+- src/api/       handlers; un fichero por recurso
+- src/domain/    lógica pura, sin I/O
+- e2e/           Playwright
+
+## Cómo se hacen las cosas aquí
+- Endpoint nuevo: copia src/api/users.ts (validación zod + test)
+- Lógica en src/domain/, nunca en componentes
+- Fechas: date-fns, nunca new Date() en dominio
+
+## Cómo se escribe un test aquí
+- Vitest, junto al fichero: total.ts → total.test.ts
+- Canónico: src/domain/cart/total.test.ts (AAA, sin mocks)
+- UI: Testing Library por rol, nunca por clase CSS
+- e2e: e2e/&lt;feature&gt;.spec.ts con tag @ticket-&lt;n&gt;
+
+## No tocar
+- src/payments/ sin gate humano
+- migraciones ya publicadas
+
+## Zonas sin red          (lo escribe el canario)
+- src/utils/format.ts: sin tests; test primero
+
+## Conocimiento
+- docs/architecture.md · Obsidian «Proyecto Web/Dominio»</code></pre></div>
+    <div class="code"><pre><code class="hl">## Verify
+&lt;!-- dynamo:begin --&gt;
+```dynamo
+setup:
+  - pnpm install --frozen-lockfile
+verify:
+  fast:                         # decide las rondas, &lt; 3 min
+    - name: lint
+      run: pnpm lint
+    - name: types
+      run: pnpm tsc --noEmit
+    - name: unit
+      run: pnpm vitest run --changed {base}   # solo lo afectado
+      all: pnpm vitest run                    # para el canario
+  full:                         # CI del PR de release
+    - name: e2e
+      run: pnpm playwright test
+tests:
+  new: "src/**/*.test.ts"       # para fail→pass por ticket
+  single: pnpm vitest run {file}
+  forbidden: ["it.skip(", "describe.skip(", ".only("]
+proven:                         # lo escribe /dynamo-setup
+  at: 2026-10-28
+  base: a1b2c3d
+  reproducible: true            # copia nueva, setup + fast = 0
+  canaries: 2/3                 # 1 zona ciega (arriba)
+  scoped: true                  # --changed también los detecta
+  fastSeconds: 41
+```
+&lt;!-- dynamo:end --&gt;</code></pre></div>
+  </div>
+  <div class="igrid" style="margin-top:16px">
+    <div class="icard reveal"><h3>Se mantiene vivo</h3><p><code>dynamo doctor</code> repite las pruebas si cambia la CI, un lockfile o un fichero de build (los compara por hash). Si una ejecución falla por algo que <code>AGENTS.md</code> pudo evitar, el paso de conocimiento propone el diff como ticket y tú lo apruebas. Es la idea de <code>/reflect</code> de pstack.</p></div>
+    <div class="icard reveal"><h3>Lo que no va aquí</h3><p>Ni ids del tablero ni ramas: eso va en <code>.dynamo/config.yaml</code>. Tampoco procedimientos largos: esos van como skills del proyecto en <code>.claude/skills/</code>, que se cargan solo cuando hacen falta.</p></div>
+  </div>
+</div></section>
+
+<!-- POR TICKET -->
+<section class="sec" id="porticket"><div class="in">
+  <p class="kicker">Y en cada ticket</p>
+  <h2>No basta con que pase: el test nuevo tiene que fallar sin el cambio</h2>
+  <p class="lead">SWE-bench valida así cada parche: los tests <code>FAIL_TO_PASS</code> fallan sin la solución y pasan con ella, y los <code>PASS_TO_PASS</code> pasan en ambos casos. Un estudio de ACM sobre SWE-bench encontró parches «plausibles» pero incorrectos que pasaban con tests débiles. El motor puede hacer esto sin LLM, con <code>tests.new</code> y <code>tests.single</code> de <code>AGENTS.md</code>.</p>
+  <div class="f2p" id="f2p">
+    <div class="f2h"><span></span><span>en la base (sin el cambio)</span><span>en la rama del ticket</span><span>veredicto</span></div>
+  </div>
+  <div class="igrid" style="margin-top:16px">
+    <div class="icard reveal"><h3>Un paso <code>prove</code> nuevo</h3><p>Va entre <code>verify</code> y <code>review</code>. Si no hay test nuevo, o si pasa también en la base, el ticket vuelve a Build: «el test no prueba el cambio». Si la base es una zona sin red, no se acepta un ticket sin test.</p></div>
+    <div class="icard reveal"><h3>Tests que no se debilitan</h3><p>Un check determinista sobre el diff: ningún fichero de test borrado y ningún patrón de <code>tests.forbidden</code> añadido. Hoy eso es la regla 6 del reviewer y depende de lo que diga un LLM.</p><div class="why">reviewer.md:51 «a deleted, skipped or weakened test is a failure»</div></div>
+    <div class="icard reveal"><h3>Cada criterio, con su prueba</h3><p>La plantilla de ticket añade «Prueba» a cada checkbox: el nombre del test o el comando. <code>/to-tasks</code> lo pide, el Builder escribe ese test y <code>prove</code> comprueba que existe y que pasa de rojo a verde.</p></div>
+    <div class="icard reveal"><h3>Mutation testing, solo si hay riesgo</h3><p>Stryker (JS/TS), PIT (JVM/Kotlin) o mutmut (Python), solo sobre las líneas cambiadas y con <code>when</code> en módulos críticos. Es caro, así que entra cuando los datos lo pidan.</p><div class="why">regla 2 del plan</div></div>
+  </div>
+</div></section>
+
+<!-- CONFIG -->
+<section class="sec" id="config"><div class="in">
+  <p class="kicker">El contrato del proyecto</p>
+  <h2><code>.dynamo/config.yaml</code> (infraestructura) + <code>pipeline.yaml</code></h2>
+  <p class="lead">Con <code>AGENTS.md</code> como fuente de cómo se trabaja, la config se queda en lo que no es de ningún agente: repo, tablero, límites y fuentes de conocimiento. Es la evolución de tu <code>factory.json</code>, con un campo <code>version</code> y un esquema. <span class="pill inf">propuesta</span></p>
+  <div class="two">
+    <div class="code"><pre><code class="hl">version: 1
+project:
+  repo: SergioLizana/mi-web
+  mainBranch: main
+  workingBranch: release/1.4.0
+  documentsLanguage: English
+instructions: AGENTS.md        # su bloque dynamo
+board:
+  provider: github-projects
+  owner: SergioLizana
+  number: 7                     # lo rellena /dynamo-setup
+  columns: { todo: Todo, needsHuman: Needs Human, done: Done }
+worktree:
+  include: [".env.test"]
+knowledge:
+  - { kind: repo, path: docs/, always: [docs/architecture.md] }
+  - kind: obsidian
+    vault: "~/Vaults/Web"
+    include: ["Proyecto Web/**"]
+  - { kind: confluence, space: WEB, via: sync }
+limits: { maxRounds: 2, parallel: 2, budgetUsdPerTicket: 5 }
+runner: { default: claude-p }</code></pre></div>
+    <div class="code"><pre><code class="hl">preset: standard
+steps:
+  - id: triage
+    role: triage                # haiku: tipo + complejidad
+  - id: build
+    role: builder
+    column: Build
+    onFail: needs-human
+  - id: verify
+    run: verify.fast            # de AGENTS.md, exit codes
+    column: Verify
+    onFail: build
+  - id: prove
+    run: fail-to-pass           # rojo en base, verde aquí
+    column: Verify
+    onFail: build
+  - id: qa
+    role: qa
+    when: "changed('src/app/**')"
+    column: QA
+    onFail: build
+  - id: review
+    column: Review
+    parallel:
+      - role: reviewer-scope    # siempre
+      - role: reviewer-security
+        when: "changed('src/payments/**', '**/*.sql')"
+    aggregate: { role: approver, minConfidence: 80 }
+    onFail: build
+  - id: gate
+    when: "changed('src/payments/**')"   # «No tocar»
+  - id: merge
+    run: merge                  # --no-ff, verify, revert
+    column: Done
+    onFail: needs-human</code></pre></div>
+  </div>
+</div></section>
+
+<!-- 3 · STACKS -->
+<section class="sec" id="stacks"><div class="in">
+  <p class="kicker">3 · Cualquier tipo de proyecto</p>
+  <h2>Los stacks son plantillas de <code>AGENTS.md</code>, no reglas de detección</h2>
+  <p class="lead">El plugin trae una plantilla por stack: el punto de partida del borrador del paso 3 y una lista de trampas que conviene preguntar. Lo que manda es lo que el onboarding demuestra en <em>tu</em> repo, no lo que diga la plantilla.</p>
+  <div class="otabs" role="tablist" id="stabs"></div>
+  <div class="two" id="spanel"></div>
+  <h3 style="margin-top:26px">Dos niveles de verificación, y la CI como segundo juez</h3>
+  <table class="t reveal">
+    <thead><tr><th>Nivel</th><th>Dónde</th><th>Qué decide</th><th>Coste</th></tr></thead>
+    <tbody>
+      <tr><td><b><code>verify.fast</code> + <code>prove</code></b></td><td>En el bucle, dentro de la copia</td><td>Las rondas (Build ↔ Verify ↔ Review)</td><td>Segundos o minutos, sin LLM</td></tr>
+      <tr><td><b>CI por ticket</b> <span class="pill warn">opcional</span></td><td>Push de <code>ticket/*</code>, PR borrador contra <code>release/*</code> y <code>gh pr checks --watch</code></td><td>Un paso <code>run: ci</code> antes del merge</td><td>Necesitas permitir el push de <code>ticket/*</code>; <code>main</code> sigue protegido por el hook</td></tr>
+      <tr><td><b><code>verify.full</code> en la CI de la release</b></td><td>El PR <code>release/x.y.z → main</code></td><td>Si tú fusionas a <code>main</code></td><td>Siempre. Aquí van iOS, emuladores y e2e completos (lo marcado con <code>requires</code>)</td></tr>
+    </tbody>
+  </table>
+</div></section>
+
+<!-- 4 · PASOS -->
+<section class="sec" id="pasos"><div class="in">
+  <p class="kicker">4 · Añadir más pasos</p>
+  <h2>Un pipeline declarativo: añadir un paso no toca el motor</h2>
+  <p class="lead">Hoy añadir una fase obliga a editar <code>factory.json</code> y además escribir una función en <code>PHASES</code> (launch-list.md, «The phases»). Con tipos de paso genéricos, un paso nuevo es YAML. Prueba a activar pasos:</p>
+  <div class="pb">
+    <div class="opts" id="pbopts"></div>
+    <div>
+      <div class="chain" id="pbchain"></div>
+      <div class="pbstats">
+        <div class="stat"><b id="pb-llm">0</b><p>procesos LLM por ticket (ronda 1)</p></div>
+        <div class="stat"><b id="pb-cmd">0</b><p>pasos deterministas</p></div>
+        <div class="stat"><b id="pb-cost">1,0×</b><p>coste relativo frente al mínimo <span class="pill inf">estimación</span></p></div>
+      </div>
+      <table class="t" style="margin-top:16px">
+        <thead><tr><th>Tipo</th><th>Qué es</th><th>Ejemplo</th></tr></thead>
+        <tbody>
+          <tr><td><code>role</code></td><td>Un agente con contrato (ver <a href="#roles">roles</a>)</td><td><code>builder</code>, <code>qa</code>, <code>architect</code></td></tr>
+          <tr><td><code>run</code></td><td>Comando o función del motor. Decide con el exit code</td><td><code>verify.fast</code>, <code>prove</code>, <code>merge</code>, <code>ci</code></td></tr>
+          <tr><td><code>parallel</code> + <code>aggregate</code></td><td>Fan-out y un juez que agrega</td><td>el panel de review</td></tr>
+          <tr><td><code>gate</code></td><td>Pausa humana: la tarjeta pasa a <i>Needs Human</i> y sigue cuando la devuelves</td><td>cambios de esquema de BD o pagos</td></tr>
+          <tr><td><code>when</code></td><td>Condición sobre etiquetas, ficheros cambiados, stack o tamaño del diff</td><td><code>changed('**/auth/**')</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div></section>
+
+<!-- 5 · REVIEW -->
+<section class="sec" id="review"><div class="in">
+  <p class="kicker">5 · Review con varios agentes a la vez</p>
+  <h2>Panel por riesgo, verificación por confianza y un agregador</h2>
+  <p class="lead">Así funciona el plugin oficial <code>code-review</code> de Anthropic: agentes en paralelo con enfoques distintos (cumplimiento de CLAUDE.md, bugs, historial de git) y luego una puntuación de 0 a 100 para cada hallazgo, quedándose solo con los de ≥80. En Code Review de Claude Code el orden es encontrar, verificar, ordenar y publicar.</p>
+  <div class="rv" id="rv">
+    <div class="rvdiff"><b>diff de #34</b><div class="ref">+148 −23 · 6 ficheros<br>src/auth/session.ts<br>src/ui/Login.tsx …</div></div>
+    <div class="rvrows" id="rvrows"></div>
+    <div class="rvout" id="rvout"><b>approver</b><div class="ref" id="rvverdict">esperando hallazgos…</div></div>
+  </div>
+  <div class="igrid" style="margin-top:20px">
+    <div class="icard reveal"><h3>El de alcance, siempre</h3><p>«¿Se sale del ticket?» es el fallo más común de un agente desatendido. Spotify veta 1 de cada 4 sesiones por eso. Es barato y es lo que mejor funciona de tu reviewer actual.</p><div class="why">plan §6.2 · research §7.4</div></div>
+    <div class="icard reveal"><h3>Los especialistas, según el riesgo</h3><p>Seguridad si cambian <code>auth/</code> o SQL, UI si cambian componentes, tests si cambia lógica. Con <code>when</code> en el pipeline, cada revisor extra solo se paga cuando hay riesgo.</p><div class="why">«most ordinary programming tasks do not need a panel of 5 reviewers» (research §3.6)</div></div>
+    <div class="icard reveal"><h3>Verificar antes de devolver</h3><p>Cada hallazgo pasa por una puntuación de confianza antes de mandar el ticket de vuelta a Build. Un falso FAIL te cuesta una ronda entera.</p><div class="why">anthropics/claude-code · plugins/code-review (umbral 80)</div></div>
+    <div class="icard reveal"><h3>Hallazgos con memoria</h3><p>Cada hallazgo lleva un id (<code>R-1</code>…). En la ronda 2 se comprueba primero si cada hallazgo anterior está arreglado, sigue igual o ya no aplica, como hace super-board, y tu reviewer ya lo hace en «Previous round».</p><div class="why">super-board-wave.js · REVIEW_MEMORY · reviewer.md:76</div></div>
+    <div class="icard reveal"><h3>El coste se multiplica</h3><p>En Cadenza, el ticket con 3 enfoques × 2 rondas fue el más caro de todos: 60,5 M de lecturas de caché. Lanza en paralelo, pero solo lo que el riesgo pida.</p><div class="why">plan §5</div></div>
+    <div class="icard reveal"><h3>Mide si compensa</h3><p>Apunta los falsos FAIL (rondas que no arreglaron nada) y lo que tú encuentras en el PR de release y el panel dejó pasar. Un revisor sin aciertos medidos, fuera.</p><div class="why">regla 4: «without data nothing is changed»</div></div>
+  </div>
+</div></section>
+
+<!-- 6 · ROLES -->
+<section class="sec" id="roles"><div class="in">
+  <p class="kicker">6 · Modularizar los agentes de cada paso</p>
+  <h2>Un rol es un contrato, no un prompt</h2>
+  <p class="lead">Cada paso pide un <em>concepto</em> (rol) con entrada, salida y permisos fijos. Cumplirlo puede un agente de Claude, otro proveedor o incluso un comando determinista. El motor resuelve el rol con este orden: <code>.dynamo/agents/</code> del proyecto, luego el plugin y luego el valor por defecto. Después lo pasa con <code>--agents</code>/<code>--agent</code>.</p>
+  <div class="roles">
+    <div class="contract reveal"><b style="font:700 15px var(--mono)">rol: reviewer-security</b>
+      <dl>
+        <dt>entrada</dt><dd>ticket, diff contra la base, context pack, hallazgos previos</dd>
+        <dt>salida</dt><dd><code>{ verdict, findings: [{ id, severity, confidence, file, line, claim, evidence }] }</code> (JSON Schema)</dd>
+        <dt>permisos</dt><dd>solo lectura: Read, Grep, Glob, <code>git diff/log/show</code></dd>
+        <dt>presupuesto</dt><dd><code>maxTurns</code>, <code>budgetUsd</code></dd>
+      </dl>
+    </div>
+    <div class="impls" id="impls">
+      <div class="impl"><b>claude -p · Opus</b><p><code>plugin/agents/reviewer-security.md</code> (el que viene por defecto)</p></div>
+      <div class="impl"><b>override del proyecto</b><p><code>.dynamo/agents/reviewer-security.md</code>: añade las reglas OWASP o las de tu equipo</p></div>
+      <div class="impl"><b>comando: semgrep --json</b><p>un adaptador que convierte la salida a <code>findings</code>. Determinista y gratis</p></div>
+      <div class="impl"><b>codex exec / Agent SDK</b><p>otro <code>Runner</code> con el mismo contrato, para tener diversidad de modelos</p></div>
+    </div>
+  </div>
+  <div class="code" style="margin-top:18px"><pre><code class="hl"># .dynamo/agents/reviewer-security.md  (frontmatter que lee el motor)
+name: reviewer-security
+model: opus
+tools: [Read, Grep, Glob, "Bash(git diff*)", "Bash(git log*)"]
+output: schemas/findings.json
+knowledge: [security]           # etiquetas del context pack
+maxTurns: 25
+# el cuerpo Markdown es el prompt: método, qué cuenta como evidencia, formato</code></pre></div>
+  <p class="small">Encaja con el patrón de super-board (un carril = una skill con su sección del <code>run.md</code>) y con los playbooks de pstack, pero con el contrato explícito y validado.</p>
+</div></section>
+
+<!-- CONOCIMIENTO -->
+<section class="sec" id="conocimiento"><div class="in">
+  <p class="kicker">+ · Conocimiento del proyecto</p>
+  <h2>Repo, Obsidian o Confluence: los agentes siempre leen ficheros</h2>
+  <p class="lead">No sabes dónde vivirán tus docs, así que no ates los agentes a ninguna fuente. El motor resuelve las fuentes en un <b>context pack</b> por ticket, dentro de la copia: ficheros Markdown con su origen y su fecha. Los agentes leen ese pack. Cada fuente es un adaptador.</p>
+  <div class="arch">
+    <svg viewBox="0 0 1000 300" role="img" aria-label="Fuentes de conocimiento resueltas en un context pack que leen los agentes">
+      <rect class="bx gh" x="30" y="26" width="220" height="62" rx="8"/><text class="h" x="140" y="52" text-anchor="middle">Repo: docs/, ADRs</text><text class="m" x="140" y="72" text-anchor="middle">lectura directa</text>
+      <rect class="bx gh" x="30" y="118" width="220" height="62" rx="8"/><text class="h" x="140" y="144" text-anchor="middle">Obsidian vault</text><text class="m" x="140" y="164" text-anchor="middle">carpeta .md · [[wikilinks]]</text>
+      <rect class="bx gh" x="30" y="210" width="220" height="62" rx="8"/><text class="h" x="140" y="236" text-anchor="middle">Confluence space</text><text class="m" x="140" y="256" text-anchor="middle">Rovo MCP o sync a caché</text>
+      <rect class="bx det" x="370" y="100" width="230" height="100" rx="10"/><text class="h" x="485" y="132" text-anchor="middle">dynamo knowledge</text><text class="m" x="485" y="152" text-anchor="middle">sync · resolve · select</text><text class="m" x="485" y="170" text-anchor="middle">always + referencias del ticket</text><text class="m" x="485" y="186" text-anchor="middle">+ etiquetas del rol</text>
+      <rect class="bx" x="690" y="70" width="280" height="70" rx="8"/><text class="h" x="830" y="98" text-anchor="middle">.dynamo/context/&lt;ticket&gt;/</text><text class="m" x="830" y="118" text-anchor="middle">pack: .md + origen + fecha</text>
+      <rect class="bx llm" x="690" y="176" width="130" height="56" rx="8"/><text class="h" x="755" y="209" text-anchor="middle">Builder</text>
+      <rect class="bx llm rev" x="840" y="176" width="130" height="56" rx="8"/><text class="h" x="905" y="209" text-anchor="middle">Reviewers</text>
+      <path class="flow" d="M250 57 C310 57, 310 130, 368 135"/>
+      <path class="flow" d="M250 149 H368"/>
+      <path class="flow" d="M250 241 C310 241, 310 170, 368 165"/>
+      <path class="flow" d="M600 150 C640 150, 650 105, 688 105"/>
+      <path class="flow" d="M830 140 V174"/>
+      <circle class="dot" r="4"><animateMotion dur="2.6s" repeatCount="indefinite" path="M250 57 C310 57, 310 130, 368 135"/></circle>
+      <circle class="dot" r="4"><animateMotion dur="2.2s" repeatCount="indefinite" path="M250 149 H368"/></circle>
+      <circle class="dot" r="4"><animateMotion dur="3s" repeatCount="indefinite" path="M250 241 C310 241, 310 170, 368 165"/></circle>
+      <circle class="dot" r="4"><animateMotion dur="2s" repeatCount="indefinite" path="M600 150 C640 150, 650 105, 688 105"/></circle>
+    </svg>
+  </div>
+  <table class="t reveal" style="margin-top:16px">
+    <thead><tr><th>Fuente</th><th>Cómo leerla</th><th>Desatendido</th><th>Cuándo</th></tr></thead>
+    <tbody>
+      <tr><td>Repo (<code>docs/</code>, ADRs, <code>AGENTS.md</code>)</td><td>Lectura directa por globs</td><td>✅ determinista y versionado con el código</td><td><span class="pill ok">ya</span></td></tr>
+      <tr><td>Obsidian</td><td>Un vault es una carpeta de Markdown: se lee del disco, con <code>include</code> y resolviendo <code>[[wikilinks]]</code>. Hay MCP opcionales (plugins de Obsidian o servidores remotos)</td><td>✅ si el vault está en la máquina</td><td>cuando un proyecto lo use</td></tr>
+      <tr><td>Confluence</td><td>Atlassian Rovo MCP (<code>https://mcp.atlassian.com/v2/mcp</code>, OAuth 2.1 o API token para headless), o un <code>sync</code> por API a una caché Markdown</td><td>⚠️ mejor <code>sync</code> antes del run: un OAuth a mitad de <code>-p</code> se queda colgado</td><td>cuando un proyecto lo use</td></tr>
+    </tbody>
+  </table>
+  <div class="igrid" style="margin-top:16px">
+    <div class="icard reveal"><h3>Qué va en cada sitio</h3><p><b>Reglas cortas</b> en <code>CLAUDE.md</code>/<code>AGENTS.md</code> (se cargan siempre). <b>Cómo se hace algo</b> en skills propias de <code>.claude/skills/</code> (se cargan bajo demanda y llegan a las copias). <b>Contexto largo</b>, como dominio, arquitectura o API, va en las fuentes de conocimiento.</p></div>
+    <div class="icard reveal"><h3>Seleccionar, no volcar</h3><p>El pack lleva lo marcado como <code>always</code>, las referencias que cita el ticket (añade «References» a la plantilla) y lo que pidan las etiquetas del rol. Volcar todo llena el contexto (research §7.8).</p></div>
+  </div>
+</div></section>
+
+<!-- RUTA -->
+<section class="sec" id="ruta"><div class="in">
+  <p class="kicker">Hoja de ruta multi-proyecto</p>
+  <h2>Cada capacidad entra cuando un proyecto la pide</h2>
+  <p class="lead">El orden es el mismo de la parte 1, ampliado. El disparador de cada fase es un hecho medible, no una idea.</p>
+  <div class="steps">
+    <div class="step reveal" style="--lane:var(--lane-red)"><span class="num">F0</span><div><h3>Cierra 0.1.0 y saca el motor (en Dynamo)</h3><p>Motor TS con el bucle mínimo (build → verify → review → merge), el bloque <code>dynamo</code> de <code>AGENTS.md</code> (el de Dynamo es el primero), <code>config.yaml</code> v1 con un esquema e interfaces <code>Board</code>, <code>Runner</code> y <code>Knowledge</code> con una sola implementación cada una. Dynamo se construye con él.</p><p><b>Disparador:</b> ninguno, es la parte 1.</p></div></div>
+    <div class="step reveal" style="--lane:var(--pri)"><span class="num">F1</span><div><h3>Segundo cliente: tu web</h3><p>Plugin + <code>/dynamo-setup</code>: <code>AGENTS.md</code> de la web demostrado con canarios, paso <code>prove</code> y tablero desde plantilla. El conocimiento sale del repo. Es la etapa 4 de tu plan.</p><p><b>Disparador:</b> la primera lista de la web termina en un PR sin intervención.</p></div></div>
+    <div class="step reveal" style="--lane:var(--lane-orange)"><span class="num">F2</span><div><h3>Pipeline declarativo + QA</h3><p>Tipos <code>role</code>, <code>run</code>, <code>gate</code> y <code>when</code>, y un rol <code>qa</code> con capturas de Playwright contra los criterios de aceptación.</p><p><b>Disparador:</b> un ticket pasa los checks y la review pero falla en el navegador.</p></div></div>
+    <div class="step reveal" style="--lane:var(--lane-purple)"><span class="num">F3</span><div><h3>Panel de review por riesgo</h3><p><code>parallel</code> + <code>aggregate</code>, puntuación de confianza y memoria de hallazgos.</p><p><b>Disparador:</b> encuentras en el PR de release fallos que el reviewer dejó pasar (con cifras).</p></div></div>
+    <div class="step reveal" style="--lane:var(--warn)"><span class="num">F4</span><div><h3>Perfil KMP + CI con macOS</h3><p>Checks JVM y Android en el bucle; iOS en la CI de la release o en un Mac.</p><p><b>Disparador:</b> empiezas la app KMM.</p></div></div>
+    <div class="step reveal" style="--lane:var(--accent)"><span class="num">F5</span><div><h3>Adaptadores y backends extra</h3><p>Obsidian y Confluence, el Agent SDK y Codex.</p><p><b>Disparador:</b> un proyecto tiene sus docs ahí, o hay datos de que otro modelo revisa mejor.</p></div></div>
+  </div>
+  <div class="callout reveal"><b>Lo que no construiría:</b> una interfaz propia (regla 5: el tablero ya es la UI), varios proveedores desde el primer día, todos los adaptadores de conocimiento por adelantado, ni el auto-merge a <code>main</code>. Ninguna empresa de tu research lo hace (§6.3).</div>
+</div></section>
+
+
+<!-- RIESGOS -->
+<section class="sec" id="riesgos"><div class="in">
+  <h2>Qué pierdes y cómo lo compensas</h2>
+  <table class="t reveal">
+    <thead><tr><th>Pierdes</th><th>Por qué importa</th><th>Mitigación</th></tr></thead>
+    <tbody>
+      <tr><td>La vista en vivo de <code>/workflows</code></td><td>Fue el motivo para elegir el workflow (spec-pendientes-etapa-2.md:3)</td><td><code>stream-json</code> a ficheros de log, <code>dynamo status</code> y el tablero, que ya enseña el paso real</td></tr>
+      <tr><td>La espera automática en el límite de uso</td><td>«In <code>claude -p</code>… the agent fails» (research §3.6)</td><td>Detectar el error, dormir hasta el reset y reanudar. Se puede porque el estado vive en GitHub</td></tr>
+      <tr><td>Que «el harness lo hace por ti»</td><td>Pasas a mantener código propio</td><td>Menos código que hoy (estimado), con tipos y tests</td></tr>
+      <tr><td>La confianza del directorio en <code>-p</code></td><td><code>-p</code> ejecuta hooks y MCP sin preguntar (plan §7)</td><td>Solo en repos tuyos, como ya decide el plan</td></tr>
+      <tr><td>El sandbox en Windows</td><td>No existe en Windows nativo (factory.md)</td><td>Ya lo tienes resuelto: el hook <code>outside-writes.js</code> se sigue cargando desde settings.json</td></tr>
+    </tbody>
+  </table>
+  <div class="callout reveal"><b>Antes de decidir, contesta:</b>
+    <ol style="margin:6px 0 0;padding-left:20px">
+      <li>¿Cuánto vale para ti ver el run en <code>/workflows</code>, comparado con un log más el tablero? Si vale mucho, la opción B (workflow + CLI, como super-board) es tu término medio.</li>
+      <li>¿Te parece bien que el orquestador duerma y reanude en el límite de uso de tu plan?</li>
+      <li>¿Python o Node? Respondido abajo, en <a href="#lenguaje">la parte 2</a>: TypeScript, aunque Python también valdría.</li>
+      <li>¿Qué fecha le pones a la etapa 4, el proyecto real?</li>
+    </ol></div>
+</div></section>
+
+</main>
+
+<footer class="foot"><div class="row">
+  <h3 style="margin-bottom:8px">Fuentes</h3>
+  <ul class="src">
+    <li>Repo: <a href="https://github.com/SergioLizana/Dynamo/tree/release/0.1.0">SergioLizana/Dynamo @ release/0.1.0</a> (HEAD ad7f3ed, 134 commits)</li>
+    <li><code>.claude/workflows/run.js</code>, <code>board.js</code>, <code>release-report.js</code>, <code>agents/runner.md</code></li>
+    <li><code>documentation/launch-list.md</code>, <code>workflow-trial.md</code>, <code>parallel-launch-trial.md</code></li>
+    <li><code>documentation/agent-factory-plan.md</code> §3, §6, §8 · <code>agent-factory-research.md</code> §3</li>
+    <li><code>documentation/backlog.md</code>, <code>spec-pendientes-etapa-2.md</code>, <code>.claude/factory.md</code>, <code>settings.json</code></li>
+    <li>Tests ejecutados: <code>node --test tests/workflows/dry-run.test.js .claude/hooks/outside-writes.test.js</code> → 63 pass, 1 todo</li>
+    <li><a href="https://github.com/EricTechPro/super-board">EricTechPro/super-board</a> (workflows/super-board-wave.js, scripts/, CLAUDE.md)</li>
+    <li><a href="https://github.com/mattpocock/sandcastle">mattpocock/sandcastle</a> · <a href="https://github.com/mattpocock/skills">mattpocock/skills</a></li>
+    <li>pstack de Lauren Tan (poteto): <a href="https://flaviocopes.com/pstack/">flaviocopes.com/pstack</a> · <a href="https://github.com/jnyross/pstack-claude">port para Claude Code</a></li>
+    <li>Agent SDK: <a href="https://code.claude.com/docs/en/agent-sdk/overview">overview</a> · <a href="https://code.claude.com/docs/en/agent-sdk/quickstart">quickstart (auth)</a> · <a href="https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan">uso con tu plan</a></li>
+    <li>Plugins: <a href="https://code.claude.com/docs/en/plugins-reference">reference</a> · <a href="https://code.claude.com/docs/en/plugins/components">components (bin/)</a></li>
+    <li><a href="https://github.com/anthropics/claude-code/blob/main/plugins/code-review/README.md">anthropics/claude-code · plugins/code-review</a> · <a href="https://code.claude.com/docs/en/code-review">Code Review</a></li>
+    <li><a href="https://cli.github.com/manual/gh_project_copy">gh project copy</a> · <a href="https://github.blog/developer-skills/github/10-things-you-didnt-know-you-could-do-with-github-projects/">GitHub Projects: copiar y plantillas</a></li>
+    <li><a href="https://bun.com/docs/bundler/executables">Bun: single-file executable (--compile, --target)</a></li>
+    <li><a href="https://developer.atlassian.com/cloud/rovo-mcp/">Atlassian Rovo MCP</a> · <a href="https://github.com/iansinnott/obsidian-claude-code-mcp">obsidian-claude-code-mcp</a></li>
+    <li>CI de KMP con iOS en macOS: <a href="https://www.irurueta.com/apps/kotlin-multiplatform/ci-cd-with-github-actions.html">ejemplo con GitHub Actions</a></li>
+    <li>Claude Code dynamic workflows: <a href="https://code.claude.com/docs/en/workflows">code.claude.com/docs/en/workflows</a> (citado vía research §3.6)</li>
+  </ul>
+  <p class="small">Leyenda: <span class="pill ok">verificado</span> = leído en código, docs o commits · <span class="pill inf">inferido</span> = clasificación o estimación propia.</p>
+</div></footer>
+
+<script>
+(function(){
+  var RM = (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) || /[?&]static\b/.test(location.search);
+  var root = document.documentElement;
+  try { var th = localStorage.getItem('dyn-theme'); if (th) root.setAttribute('data-theme', th); } catch (e) {}
+  document.getElementById('tt').onclick = function(){
+    var cur = root.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var n = cur === 'dark' ? 'light' : 'dark'; root.setAttribute('data-theme', n);
+    try { localStorage.setItem('dyn-theme', n); } catch (e) {}
+  };
+  var sleep = function(ms){ return new Promise(function(r){ setTimeout(r, RM ? 0 : ms); }); };
+
+  /* ---------- reveal + counters on scroll ---------- */
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if (!e.isIntersecting) return;
+      var el = e.target;
+      el.classList.add('in-view');
+      if (el.id === 'bars1' || el.id === 'bars2') fillBars(el);
+      if (el.id === 'waffle') fillWaffle();
+      io.unobserve(el);
+    });
+  }, { threshold: .18 });
+  document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+
+  function countUp(el){
+    var target = +el.dataset.count, suf = el.dataset.suffix || '', t0 = null, dur = RM ? 1 : 1200;
+    function step(ts){
+      if (!t0) t0 = ts;
+      var p = Math.min(1, (ts - t0) / dur), v = Math.round(target * (1 - Math.pow(1 - p, 3)));
+      el.textContent = v.toLocaleString('es-ES') + suf;
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  document.querySelectorAll('[data-count]').forEach(countUp);
+
+  /* ---------- bars ---------- */
+  function fillBars(box){
+    var fs = box.querySelectorAll('.f'), max = 0;
+    fs.forEach(function(f){ max = Math.max(max, +(f.dataset.max || f.dataset.w)); });
+    fs.forEach(function(f, i){ setTimeout(function(){ f.style.width = (100 * f.dataset.w / max) + '%'; }, RM ? 0 : i * 90); });
+  }
+  io.observe(document.getElementById('bars1'));
+  io.observe(document.getElementById('bars2'));
+
+  /* ---------- waffle of tickets ---------- */
+  var TICKETS = [
+    [53,'project data → factory.json','ft'],[54,'no frontier agent','pl'],[55,'runner agent','pl'],
+    [56,'Verify por script, base fijada','pl'],[57,'builder agent','ft'],[58,'merge literal reads','pl'],
+    [61,'plan / launch-list / backlog','ft'],[62,'reviewer git -C','pl'],[63,'release-report workflow','ft'],
+    [64,'board workflow','ft'],[67,'exact runner text','pl'],[68,'pre-push hook','gd'],
+    [69,'permissions narrowest','pl'],[70,'sandbox writes hook','gd'],[75,'runner short text','pl']
+  ];
+  var wf = document.getElementById('waffle');
+  TICKETS.forEach(function(t){
+    var d = document.createElement('div');
+    d.className = 'sq ' + t[2]; d.title = '#' + t[0] + ' ' + t[1];
+    d.innerHTML = '<b>#' + t[0] + '</b>' + t[1];
+    wf.appendChild(d);
+  });
+  ['pl','gd','ft'].forEach(function(k){
+    document.getElementById('w-' + k).textContent = TICKETS.filter(function(t){ return t[2] === k; }).length;
+  });
+  function fillWaffle(){
+    wf.querySelectorAll('.sq').forEach(function(s, i){ setTimeout(function(){ s.classList.add('on'); }, RM ? 0 : i * 110); });
+  }
+  io.observe(wf);
+
+  /* ---------- board animation ---------- */
+  var board = document.getElementById('board');
+  var chips = document.getElementById('chips');
+  var acount = document.getElementById('acount');
+  var anote = document.getElementById('anote');
+  var slots = {}; board.querySelectorAll('.slot').forEach(function(s){ slots[s.dataset.col] = s; });
+  var mode = 'today', runId = 0, card = null;
+
+  var STEPS = [
+    { col:'todo',   ev:'listo: sus bloqueadores están hechos', items:[['io','Leer factory.json (páginas)'],['io','Leer tickets (GraphQL, páginas)']] },
+    { col:'build',  ev:'Builder: cambia y hace commit',        items:[['io','Mover tarjeta → Build'],['think','Builder · Sonnet']] },
+    { col:'build',  ev:'merge-base fijado',                    items:[['io','Leer merge-base']] },
+    { col:'verify', ev:'2/2 checks · exit 0',                  items:[['io','Verify: checks + tarjeta']] },
+    { col:'review', ev:'VERDICT: PASS',                        items:[['think','Reviewer · Opus']] },
+    { col:'done',   ev:'merge --no-ff · checks ✓',             items:[['io','Merge: --no-ff + checks'],['io','Etiqueta + tarjeta + comentario']] },
+    { col:'done',   ev:'✓ en release · informe escrito',       items:[['io','Leer estado del informe'],['io','Escribir informe + limpieza']] }
+  ];
+
+  function flipMove(el, target){
+    if (el.parentNode === target) return;
+    var a = el.getBoundingClientRect();
+    target.insertBefore(el, target.firstChild);
+    var b = el.getBoundingClientRect();
+    if (RM) return;
+    el.style.transition = 'none';
+    el.style.transform = 'translate(' + (a.left - b.left) + 'px,' + (a.top - b.top) + 'px)';
+    el.getBoundingClientRect();
+    el.style.transition = 'transform .75s cubic-bezier(.2,.8,.2,1)';
+    el.style.transform = '';
+  }
+  function setWho(){
+    var py = mode === 'py';
+    board.querySelector('[data-who="build"]').textContent = py ? 'claude -p · Sonnet' : 'builder · Sonnet';
+    board.querySelector('[data-who="verify"]').textContent = py ? 'subprocess' : 'runner · Haiku';
+    board.querySelector('[data-who="done"]').textContent = py ? 'subprocess + lock' : 'runner · Haiku';
+  }
+  function addChip(kind, label){
+    var c = document.createElement('span');
+    var py = mode === 'py';
+    if (kind === 'think') c.className = 'chip think' + (label.indexOf('Reviewer') === 0 ? ' rev' : '');
+    else c.className = 'chip ' + (py ? 'sp' : 'io');
+    var text = kind === 'think' ? (py ? 'claude -p · ' + label : label) : (py ? 'subprocess: ' + label + ' · 0 tokens' : 'runner · Haiku: ' + label);
+    c.innerHTML = '<i></i>' + text;
+    chips.appendChild(c);
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ c.classList.add('on'); }); });
+  }
+  function updateCount(nThink, nIO){
+    if (mode === 'py') acount.textContent = 'agentes LLM: ' + nThink + ' · llamadas subprocess: ' + nIO + ' (exit codes reales, 0 tokens)';
+    else acount.textContent = 'agentes lanzados: ' + (nThink + nIO) + ' · piensan: ' + nThink + ' · copian comandos: ' + nIO;
+  }
+  async function story(){
+    var my = ++runId;
+    chips.innerHTML = ''; setWho();
+    anote.innerHTML = mode === 'py' ? 'Solo el Builder y el Reviewer son procesos <code>claude -p</code>; el resto es código.' : 'Cada chip es un <code>agent()</code> del workflow.';
+    if (card) card.remove();
+    card = document.createElement('div');
+    card.className = 'card live';
+    card.innerHTML = '<span class="id">#34</span> Bucle de tickets<span class="ev" id="cev">en cola</span>';
+    slots.todo.insertBefore(card, slots.todo.firstChild);
+    var nT = 0, nI = 0; updateCount(0, 0);
+    await sleep(700);
+    for (var i = 0; i < STEPS.length; i++){
+      if (my !== runId) return;
+      var s = STEPS[i];
+      flipMove(card, slots[s.col]);
+      card.querySelector('.ev').textContent = s.ev;
+      for (var j = 0; j < s.items.length; j++){
+        if (my !== runId) return;
+        await sleep(mode === 'py' && s.items[j][0] === 'io' ? 180 : 650);
+        if (my !== runId) return;
+        addChip(s.items[j][0], s.items[j][1]);
+        if (s.items[j][0] === 'think') nT++; else nI++;
+        updateCount(nT, nI);
+      }
+      await sleep(900);
+    }
+    if (my !== runId) return;
+    card.querySelector('.ev').textContent = mode === 'py' ? '✓ coste y turnos en el comentario' : '✓ en release · solo tokens, sin USD';
+    await sleep(3200);
+    if (my === runId && boardVisible) story();
+  }
+  var mToday = document.getElementById('m-today'), mPy = document.getElementById('m-py');
+  function setMode(m){ mode = m; mToday.setAttribute('aria-pressed', m === 'today'); mPy.setAttribute('aria-pressed', m === 'py'); story(); }
+  mToday.onclick = function(){ setMode('today'); };
+  mPy.onclick = function(){ setMode('py'); };
+  document.getElementById('m-replay').onclick = function(){ story(); };
+  var boardVisible = false, boardStarted = false;
+  new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      boardVisible = e.isIntersecting;
+      if (boardVisible && !boardStarted){ boardStarted = true; story(); }
+    });
+  }, { threshold: .25 }).observe(board);
+
+  /* ---------- pipe animation ---------- */
+  var pipe = document.getElementById('pipe'), plog = document.getElementById('plog');
+  var pipeVisible = false, pipeRunning = false;
+  function px(sel){ return pipe.querySelector(sel); }
+  function nodeX(i){
+    var w = pipe.clientWidth;
+    return [w * .03 + 40, w * .5 - 40, w * .97 - 130][i];
+  }
+  function log(t, cls){ plog.textContent = t; plog.className = 'plog' + (cls ? ' ' + cls : ''); }
+  function packet(text, top, x){
+    var p = document.createElement('span');
+    p.className = 'pkt'; p.textContent = text; p.style.top = top + 'px'; p.style.left = x + 'px';
+    pipe.appendChild(p); return p;
+  }
+  async function pipeLoop(){
+    if (pipeRunning) return; pipeRunning = true;
+    while (pipeVisible){
+      pipe.querySelectorAll('.pkt').forEach(function(p){ p.remove(); });
+      log('hoy: comentario de 4,5 KB → base64 → 5 trozos ≤ maxCommand (1.500)');
+      var cmds = 0, retried = false;
+      for (var i = 1; i <= 5 && pipeVisible; i++){
+        var p = packet('trozo ' + i + '/5 · b64', 100, nodeX(0));
+        await sleep(80); p.style.left = nodeX(1) + 'px'; await sleep(800);
+        cmds++;
+        if (i === 3 && !retried){
+          retried = true;
+          p.classList.add('bad'); p.textContent = 'trozo 3/5 · «·»→«�»';
+          p.style.left = nodeX(2) + 'px'; await sleep(800);
+          log('cksum del trozo 3 ≠ el del script → el runner se para · reintento', 'bad');
+          p.style.opacity = '0'; await sleep(900); p.remove();
+          i--; continue;
+        }
+        p.style.left = nodeX(2) + 'px'; await sleep(750);
+        p.classList.add('ok'); p.textContent = 'trozo ' + i + '/5 ✓';
+        log('trozo ' + i + ': test "$(cksum < tmp-post-…)" = "<crc> <len>" ✓');
+        await sleep(250); p.style.opacity = '0'; setTimeout(function(q){ return function(){ q.remove(); }; }(p), 500);
+      }
+      if (!pipeVisible) break;
+      var j = packet('unir: cksum total → base64 --decode | gh issue comment', 100, nodeX(0));
+      await sleep(80); j.style.left = nodeX(1) + 'px'; await sleep(800); j.style.left = (nodeX(2) - 200) + 'px'; await sleep(800);
+      j.classList.add('ok'); cmds += 2;
+      log('publicado una vez + leído de vuelta por fingerprint · ' + cmds + ' comandos copiados a mano por Haiku', 'ok');
+      await sleep(1400);
+      var d = packet('subprocess.run(["gh","issue","comment",...], input=texto)', 256, nodeX(0));
+      await sleep(80); d.style.left = (nodeX(2) - 260) + 'px'; await sleep(800);
+      d.classList.add('ok'); d.textContent = '✓ 1 llamada · texto exacto · exit 0 · 0 tokens';
+      log('propuesta: 1 llamada, sin trozos, sin base64, sin cksum, sin agente', 'ok');
+      await sleep(3600);
+    }
+    pipeRunning = false;
+  }
+  new IntersectionObserver(function(es){
+    es.forEach(function(e){ pipeVisible = e.isIntersecting; if (pipeVisible) pipeLoop(); });
+  }, { threshold: .3 }).observe(pipe);
+
+  /* ---------- options ---------- */
+  var CRIT = ['Fiabilidad de lo determinista','Coste por ticket','Coste USD medible','Permisos por agente','Desatendido (no espera)','Visibilidad en vivo','Esfuerzo de migración','Límite de uso'];
+  var OPTS = [
+    { id:'A', name:'A · Hoy: workflow + runner', score:[1,2,1,1,3,5,5,4], verdict:'⛔ No seguir así', color:'var(--lane-red)',
+      pros:['Se ve en /workflows: fases, agentes y tokens','En sesión interactiva espera al límite de uso','El bucle y el tope de rondas están en código (eso sí)'],
+      cons:['9 de 11 agentes por ticket solo copian comandos (launch-list.md:206-209)','Fallos de copia: blockers [], · → �, comentario duplicado, páginas mal copiadas','Solo tokens, sin USD por ticket (workflow-trial.md:75)','Los permisos que pide un agente esperan en la sesión'] },
+    { id:'B', name:'B · Workflow + CLI (estilo super-board)', score:[4,3,1,1,3,5,4,4], verdict:'🟡 Término medio válido', color:'var(--warn)',
+      pros:['Mantiene la vista de /workflows','El runner solo lanza «dynamo verify 34» y recibe un JSON corto: casi sin errores de copia','Es la dirección de #76 y lo que hace super-board'],
+      cons:['Cada paso determinista sigue costando un agente Haiku','Sin coste USD por ticket ni permisos por agente','Dos mundos que mantener: el JS del workflow y la CLI'] },
+    { id:'C', name:'C · dynamo (TS) + claude -p', score:[5,5,5,5,5,3,2,3], verdict:'✅ Recomendada', color:'var(--pri)',
+      pros:['Exit codes reales: se cierra el «fallo 6» del ensayo','Solo 2 procesos LLM por ronda; lo demás no gasta tokens','total_cost_usd, num_turns, --max-budget-usd y --json-schema','Flags por proceso → permisos por agente y GH_TOKEN aislado','Es lo que recomendó tu propio parallel-launch-trial.md:129-139'],
+      cons:['Pierdes /workflows (lo compensas con logs y el tablero)','En -p el límite de uso hace fallar: hay que programar la espera','Hay que escribirlo (≈400–600 líneas, estimado)'] },
+    { id:'D', name:'D · Solo skills (implement-spec)', score:[2,3,1,1,2,3,3,3], verdict:'⛔ Solo para el modo atendido', color:'var(--lane-red)',
+      pros:['Mínimo código, como Pocock','Perfecto para /discover, /to-request y /to-tasks','Un LLM coordinador conversa contigo si estás delante'],
+      cons:['El bucle depende de lo que el LLM decida: deja de ser determinista','Subagentes: sin USD y permisos esperando en la sesión (parallel-launch-trial.md:80-86)','Se llena el contexto del coordinador (research §7.8)','Para AFK, Pocock usa código: Sandcastle'] }
+  ];
+  var otabs = document.getElementById('otabs'), opanel = document.getElementById('opanel');
+  function showOpt(k){
+    var o = OPTS[k];
+    otabs.querySelectorAll('button').forEach(function(b, i){ b.setAttribute('aria-selected', i === k); });
+    var m = CRIT.map(function(c, i){
+      return '<div class="meter"><span>' + c + '</span><span class="t"><span class="f" style="background:' + o.color + '" data-v="' + o.score[i] + '"></span></span><span class="n">' + o.score[i] + '</span></div>';
+    }).join('');
+    var li = function(a){ return a.map(function(x){ return '<li>' + x + '</li>'; }).join(''); };
+    opanel.innerHTML = '<div><p class="verdict" style="color:' + o.color + '">' + o.verdict + '</p>' + m + '</div>' +
+      '<div><h3>A favor</h3><ul class="plist">' + li(o.pros) + '</ul><h3 style="margin-top:14px">En contra</h3><ul class="plist">' + li(o.cons) + '</ul></div>';
+    void opanel.offsetWidth;
+    opanel.querySelectorAll('.meter .f').forEach(function(f, i){ setTimeout(function(){ f.style.width = (f.dataset.v * 20) + '%'; }, RM ? 0 : 40 + i * 60); });
+  }
+  OPTS.forEach(function(o, i){
+    var b = document.createElement('button');
+    b.type = 'button'; b.setAttribute('role', 'tab'); b.textContent = o.name;
+    b.onclick = function(){ showOpt(i); };
+    otabs.appendChild(b);
+  });
+  showOpt(2);
+
+  /* ---------- tiny highlighter (TS + YAML) ---------- */
+  document.querySelectorAll('code.hl').forEach(highlight);
+  function highlight(el){
+    var src = el.textContent;
+    var esc = function(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+    var re = /(^#{2,} [^\n]*)|(\/\/[^\n]*|#[^\n]*)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')|\b(const|let|async|await|function|return|for|of|if|else|continue|break|new|throw|export|import|from|true|false|null|undefined|type|interface)\b/gm;
+    var out = '', last = 0, mt;
+    while ((mt = re.exec(src))){
+      out += esc(src.slice(last, mt.index));
+      var cls = mt[1] ? 'tok-h' : mt[2] ? 'tok-c' : mt[3] ? 'tok-s' : 'tok-k';
+      out += '<span class="' + cls + '">' + esc(mt[0]) + '</span>';
+      last = re.lastIndex;
+    }
+    el.innerHTML = out + esc(src.slice(last));
+  }
+
+  /* ================= PARTE 2 ================= */
+  function onceVisible(el, fn, th){
+    if (!el) return;
+    if (RM) { fn(); return; }
+    var ob = new IntersectionObserver(function(es){
+      es.forEach(function(e){ if (e.isIntersecting){ ob.disconnect(); fn(); } });
+    }, { threshold: th || .25 });
+    ob.observe(el);
+  }
+
+  /* 1 · language scorecard */
+  var LANG = [
+    ['Reutiliza lo que ya tienes (hook, fake-gh, #76)', 5, 1],
+    ['Mismo lenguaje que workflows y Sandcastle', 5, 2],
+    ['Agent SDK oficial', 5, 5],
+    ['Distribución a cualquier proyecto/SO', 5, 4],
+    ['Config tipada + JSON Schema (zod / pydantic)', 5, 5],
+    ['Scripting de procesos y legibilidad', 4, 5],
+    ['Cercanía a Kotlin (tipos, async)', 4, 3]
+  ];
+  var langEl = document.getElementById('lang');
+  var tTS = 0, tPY = 0;
+  LANG.forEach(function(r){
+    tTS += r[1]; tPY += r[2];
+    var d = document.createElement('div'); d.className = 'lrow';
+    d.innerHTML = '<span>' + r[0] + '</span>' +
+      '<span class="lbar"><span class="t"><span class="f" style="background:var(--accent)" data-v="' + r[1] + '"></span></span><span class="n">' + r[1] + '</span></span>' +
+      '<span class="lbar"><span class="t"><span class="f" style="background:var(--lane-orange)" data-v="' + r[2] + '"></span></span><span class="n">' + r[2] + '</span></span>';
+    langEl.appendChild(d);
+  });
+  var tot = document.createElement('div'); tot.className = 'lrow tot';
+  tot.innerHTML = '<span>Total (sobre 35)</span><span>' + tTS + '</span><span>' + tPY + '</span>';
+  langEl.appendChild(tot);
+  onceVisible(langEl, function(){
+    langEl.querySelectorAll('.f').forEach(function(f, i){ setTimeout(function(){ f.style.width = (f.dataset.v * 20) + '%'; }, RM ? 0 : i * 70); });
+  });
+
+  /* 7 · onboarding flow */
+  var f5s = document.querySelectorAll('#flow5 .f5');
+  onceVisible(document.getElementById('flow5'), function(){
+    f5s.forEach(function(f, i){ setTimeout(function(){ f.classList.add('on'); }, RM ? 0 : i * 450); });
+  });
+
+  /* 7 · canary proof */
+  var CANARIES = [
+    { file:'src/domain/cart/total.ts:18', from:'if (qty >= 10) return price * 0.9', to:'if (qty > 10) return price * 0.9', caught:true, by:'cart/total.test.ts › aplica descuento con 10 uds' },
+    { file:'src/api/users.ts:42', from:'return res.status(404)', to:'return res.status(200)', caught:true, by:'api/users.test.ts › 404 si no existe' },
+    { file:'src/utils/format.ts:7', from:"return n.toFixed(2) + ' €'", to:"return n.toFixed(1) + ' €'", caught:false, by:'ningún test lo cubre' }
+  ];
+  var canaryEl = document.getElementById('canary'), canRun = 0;
+  CANARIES.forEach(function(c){
+    var r = document.createElement('div'); r.className = 'crow';
+    r.innerHTML = '<div class="cfile">' + c.file + '</div>' +
+      '<div class="ccode"><span class="old"></span><span class="new"></span></div>' +
+      '<div class="cstat"><span class="cs">en espera</span><small></small></div>';
+    r.querySelector('.old').textContent = '- ' + c.from;
+    r.querySelector('.new').textContent = '+ ' + c.to;
+    canaryEl.appendChild(r); c.el = r;
+  });
+  var csum = document.createElement('div'); csum.className = 'csum'; canaryEl.appendChild(csum);
+  async function playCanary(){
+    var my = ++canRun, caught = 0;
+    csum.textContent = 'base a1b2c3d · verify.fast = 0 ✓ (reproducible en copia nueva)';
+    CANARIES.forEach(function(c){ c.el.className = 'crow'; c.el.querySelector('.cs').textContent = 'en espera'; c.el.querySelector('small').textContent = ''; });
+    await sleep(700);
+    for (var i = 0; i < CANARIES.length; i++){
+      if (my !== canRun) return;
+      var c = CANARIES[i], el = c.el;
+      el.classList.add('mut'); el.querySelector('.cs').textContent = 'mutando…';
+      await sleep(800); if (my !== canRun) return;
+      el.querySelector('.cs').textContent = 'verify.fast…'; el.classList.add('run');
+      await sleep(1100); if (my !== canRun) return;
+      el.classList.remove('run');
+      if (c.caught){ caught++; el.classList.add('caught'); el.querySelector('.cs').textContent = '✓ detectado (exit 1)'; }
+      else { el.classList.add('blind'); el.querySelector('.cs').textContent = '✗ sigue en verde'; }
+      el.querySelector('small').textContent = c.by;
+      await sleep(600);
+    }
+    csum.innerHTML = '<b>canaries: ' + caught + '/' + CANARIES.length + '</b> · 1 zona ciega → «Zonas sin red» en AGENTS.md · scoped (--changed) también los detecta ✓ · fast 41 s';
+  }
+  onceVisible(canaryEl, playCanary, .3);
+  document.getElementById('canary-replay').onclick = playCanary;
+
+  /* por ticket · fail → pass */
+  var F2P = [
+    ['nuevo', 'cart/total.test.ts › 3x2 en camisetas', 'fail', 'pass', 'FAIL_TO_PASS ✓ prueba el cambio'],
+    ['nuevo', 'cart/total.test.ts › 3x2 no aplica a 2 uds', 'pass', 'pass', 'pasa en la base: no prueba nada ✗'],
+    ['existente', 'cart/total.test.ts › descuento 10 uds', 'pass', 'pass', 'PASS_TO_PASS ✓ sin regresión'],
+    ['diff', 'tests.forbidden · ficheros de test borrados', 'none', 'none', 'ninguno ✓']
+  ];
+  var f2p = document.getElementById('f2p');
+  F2P.forEach(function(r){
+    var d = document.createElement('div'); d.className = 'f2r';
+    d.innerHTML = '<span><span class="pill">' + r[0] + '</span> ' + r[1] + '</span><span class="cell" data-v="' + r[2] + '">·</span><span class="cell" data-v="' + r[3] + '">·</span><span class="vd"></span>';
+    d.querySelector('.vd').textContent = r[4]; f2p.appendChild(d); r.el = d;
+  });
+  var f2out = document.createElement('div'); f2out.className = 'csum'; f2p.appendChild(f2out);
+  var LBL = { fail:'✗ falla', pass:'✓ pasa', none:'—' };
+  async function playF2P(){
+    for (;;){
+      f2out.textContent = 'prove: ejecutando tests.single en la base y en la rama…';
+      F2P.forEach(function(r){ r.el.className = 'f2r'; r.el.querySelectorAll('.cell').forEach(function(c){ c.textContent = '·'; c.className = 'cell'; }); });
+      for (var col = 0; col < 2; col++){
+        for (var i = 0; i < F2P.length; i++){
+          await sleep(380);
+          var c = F2P[i].el.querySelectorAll('.cell')[col];
+          c.textContent = LBL[c.dataset.v]; c.className = 'cell ' + c.dataset.v;
+        }
+      }
+      await sleep(500);
+      F2P.forEach(function(r){ r.el.classList.add(r[4].indexOf('✗') >= 0 ? 'bad' : 'ok'); });
+      f2out.innerHTML = '<b style="color:var(--lane-red)">prove: FAIL</b> → vuelve a Build: «el test "3x2 no aplica a 2 uds" pasa sin el cambio; reescríbelo para que pruebe el criterio»';
+      if (RM) break;
+      await sleep(5200);
+    }
+  }
+  onceVisible(f2p, playF2P, .3);
+
+  /* 3 · stack templates for AGENTS.md */
+  var STACKS = [
+    { name:'Web (Node/TS)', code:
+'## Cómo se escribe un test aquí\n- Vitest junto al fichero; UI con Testing Library por rol\n- Canónico: src/domain/cart/total.test.ts\n\n```dynamo\nsetup: [pnpm install --frozen-lockfile]\nverify:\n  fast:\n    - { name: lint,  run: pnpm lint }\n    - { name: types, run: pnpm tsc --noEmit }\n    - { name: unit,  run: "pnpm vitest run --changed {base}" }\n  full:\n    - { name: e2e,   run: pnpm playwright test }\ntests:\n  new: "src/**/*.test.ts"\n  single: "pnpm vitest run {file}"\n  forbidden: ["it.skip(", ".only("]\n```',
+      traps:['Un puerto por copia para el servidor de desarrollo (<code>PORT</code> derivado del número de ticket)', '<code>--changed</code> usa git: funciona en una worktree, y el canario comprueba que no se salta tests', 'Los e2e van en <code>full</code>: en el bucle, como mucho los del ticket (<code>--grep @ticket-&lt;n&gt;</code>)', 'Snapshots: prohíbe <code>-u</code> en <code>forbidden</code>, o el Builder los «arregla» regenerándolos'] },
+    { name:'KMP / KMM', code:
+'# shared/AGENTS.md\n## Cómo se escribe un test aquí\n- commonTest con kotlin.test; fakes en commonTest/fakes/\n- Canónico: shared/src/commonTest/.../CartTotalTest.kt\n\n```dynamo\nverify:\n  fast:\n    - { name: unit, run: "./gradlew :shared:jvmTest" }\n    - { name: lint, run: "./gradlew :shared:detekt" }\ntests:\n  new: "shared/src/commonTest/**/*Test.kt"\n  single: "./gradlew :shared:jvmTest --tests {class}"\n```\n\n# iosApp/AGENTS.md\n```dynamo\nrequires: [macos, xcode]     # en Windows: se delega a la CI\nverify:\n  full:\n    - { run: "./gradlew :shared:iosSimulatorArm64Test" }\n```',
+      traps:['<code>jvmTest</code> es la forma más rápida de probar <code>commonTest</code>; iOS solo en macOS con Xcode, así que va a <code>full</code>', 'Un daemon de Gradle por copia consume mucha memoria: <code>parallel: 1–2</code> y la build cache compartida', 'El <code>AGENTS.md</code> anidado de cada módulo dice qué comando aplica a qué carpeta', 'Lo que es <code>expect/actual</code> se prueba en cada target: el canario debe tocar también un <code>actual</code>'] },
+    { name:'Android', code:
+'## Cómo se escribe un test aquí\n- ViewModel: JUnit5 + Turbine; UI: Compose + Roborazzi\n- Canónico: feature/cart/src/test/.../CartViewModelTest.kt\n\n```dynamo\nverify:\n  fast:\n    - { name: unit, run: "./gradlew :feature:cart:testDebugUnitTest" }\n    - { name: shots, run: "./gradlew :feature:cart:verifyRoborazziDebug" }\n    - { name: lint, run: "./gradlew detekt lintDebug" }\n  full:\n    - { name: device, run: "./gradlew connectedAndroidTest" }\ntests:\n  new: "**/src/test/**/*Test.kt"\n  single: "./gradlew testDebugUnitTest --tests {class}"\n  forbidden: ["@Ignore", "recordRoborazzi"]\n```',
+      traps:['Elegir el módulo afectado: un mapa de carpetas a tareas de Gradle en el bloque, o <code>{module}</code> calculado del diff', 'Las capturas de referencia: el Builder no puede regenerarlas (<code>recordRoborazzi</code> prohibido)', 'Los tests instrumentados nunca en el bucle: emulador en la CI', 'Si tienes reglas de arquitectura (capas, DI), van en «Cómo se hacen las cosas», con un ejemplo canónico'] },
+    { name:'Python', code:
+'## Cómo se escribe un test aquí\n- pytest; fixtures en tests/conftest.py; nada de red real\n- Canónico: tests/test_billing.py\n\n```dynamo\nsetup: [uv sync --frozen]\nverify:\n  fast:\n    - { name: lint,  run: uv run ruff check }\n    - { name: types, run: uv run mypy src }\n    - { name: unit,  run: "uv run pytest -q -x {paths}" }\ntests:\n  new: "tests/**/test_*.py"\n  single: "uv run pytest -q {file}"\n  forbidden: ["@pytest.mark.skip", "pytest.skip("]\n```',
+      traps:['La base de datos: un contenedor o un fake por copia, nunca compartida', '<code>{paths}</code>: un mapa de <code>src/x</code> a <code>tests/x</code>, o <code>pytest-testmon</code>', 'Tests inestables: lístalos en «Cómo se escribe un test» para que el canario no los use'] },
+    { name:'CI / infra', code:
+'## Cómo se hacen las cosas aquí\n- Workflows reutilizables en .github/workflows/_*.yml\n- Terraform: un módulo por servicio; nunca apply desde un agente\n\n```dynamo\nverify:\n  fast:\n    - { name: actions, run: actionlint }\n    - { name: docker,  run: hadolint Dockerfile }\n    - { name: tf,      run: "terraform fmt -check && terraform validate" }\n  full:\n    - { name: plan, run: terraform plan -lock=false }\nrequires-gate: ["terraform apply", "deploy"]\n```',
+      traps:['El canario aquí es una regla: un workflow roto a propósito tiene que hacer fallar <code>actionlint</code>', 'Revisa el diff del plan: el reviewer comprueba que cambia exactamente lo que pide el ticket', 'Nunca <code>apply</code> ni despliegues en el bucle: un <code>gate</code> humano obligatorio'] }
+  ];
+  var stabs = document.getElementById('stabs'), spanel = document.getElementById('spanel');
+  var escH = function(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  function showStack(k){
+    stabs.querySelectorAll('button').forEach(function(b, i){ b.setAttribute('aria-selected', i === k); });
+    var s = STACKS[k];
+    spanel.innerHTML = '<div class="code"><pre><code class="hl">' + escH(s.code) + '</code></pre></div>' +
+      '<div><h3>Trampas que el onboarding pregunta</h3><ul class="plist">' + s.traps.map(function(t){ return '<li>' + t + '</li>'; }).join('') + '</ul>' +
+      '<p class="small">El plugin trae esta plantilla. El onboarding la ajusta con lo que encuentra en tu repo y la deja demostrada.</p></div>';
+    highlight(spanel.querySelector('code.hl'));
+  }
+  STACKS.forEach(function(s, i){
+    var b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'tab'); b.textContent = s.name;
+    b.onclick = function(){ showStack(i); }; stabs.appendChild(b);
+  });
+  showStack(0);
+
+  /* 4 · pipeline builder */
+  var PSTEPS = [
+    { id:'triage', label:'triage', sub:'haiku: tipo + complejidad', type:'llm', llm:1, cost:.05, opt:true, on:false, desc:'Clasifica el ticket y elige qué pasos aplican (super-board: «Classify»)' },
+    { id:'plan', label:'plan', sub:'architect · si complex', type:'llm', llm:1, cost:.5, opt:true, on:false, desc:'Tipos y firmas antes del código (pstack: architect)' },
+    { id:'build', label:'build', sub:'builder · Sonnet', type:'llm', llm:1, cost:1, opt:false, on:true },
+    { id:'verify', label:'verify', sub:'AGENTS.md verify.fast', type:'cmd', llm:0, cost:0, opt:false, on:true },
+    { id:'prove', label:'prove', sub:'fail→pass del test nuevo', type:'cmd', llm:0, cost:0, opt:false, on:true },
+    { id:'qa', label:'qa', sub:'e2e + capturas · rol qa', type:'llm', llm:1, cost:.4, cmd:1, opt:true, on:false, desc:'Playwright o screenshot tests y un agente que compara con los criterios de aceptación' },
+    { id:'ci', label:'ci', sub:'push ticket/* · gh pr checks', type:'cmd', llm:0, cost:0, opt:true, on:false, desc:'La CI remota como segundo juez (requiere permitir el push de ticket/*)' },
+    { id:'review', label:'review', sub:'reviewer-scope · Opus', type:'llm', llm:1, cost:.6, opt:false, on:true },
+    { id:'panel', label:'+ panel', sub:'security · tests · ui + approver', type:'par', llm:4, cost:1.3, opt:true, on:false, desc:'Revisores especializados por riesgo más un agregador con umbral de confianza' },
+    { id:'docs', label:'docs', sub:'changelog / docs · haiku', type:'llm', llm:1, cost:.05, opt:true, on:false, desc:'Actualiza CHANGELOG y la documentación afectada' },
+    { id:'gate', label:'gate', sub:'humano · si migración', type:'cmd', llm:0, cost:0, opt:true, on:false, desc:'Pausa en Needs Human si el diff toca migraciones o pagos' },
+    { id:'merge', label:'merge', sub:'--no-ff · checks · lock', type:'cmd', llm:0, cost:0, opt:false, on:true }
+  ];
+  var pbopts = document.getElementById('pbopts'), pbchain = document.getElementById('pbchain');
+  PSTEPS.forEach(function(s){
+    var l = document.createElement('label');
+    if (!s.opt) l.className = 'fixed';
+    l.innerHTML = '<input type="checkbox"' + (s.on ? ' checked' : '') + (s.opt ? '' : ' disabled') + '><span><b>' + s.label + '</b>' + (s.opt ? '' : ' <span class="pill">base</span>') + '<small>' + (s.desc || s.sub) + '</small></span>';
+    l.querySelector('input').onchange = function(e){ s.on = e.target.checked; renderPipe(); };
+    pbopts.appendChild(l);
+  });
+  var BASE_COST = PSTEPS.filter(function(s){ return !s.opt; }).reduce(function(a, s){ return a + s.cost; }, 0);
+  function renderPipe(){
+    pbchain.innerHTML = '';
+    var on = PSTEPS.filter(function(s){ return s.on; }), llm = 0, cmd = 0, cost = 0;
+    on.forEach(function(s, i){
+      if (i) { var a = document.createElement('span'); a.className = 'arrow'; a.textContent = '→'; pbchain.appendChild(a); }
+      var d = document.createElement('div'); d.className = 'st ' + s.type;
+      d.innerHTML = s.label + '<small>' + s.sub + '</small>' + (s.id === 'panel' ? '<div class="sub"><span>sec</span><span>tests</span><span>ui</span><span>approver</span></div>' : '');
+      pbchain.appendChild(d);
+      llm += s.llm; cmd += (s.type === 'cmd' ? 1 : 0) + (s.cmd || 0); cost += s.cost;
+    });
+    document.getElementById('pb-llm').textContent = llm;
+    document.getElementById('pb-cmd').textContent = cmd;
+    document.getElementById('pb-cost').textContent = (cost / BASE_COST).toFixed(1).replace('.', ',') + '×';
+  }
+  renderPipe();
+
+  /* 5 · review fan-out */
+  var RVS = [
+    { name:'reviewer-scope', dur:1600, finds:[] , note:'siempre' },
+    { name:'reviewer-security', dur:2600, finds:[['R-1 token en log · session.ts:42', 92]], note:'when auth/**' },
+    { name:'reviewer-tests', dur:2100, finds:[['R-2 falta caso vacío', 74]], note:'when lógica' },
+    { name:'reviewer-ui', dur:1900, finds:[['R-3 contraste botón', 55]], note:'when *.tsx' },
+    { name:'reviewer-perf', dur:0, finds:[], note:'omitido: sin riesgo', skip:true }
+  ];
+  var rvrows = document.getElementById('rvrows'), rvout = document.getElementById('rvout'), rvverdict = document.getElementById('rvverdict');
+  RVS.forEach(function(r){
+    var d = document.createElement('div'); d.className = 'rvrow' + (r.skip ? ' skip' : '');
+    d.innerHTML = '<span>' + r.name + '</span><span class="t"><span class="f"></span></span><span class="finds"><span class="fd on" style="border:0;color:var(--muted);padding:0">' + r.note + '</span></span>';
+    rvrows.appendChild(d); r.el = d;
+  });
+  var rvVisible = false, rvRunning = false;
+  async function rvLoop(){
+    if (rvRunning) return; rvRunning = true;
+    while (rvVisible || RM){
+      rvout.className = 'rvout'; rvverdict.textContent = 'encontrando… (en paralelo)';
+      RVS.forEach(function(r){
+        var f = r.el.querySelector('.f'); f.style.transition = 'none'; f.style.width = '0';
+        r.el.querySelectorAll('.fd:not(:first-child)').forEach(function(x){ x.remove(); });
+      });
+      await sleep(300);
+      var done = RVS.filter(function(r){ return !r.skip; }).map(function(r){
+        return new Promise(function(res){
+          var f = r.el.querySelector('.f');
+          f.getBoundingClientRect();
+          f.style.transition = 'width ' + (RM ? 0 : r.dur) + 'ms linear'; f.style.width = '100%';
+          setTimeout(function(){
+            r.finds.forEach(function(x){
+              var s = document.createElement('span'); s.className = 'fd'; s.dataset.c = x[1];
+              s.textContent = x[0] + ' · conf ' + x[1];
+              r.el.querySelector('.finds').appendChild(s);
+              requestAnimationFrame(function(){ s.classList.add('on'); });
+            });
+            if (!r.finds.length) { var s = document.createElement('span'); s.className = 'fd on'; s.textContent = 'sin hallazgos'; r.el.querySelector('.finds').appendChild(s); }
+            res();
+          }, RM ? 0 : r.dur);
+        });
+      });
+      await Promise.all(done);
+      rvverdict.textContent = 'verificando: puntuación de confianza ≥ 80…';
+      await sleep(1100);
+      rvrows.querySelectorAll('.fd[data-c]').forEach(function(s){ s.classList.add(+s.dataset.c >= 80 ? 'keep' : 'drop'); });
+      await sleep(900);
+      rvout.className = 'rvout fail';
+      rvverdict.innerHTML = '<b style="color:var(--lane-red)">FAIL</b> · 1 hallazgo bloqueante (R-1, conf 92)<br>2 descartados (&lt; 80)<br>→ vuelve a Build con R-1, ronda 2/2<br>en la ronda 2 se comprueba primero R-1';
+      if (RM) break;
+      await sleep(4200);
+    }
+    rvRunning = false;
+  }
+  new IntersectionObserver(function(es){
+    es.forEach(function(e){ rvVisible = e.isIntersecting; if (rvVisible) rvLoop(); });
+  }, { threshold: .3 }).observe(document.getElementById('rv'));
+  if (RM) rvLoop();
+
+  /* 6 · role implementations cycle */
+  var impls = document.querySelectorAll('#impls .impl'), ii = 0;
+  impls[0].classList.add('on');
+  if (!RM) setInterval(function(){
+    impls[ii].classList.remove('on'); ii = (ii + 1) % impls.length; impls[ii].classList.add('on');
+  }, 1700);
+
+
+  if (RM){
+    document.querySelectorAll('.reveal').forEach(function(el){ el.classList.add('in-view'); });
+    fillBars(document.getElementById('bars1')); fillBars(document.getElementById('bars2')); fillWaffle();
+  }
+})();
+</script>
+</body>
+</html>

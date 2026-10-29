@@ -34,6 +34,17 @@ runner»). Each is an integer; `maxCommand` is at least 1100, `maxOutput` at lea
 more than `maxOutput`. The scripts `board.js` and `release-report.js` call `read.js` for the tickets, `factory.json` and
 the release report; `read.js` reads `maxLine` and the project data from this file itself.
 
+`budgetUsd` holds, per agent of `dynamo run` (`builder`, `reviewer`), the most one run of that agent may spend, in USD:
+`dynamo run` passes it as `--max-budget-usd`, so each round's Builder and each round's reviewer has the whole amount. An
+agent that reaches it stops, and the ticket goes to *Needs Human* with that reason. Each is a number above 0; the
+`run` workflow does not read them.
+
+`ticketsAtOnce` is how many tickets of a list `dynamo run` takes at once, each in its own copy: so it is also the most
+agents that run at the same time, since a ticket runs one agent at a time. A ticket waits for a free place and for its
+blockers of the list to be merged; merges still go one at a time, whatever the number. It is a whole number from 1 (1
+runs the list one ticket after another); more spends more of the usage limit at once. The `run` workflow does not read
+it.
+
 The phases of the `run` workflow (order, column, model, effort,
 agent type and where a failure goes) are in `.claude/factory.json`. How to change them or add a phase:
 `documentation/launch-list.md`, «The phases».
@@ -69,7 +80,7 @@ command outside these forms asks (or is refused in `-p`), which is the point.
 | `board` workflow (start) | `runner`: Bash | only `node .claude/workflows/lib/read.js factory <k>`, `folder`, `tickets [n …]` and `ticket <k>` (rule `Bash(node .claude/workflows/lib/*)`) |
 | `run` workflow, Build | `builder`: all tools | `git rev-parse`, `git branch --show-current`, `git checkout -b ticket/…`, `git log`, `git cherry-pick <base>..<branch>` (round 2), `git add`, `git commit`, `gh issue view`, `gh issue comment` |
 | `run` workflow, Verify | `runner`: Bash only | the card move and read-back (`gh project item-edit`, `gh issue view`), `git -C <copy> status`, `rev-parse`, `merge-base`, and the checks inside `sh -c 'cd <copy> && …'` |
-| `run` workflow, Review | `reviewer`: Read, Grep, Glob, Bash (no Edit or Write) | `git -C <copy> diff`, `log`, `show`, `status`, `gh issue view`, `ls`, `wc`, and what a checkbox needs to be proven |
+| `run` workflow, Review | `reviewer`: Read, Grep, Glob, Bash and StructuredOutput, its answer under `dynamo run` (no Edit or Write) | `git -C <copy> diff`, `log`, `show`, `status`, `gh issue view`, `ls`, `wc`, and what a checkbox needs to be proven |
 | `run` workflow, Merge | `runner`: Bash only | `git merge --no-ff ticket/…`, `git merge-base`, `git revert -m 1 --no-edit HEAD`, `git merge --abort`, the checks, `gh issue edit --add-label`, `gh issue comment` (in pieces: `sh -c 'mkdir -p … && printf %s <piece> > .claude/worktrees/tmp-post-… && test …'`, then `sh -c 'test … && cat … \| base64 --decode \| gh issue comment … && rm -f …'`), and its read-back (`gh issue view --json comments`, inside `sh -c 'printf %s "$(… \| tr -d "\r")" \| cksum'`) |
 | `run` workflow, cleanup | `runner`: Bash only | `git branch --list`, `git worktree list`, `remove` (inside `sh -c`) and `prune` |
 | `release-report` workflow | `runner`: Bash only | only `node .claude/workflows/lib/read.js release <base> [results <hash>]`, `put <name> <k> <piece> <crc> <len>` (the results of a run, as a child of `run.js`) and `tidy` (rule `Bash(node .claude/workflows/lib/*)`), plus the cleanup commands `run.js` hands it (the `run` workflow, cleanup row). `read.js` itself runs `git rev-parse`, `rev-list --count`, `ls-remote`, `log --first-parent`, `status`, `branch --show-current`, `gh api graphql`, `gh project item-list` and `gh pr list` as its own processes, not through the `runner`; it writes the report file under `.claude/worktrees/` |

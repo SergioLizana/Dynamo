@@ -2,7 +2,7 @@
   "project": {
     "repo": "SergioLizana/Dynamo",
     "mainBranch": "main",
-    "workingBranch": "release/0.1.0",
+    "workingBranch": "release/0.2.0",
     "boardOwner": "SergioLizana",
     "boardNumber": 1,
     "boardId": "PVT_kwHOAbB1zs4BoyYk",
@@ -12,7 +12,8 @@
     "doneLabel": "in-release",
     "checks": [
       "claude plugin validate . --strict",
-      "git diff --check <base>"
+      "git diff --check <base>",
+      "node --test dynamo/tests/"
     ],
     "documentsLanguage": "English",
     "plan": "documentation/agent-factory-plan.md",
@@ -31,6 +32,8 @@
   },
   "small": { "model": "haiku", "effort": "high" },
   "runner": { "maxCommand": 1500, "maxOutput": 1500, "maxLine": 400 },
+  "budgetUsd": { "builder": 10, "reviewer": 4 },
+  "ticketsAtOnce": 2,
   "phases": [
     { "name": "Build", "column": "Build", "moveCard": "start", "model": null, "effort": null, "agentType": "builder", "onFail": "Needs Human" },
     { "name": "Verify", "column": "Verify", "moveCard": "start", "model": "haiku", "effort": "high", "agentType": null, "onFail": "Build" },

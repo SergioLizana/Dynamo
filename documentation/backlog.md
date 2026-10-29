@@ -177,3 +177,111 @@ Small things found when reviewing the list #53-#58. None is a problem yet; each 
   Release with the report and the next `release/<x.y.z>` with `workingBranch` set, in one commit.
 - **When:** 0.1.0 is closed by hand. If closing 0.2.0 hurts again, it becomes a ticket, as a `dynamo` subcommand or a
   skill that calls it.
+- **Moved to phase 3 (2026-10-29):** closing 0.2.0 hurt (#91 missing from the report); `documentation/orchestrator-review.md`,
+  phase 3, §3.4.
+
+## The multi-project harness (ideas of the external diagnosis)
+
+- **Origin:** part 2 of the diagnosis in `documentation/Research/` (2026-10-28), reviewed in
+  `documentation/orchestrator-review.md`, phase 6. None is built before a real project asks for it (plan §3, rule 2).
+- **Ideas, each with its trigger:**
+  - A QA step with browser screenshots against the criteria: a ticket passes checks and review but fails in the browser.
+  - A review panel by risk, with confidence scores and finding ids: failures found in the release PR that the reviewer
+    let through, counted.
+  - A human gate in a step (schema, payments): a project with changes that must not merge without a person.
+  - Stack profiles (KMP, Android, iOS in CI): the KMM app starts.
+  - Knowledge from Obsidian or Confluence: a project keeps its docs there.
+  - Another backend (Agent SDK, Codex): a second backend is needed, or data says another model reviews better.
+  - A single binary (Bun): a project where Node is not available.
+  - A declarative pipeline in YAML with `when` conditions: two projects need different pipelines. Until then the
+    pipeline stays in code.
+- **Not before:** formal interfaces (`Board`, `Runner`, `Knowledge`) with a single implementation each.
+
+## The live view of a run: a Claude Code mod
+
+- **Origin:** question of the human, 2026-10-28. With `claude -p` processes there is no `/workflows` view.
+- **Idea:** a mod with a «Dynamo» pane beside the chat that refreshes from `dynamo status --json`, one row per ticket
+  (column, round, last step, turns, cost). Details in `documentation/orchestrator-review.md`, phase 2.
+- **When:** the logs and `dynamo status --json` exist and the first real list shows that the log and the board are not
+  enough.
+
+## The agent log is written only when the agent ends
+
+- **Origin:** ticket #86 (merged, 2026-10-28). `runAgent` (`dynamo/claude.ts`) runs `claude -p --agent` through `exec`
+  (`dynamo/exec.ts`), which uses `spawnSync`: the stream arrives whole when the process ends, and only then
+  `writeFileSync(run.log, …)` writes it.
+- **Problem:** while an agent works its log does not exist or is empty, so the live view above (the last step of each
+  agent, read from `logs/*.jsonl` or `dynamo status --json`) would have nothing to show until the agent is done.
+  Also, `exec` has a `maxBuffer` of 64 MB: a bigger stream makes `spawnSync` fail and the log is lost too.
+- **Options (none chosen):**
+  - Give the child's stdout to the log file itself (a file descriptor as the stdio of `spawnSync`), so the log grows
+    live and does not depend on the buffer. It changes `exec.ts`, and the result is read back from the file.
+  - Move to an asynchronous `spawn`, which running two tickets at once (N = 2 with a merge lock) needs anyway.
+- **When:** the ticket that builds `dynamo run` or the live view, whichever comes first. Nothing to fix before.
+
+## The Builder explores the code again on every ticket
+
+- **Origin:** the cost of the first `dynamo run` list (2026-10-29). The Builder's cost is turns × context: #91's Builder
+  read 3.15 M cached tokens in 63 turns and wrote 35 k; it read about 106 k characters with Read (#90's, about 51 k),
+  mostly to find its way, and carried them through every turn after.
+- **Ideas, none chosen (the human, 2026-10-29):**
+  - `project.map` in `factory.json`: a command or file that gives each project's map of the code (in Dynamo, the header
+    of each `dynamo/*.ts`), read first by the Builder. The human is not convinced: left out for now.
+  - An explorer per list, before the Builders (Pocock's `implement-spec`, step 2): it reads what the list's tickets need
+    and leaves short notes outside the repository that every Builder reads. The first place where a cheaper model would
+    fit: it reads a lot, writes little and does not code.
+- **When:** if the Builders of the lists made with the new chain (phase 3, §3.3 of `orchestrator-review.md`) still
+  read as much; or on the first real project, which has no Dynamo headers to lean on.
+
+## The Builder starts with tools it never uses
+
+- **Origin:** the `init` line of `.claude/worktrees/logs/91/builder-1.jsonl` (2026-10-29): 36 tools (the Claude Docs MCP,
+  Workflow, Cron, WebSearch, DesignSync…) and about 70 skills, because `builder.md` had no `tools:` line and `claude -p`
+  inherits everything. Matt Pocock trims the same («How To Kill The Bloat In Claude Code's System Prompt», aihero.dev).
+- **Done (by hand, the human's choice, 2026-10-29):** `builder.md` has `tools: Read, Edit, Write, Bash, Glob, Grep, Skill,
+  WebSearch, WebFetch, Agent(Explore), StructuredOutput`; the reviewer runs with `--disable-slash-commands`. The first
+  eight are what the Builders of 90 91 92 used; the web and `Explore` (built into Claude Code, so in any project) stay
+  because a ticket of another project may need a library's documentation or a wide search of a big repository.
+  `Agent(Explore)` is enforced: asked for `general-purpose`, the tool answers «Agent type 'general-purpose' not found.
+  Available agents: Explore». The web costs about 1.7 k tokens of context (19.7 k against 18.0 k). The Builder
+  keeps the skills: #92's used `plugin-authoring`, which its ticket asked for. `--strict-mcp-config` is not needed: a
+  `tools:` line already leaves out every MCP tool (probed with #91's fix, `2980b4d`).
+- **Probed** with `claude -p --agent <name> --model haiku` and a schema: the Builder starts with 11 tools and 19.7 k tokens
+  of context in its first turn (25.7-27.4 k in 90 91 92); the reviewer with 0 skills, no MCP server and 9.8 k (10.2 k).
+  Both answered with their schema.
+- **Left:** the Builder still sees 41 skills. Pocock's settings (`disableBundledSkills`, `skillOverrides`, through
+  `--settings`) could trim them; not tried. To check on the next list: turns and cost against 90 91 92.
+
+## `dynamo report` misses a ticket whose merge was reverted and brought back by hand
+
+- **Origin:** the report of 0.2.0 (2026-10-29) lists 14 tickets and leaves out #91. It takes the tickets from the `(#n)` of
+  the merge commits since the main branch; #91's merge (`a718706`) was reverted (`c7061df`) and brought back by a revert
+  of the revert (`d410780`), which is not a merge commit. Its `Closes #91` was added to the PR by hand.
+- **When:** with the fix of §3.2 of `orchestrator-review.md` (merge and check in a copy, so nothing is reverted), this case
+  should not happen again; if it does, the report also reads the reverts.
+
+## PonyTail: the Builder writes less code
+
+- **Origin:** question of the human, 2026-10-29, among other skills looked at (Graphify, Superpowers, Agent Skills,
+  Karpathy, Anthropic skills, UI UX Pro Max, Taste Skill, Caveman).
+- **What it is:** an MIT Claude Code plugin by Dietrich Gebert (`DietrichGebert/ponytail`). Before writing code the agent
+  climbs a ladder: is it needed, does it already exist in the code, does the standard library or the platform do it;
+  only then the least that works. Validation, error handling, security and accessibility are never cut.
+- **Verified only from sources:** its README claims about 54 % less code and 20 % less cost; an independent JetBrains test
+  (80 paired tasks, 2026-07) measured -15 % code, -10.3 % cost and -11 % time, with no quality difference it could see
+  (80 pairs only rule out large ones). Not tried here.
+- **Why not installed as is:** it is a plugin with Node lifecycle hooks, so it would also act in the human's session, not
+  only in the Builder's; and its rules overlap with the Builder's («only what the ticket asks») and `CLAUDE.md` («no
+  speculative design»). Not checked whether a plugin's hooks run in `claude -p --agent builder`.
+- **How to try it:** one list with it against one without, on tickets of the same size: turns, cost, lines changed,
+  rounds and the reviewer's verdicts. If it helps, the ladder may fit as a rule in `builder.md` instead of the plugin.
+- **When:** after the chain of phase 3, on a list whose tickets are comparable to 90 91 92; or on the first real project.
+
+## Tools to save tokens that were looked at and left out
+
+- **Origin:** question of the human, 2026-10-29.
+- **Caveman** (a skill that makes the answers terse): it compresses prose, and the Builder's output is mostly code in
+  Edit and Write; independent measures give 12-23 % of the output. The texts of tickets and verdicts would lose quality.
+- **Headroom** (a proxy that compresses tool outputs): 95 % of the Builder's input already arrives cached; the Builder
+  needs the code it reads verbatim; and it adds a Python service in front of every run.
+- **A Haiku agent for the mechanical steps:** in `dynamo` they are code, at no cost and with real exit codes.

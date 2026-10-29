@@ -11,6 +11,15 @@ indispensable: an automatic check before the reviewer, a cap of 2 rounds, measur
 Change of 2026-10-26: **the factory is built with the factory.** The minimum is written by hand (§8, stage 1) and the
 rest the factory builds itself, ticket by ticket. On reaching "complete" (§8.1) it moves to a real project.
 
+Change of 2026-10-28: **the loop is a program, not a workflow.** A workflow script cannot run commands, so every `git` and
+`gh` crossed a `runner` agent that copied text by hand, and most tickets of 0.1.0 were plumbing around it. From 0.2.0 the
+deterministic steps (read the board, verify, merge, comment, report, the loop with its rounds) are a program of our own,
+`dynamo`, that runs `git` and `gh` directly and uses `claude -p` only for the two agents that think, the `builder` and the
+`reviewer`. What stays: the skills, the two agents, the cap of 2 rounds, Verify by exit codes and GitHub as the state. The
+reasons, the phases and what is deleted are in `documentation/orchestrator-review.md`. Where this plan still says
+«workflow», `run.js` or `runner`, it describes release 0.1.0 (tag `v0.1.0`) and is replaced as the phases of that
+document land.
+
 ## 1. What I want
 
 A piece of software in a **private repository** that is an **agent factory**, for now only with Claude (Claude Code),
@@ -170,8 +179,8 @@ PR from release/x.y.z against main + report (blocked, skipped, cost)       ← m
 - **N** is only how many tickets go at the same time. It starts at 2 (research §7.9). The workflow has no cap yet: it
   starts every ticket whose blockers are done (`documentation/backlog.md`).
 - **`/implement` and `/run` are two ways to run the same loop,** not one inside the other: `/implement` is the loop for
-  one ticket in the current session, and `/run` is the same loop as a workflow, with a script that decides and one agent
-  per phase. The Builder's rules are one file, `.claude/agents/builder.md`, which both follow.
+  one ticket in the current session, and `/run` is the same loop as the `dynamo` program (until it exists, as a
+  workflow, with a script that decides and one agent per phase). The Builder's rules are one file, `.claude/agents/builder.md`, which both follow.
 - **The round cap is 2**, fixed. Stripe allows at most 2 CI rounds (research §6.2, §8.2).
 - **Lists of 5-8 tickets.** So that the final PR can be read. If even that is hard, it moves to one PR per ticket against the
   integration branch (see §10, question 2). Large PRs are reviewed worse and merged less often (research §7.1, §7.2, §8.5).
@@ -325,6 +334,10 @@ The minimum is written by hand; the rest is built by the factory itself.
 | 3b. Assembly line | `/run` builds what it is missing: frontier, merge into `release/x.y.z`, tests after each merge, skipping the dependents of a blocked ticket and the report | A list of tickets with dependencies ends in a PR without my intervention along the way: **"complete"** |
 | 4. Real project | The skills become a plugin and are installed in the real project; the factory is used there | The first real list of the project ends in a PR |
 | 5. Improve from data | Reviewers by approach, decision on whether a person is needed, more N… | Each improvement answers a problem measured in the real project |
+
+Since 2026-10-28 stages 3a and 3b are built as a program, not as a workflow, in the phases of
+`documentation/orchestrator-review.md` (phase 1: the `dynamo` commands; phase 2: `dynamo run`; phase 3: delete the
+workflow; phase 4: unattended). «Complete» is the same and does not move.
 
 Measuring is no longer a stage: it starts in stage 2. The integration branch with automatic merging goes in stage 3b because
 it is the only thing the research marks as "not tested" (§8.4), and there are few tasks that can really be done in parallel
