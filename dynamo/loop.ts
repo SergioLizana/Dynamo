@@ -21,6 +21,7 @@ import { copy } from './copy.ts';
 import { parseWorktrees } from './copies.ts';
 import { merge } from './merge.ts';
 import { settings } from './merging.ts';
+import { note } from './notes.ts';
 import { oneLine } from './releases.ts';
 import type { Next, Outcome, Stage } from './rounds.ts';
 import { next } from './rounds.ts';
@@ -66,6 +67,7 @@ export async function runTicket(n: number, deps: Deps): Promise<Output> {
   loop.logs = join(mainFolder(deps), '.claude', 'worktrees', 'logs', String(n));
   rmSync(loop.logs, { recursive: true, force: true });
   mkdirSync(loop.logs, { recursive: true });
+  note(loop.logs, { step: 'start', round: 1, text: row.title });
 
   const st: State = { round: 1, stage: 'build', merged: false, head: null, copy: null, branch: null, checks: null, builder: null, review: null, spent: [] };
   let stop: Facts['stop'] = null;
@@ -75,6 +77,8 @@ export async function runTicket(n: number, deps: Deps): Promise<Output> {
     let reason = e instanceof Error ? e.message : String(e);
     const moved = await exit(() => card([String(n), loop.columns.needsHuman], deps));
     if (moved.code !== 0) reason += `\n(the card did not move to ${loop.columns.needsHuman}: ${JSON.stringify(moved.out)})`;
+    else note(loop.logs, { step: 'column', round: st.round, column: loop.columns.needsHuman });
+    note(loop.logs, { step: 'stopped', round: st.round, text: reason });
     stop = { stoppedAt: e instanceof Stop ? e.stoppedAt : st.stage, reason, left: st.copy === null ? null : `the copy ${st.copy} and the branch ${st.branch}` };
   }
 
@@ -99,6 +103,7 @@ async function steps(loop: Loop, repo: string, base: string, st: State): Promise
   const move = async (column: string) => {
     const r = await exit(() => card([String(n), column], deps));
     if (r.code !== 0) throw new Stop(st.stage, `card did not move to ${column}: ${JSON.stringify(r.out)}`);
+    note(loop.logs, { step: 'column', round: st.round, column });
   };
   let go: Exclude<Next['go'], 'needsHuman' | 'merge'> = 'build';
   let failed: string | null = null;
@@ -118,6 +123,7 @@ async function steps(loop: Loop, repo: string, base: string, st: State): Promise
       const v = await exit(() => verify([String(st.copy), base], deps));
       st.checks = checksOf(v.out);
       o = { step: 'verify', code: v.code, output: failedChecks(v.out) };
+      note(loop.logs, { step: 'check', round: st.round, text: v.code === 0 ? 'passed' : 'failed' });
     } else {
       st.stage = 'review';
       await move(columns.review);
@@ -144,6 +150,7 @@ async function steps(loop: Loop, repo: string, base: string, st: State): Promise
   st.merged = true;
   st.head = typeof m.out.head === 'string' ? m.out.head : null;
   await move(columns.done);
+  note(loop.logs, { step: 'merged', round: st.round, text: st.head ?? '' });
 }
 
 // The copy is made once, in round 1: round 2 works on the same copy and branch, so the ticket keeps one branch.
@@ -167,6 +174,7 @@ async function agent(loop: Loop, name: 'builder' | 'reviewer', prompt: string, c
     schema: name === 'builder' ? BUILDER_SCHEMA : REVIEWER_SCHEMA, budget: loop.budget[name], session: randomUUID(),
   });
   st.spent.push({ cost: r.cost, turns: r.turns });
+  note(loop.logs, { step: 'agent', round: st.round, agent: name, ending: r.ending, cost: r.cost, turns: r.turns, ...(r.detail === null ? {} : { text: r.detail }) });
   return r;
 }
 

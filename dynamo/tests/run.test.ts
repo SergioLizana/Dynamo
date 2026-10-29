@@ -10,6 +10,7 @@ import type { Deps } from '../cli.ts';
 import { exec } from '../exec.ts';
 import type { Factory } from '../factory.ts';
 import { gh } from '../gh.ts';
+import { status } from '../status.ts';
 import { git } from '../git.ts';
 import { LOCK } from '../merging.ts';
 import { run } from '../run.ts';
@@ -166,6 +167,12 @@ test('a blocked ticket keeps its copy and branch; its dependent is skipped with 
   assert.ok(!f.claudeCalls().some((c) => c.ticket === 2));
 
   assert.deepEqual([out.removed, out.kept], [[3], [1]]);
+
+  // What the run noted is what `dynamo status` reads back: the stopped ticket with its reason, the skipped one with its own.
+  const seen = status(['--json', '--logs', join(f.dir, '.claude', 'worktrees', 'logs')], f.deps);
+  assert.deepEqual((seen.rows as { ticket: number; column: string }[]).map((r) => [r.ticket, r.column]), [[1, 'Needs Human'], [3, 'Done']]);
+  assert.match(String((seen.blocked as { reason: string }[])[0].reason), /the Builder needs the human: the ticket contradicts itself/);
+  assert.deepEqual(seen.skipped, [{ ticket: 2, why: 'blocker #1 stopped in this run' }]);
   assert.deepEqual(branches(f.dir), ['ticket/1-ticket-1']);
   assert.equal(copies(f.dir), 1);
   const report = readFileSync(join(f.dir, String(out.report)), 'utf8');

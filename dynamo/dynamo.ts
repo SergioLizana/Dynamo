@@ -15,6 +15,7 @@ import { copy } from './copy.ts';
 import { merge } from './merge.ts';
 import { report } from './report.ts';
 import { run } from './run.ts';
+import { status } from './status.ts';
 import { verify } from './verify.ts';
 
 // Each subcommand comes with its own ticket: its module, and its line here.
@@ -27,6 +28,7 @@ const subcommands = new Map<string, Subcommand>([
   ['copy', copy],
   ['report', report],
   ['run', run],
+  ['status', status],
 ]);
 
 async function main(argv: string[]): Promise<number> {

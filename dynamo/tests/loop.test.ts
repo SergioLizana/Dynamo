@@ -92,6 +92,7 @@ function setup(answers: Record<string, unknown>[], blockers: unknown[] = []) {
 const moves = (calls: string[][]) => calls.filter((c) => c[0] === 'project' && c[1] === 'item-edit').map((c) => c[c.indexOf('--value') + 1]);
 const branches = (dir: string) => sh(dir, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/ticket/').split('\n').filter((b) => b !== '');
 const logs = (dir: string) => join(dir, '.claude', 'worktrees', 'logs', '7');
+const jsonl = (file: string) => readFileSync(file, 'utf8').split('\n').filter((l) => l !== '').map((l) => JSON.parse(l));
 const flag = (c: Call, name: string) => (c.args.includes(name) ? c.args[c.args.indexOf(name) + 1] : undefined);
 
 test('a ready ticket is built, checked, reviewed and merged: cards in order, one comment with cost and turns', async () => {
@@ -118,8 +119,13 @@ test('a ready ticket is built, checked, reviewed and merged: cards in order, one
   assert.deepEqual(f.issue().labels, ['in-release']);
 
   // The logs: one per agent run, a new run starts with the folder empty, and the main folder stays clean throughout.
-  assert.deepEqual(readdirSync(logs(f.dir)).sort(), ['builder-1.jsonl', 'comment.md', 'reviewer-1.jsonl']);
+  assert.deepEqual(readdirSync(logs(f.dir)).sort(), ['builder-1.jsonl', 'comment.md', 'reviewer-1.jsonl', 'steps.jsonl']);
   assert.equal(readFileSync(join(logs(f.dir), 'builder-1.jsonl'), 'utf8'), stream(builder, 1.5, 12));
+  // Each step is noted in a file of its own: the card at every move, each agent's result, the check, the merge.
+  const notes = jsonl(join(logs(f.dir), 'steps.jsonl'));
+  assert.deepEqual(notes.map((n) => n.column ?? n.agent ?? n.step), ['start', 'Build', 'builder', 'Verify', 'check', 'Review', 'reviewer', 'Verify', 'Done', 'merged']);
+  assert.deepEqual(notes.filter((n) => n.step === 'agent').map((n) => [n.ending, n.cost, n.turns]), [['success', 1.5, 12], ['success', 0.25, 3]]);
+  assert.ok(notes.every((n) => n.round === 1 && typeof n.at === 'string'));
   const calls = f.claudeCalls();
   assert.deepEqual(calls.map((c) => c.watched), ['', '']);
   assert.equal(sh(f.dir, 'status', '--porcelain'), '');
@@ -171,7 +177,7 @@ test('a ticket the reviewer fails twice goes to Needs Human after round 2, on th
   assert.equal(new Set(calls.map((c) => realpathSync(c.cwd))).size, 1);
   assert.match(calls[2].stdin, /Round 2 of 2[\s\S]*What failed in round 1, word for word:\nthe reviewer's verdict: VERDICT: FAIL\nFor the Builder: fix 1/);
   assert.match(calls[3].stdin, /Your previous verdict, word for word:\nVERDICT: FAIL\nFor the Builder: fix 1/);
-  assert.deepEqual(readdirSync(logs(f.dir)).sort(), ['builder-1.jsonl', 'builder-2.jsonl', 'comment.md', 'reviewer-1.jsonl', 'reviewer-2.jsonl']);
+  assert.deepEqual(readdirSync(logs(f.dir)).sort(), ['builder-1.jsonl', 'builder-2.jsonl', 'comment.md', 'reviewer-1.jsonl', 'reviewer-2.jsonl', 'steps.jsonl']);
   assert.deepEqual(calls.map((c) => c.watched), ['', '', '', '']);
   assert.equal(sh(f.dir, 'status', '--porcelain'), '');
 

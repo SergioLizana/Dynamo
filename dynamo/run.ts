@@ -13,6 +13,7 @@ import { copy } from './copy.ts';
 import type { Item, State } from './lists.ts';
 import { atOnceOf, listOf, schedule } from './lists.ts';
 import { mainFolder, runTicket } from './loop.ts';
+import { noteSkipped } from './notes.ts';
 import { oneLine } from './releases.ts';
 import { report } from './report.ts';
 
@@ -24,10 +25,16 @@ export async function run(args: string[], deps: Deps): Promise<Output> {
 
   // Each ticket's own JSON line, kept for the line of the list; a ticket ends with one, whatever happened in it.
   const results = new Map<number, Output>();
+  // A skipped ticket is noted in its log folder too, so that `dynamo status` can say why.
+  const logs = join(mainFolder(deps), '.claude', 'worktrees', 'logs');
+  const skip = (list: Item[], n: number, why: string) => {
+    set(list, n, 'skipped', why);
+    noteSkipped(join(logs, String(n)), why);
+  };
   const running = new Map<number, Promise<number>>();
   for (;;) {
     const next = schedule(items, atOnce);
-    for (const s of next.skip) set(items, s.number, 'skipped', s.why);
+    for (const s of next.skip) skip(items, s.number, s.why);
     for (const n of next.start) {
       set(items, n, 'running', null);
       running.set(n, exit(() => runTicket(n, deps)).then(({ out }) => {
@@ -40,7 +47,7 @@ export async function run(args: string[], deps: Deps): Promise<Output> {
     running.delete(n);
     const out = results.get(n) ?? { ok: false };
     // A ticket that `dynamo board` no longer gave as ready when its turn came was never started.
-    if (out.started === false) set(items, n, 'skipped', typeof out.why === 'string' ? out.why : 'not ready when its turn came');
+    if (out.started === false) skip(items, n, typeof out.why === 'string' ? out.why : 'not ready when its turn came');
     else set(items, n, out.merged === true ? 'merged' : 'blocked', null);
   }
 
@@ -53,7 +60,7 @@ export async function run(args: string[], deps: Deps): Promise<Output> {
   }
 
   const skipped = items.filter((i) => i.state === 'skipped').map((i) => ({ number: i.number, why: String(i.why) }));
-  const file = join(mainFolder(deps), '.claude', 'worktrees', 'logs', 'run-skipped.json');
+  const file = join(logs, 'run-skipped.json');
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify(skipped));
   const made = await exit(() => report(['--skipped', file], deps));
