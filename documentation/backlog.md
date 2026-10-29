@@ -234,12 +234,17 @@ Small things found when reviewing the list #53-#58. None is a problem yet; each 
 ## The Builder starts with tools it never uses
 
 - **Origin:** the `init` line of `.claude/worktrees/logs/91/builder-1.jsonl` (2026-10-29): 36 tools (the Claude Docs MCP,
-  Workflow, Cron, WebSearch, DesignSync…) and about 70 skills, because `builder.md` has no `tools:` line and `claude -p`
-  inherits everything. All of it is in the context of each of its turns.
-- **Idea:** a `tools:` line in `builder.md` (Read, Edit, Write, Bash, Glob, Grep, StructuredOutput), as `reviewer.md`
-  has, and `--strict-mcp-config` and `--disable-slash-commands` in `dynamo/claude.ts` (both in `claude --help` of
-  2.1.312). Not measured how much it saves.
-- **When:** the human decides; it is measured on one list against 90 91 92.
+  Workflow, Cron, WebSearch, DesignSync…) and about 70 skills, because `builder.md` had no `tools:` line and `claude -p`
+  inherits everything. Matt Pocock trims the same («How To Kill The Bloat In Claude Code's System Prompt», aihero.dev).
+- **Done (by hand, the human's choice, 2026-10-29):** `builder.md` has `tools: Read, Edit, Write, Bash, Glob, Grep, Skill,
+  StructuredOutput` (what the Builders of 90 91 92 used); the reviewer runs with `--disable-slash-commands`. The Builder
+  keeps the skills: #92's used `plugin-authoring`, which its ticket asked for. `--strict-mcp-config` is not needed: a
+  `tools:` line already leaves out every MCP tool (probed with #91's fix, `2980b4d`).
+- **Probed** with `claude -p --agent <name> --model haiku` and a schema: the Builder starts with 8 tools and 18.0 k tokens
+  of context in its first turn (25.7-27.4 k in 90 91 92); the reviewer with 0 skills, no MCP server and 9.8 k (10.2 k).
+  Both answered with their schema.
+- **Left:** the Builder still sees 41 skills. Pocock's settings (`disableBundledSkills`, `skillOverrides`, through
+  `--settings`) could trim them; not tried. To check on the next list: turns and cost against 90 91 92.
 
 ## Tools to save tokens that were looked at and left out
 

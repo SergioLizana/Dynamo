@@ -93,6 +93,7 @@ test('parseStream treats what claude printed as unknown: a field of the wrong ty
 
 const run: AgentRun = {
   agent: 'builder', prompt: 'Build #86.', cwd: '/copy', log: '/logs/86.jsonl', schema: { type: 'object' }, budget: 2.5, session: SESSION,
+  skills: true,
 };
 
 test('agentArgs: the flags the loop needs, each with its value', () => {
@@ -100,6 +101,11 @@ test('agentArgs: the flags the loop needs, each with its value', () => {
     '-p', '--agent', 'builder', '--output-format', 'stream-json', '--verbose', '--json-schema', '{"type":"object"}',
     '--max-budget-usd', '2.5', '--permission-mode', 'auto', '--permission-prompts', 'none', '--session-id', SESSION,
   ]);
+});
+
+test('agentArgs: a run without skills gets --disable-slash-commands, one with skills does not', () => {
+  assert.ok(agentArgs({ ...run, agent: 'reviewer', skills: false }).includes('--disable-slash-commands'));
+  assert.ok(!agentArgs(run).includes('--disable-slash-commands'));
 });
 
 test('agentArgs never sets the tools by flag: the agent file is the one list, and it wins over --tools', () => {

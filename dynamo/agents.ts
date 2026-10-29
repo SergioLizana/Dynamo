@@ -11,7 +11,8 @@
 // (tests/claude.test.ts checks the agents dynamo runs).
 
 // One agent run: the agent of `.claude/agents/<agent>.md`, the folder (a copy) it works in, the file that keeps its whole
-// stream, the JSON schema of its answer, the most it may spend (USD), and the session id it gets.
+// stream, the JSON schema of its answer, the most it may spend (USD), the session id it gets, and whether it sees the
+// skills (the Builder may need one a ticket names, as #92 used plugin-authoring; the reviewer only reads and judges).
 export type AgentRun = {
   agent: string;
   prompt: string;
@@ -20,6 +21,7 @@ export type AgentRun = {
   schema: unknown;
   budget: number;
   session: string;
+  skills: boolean;
 };
 
 // How an agent ended: success, its budget spent, paused (any other end: a usage limit, a stream with no result at all, an
@@ -37,7 +39,9 @@ export type AgentResult = {
 };
 
 // The agent runs without anyone to answer a permission prompt: `none` denies what would ask, and `auto` decides the rest.
-// The prompt goes on stdin, so its length is no limit on the command line.
+// The prompt goes on stdin, so its length is no limit on the command line. A run without skills gets
+// `--disable-slash-commands`, which takes every skill out of its context, the project's too: to give it one back, its
+// agent file can tell it to read that SKILL.md as a file, or the run drops the flag.
 export function agentArgs(run: AgentRun): string[] {
   return [
     '-p', '--agent', run.agent,
@@ -46,6 +50,7 @@ export function agentArgs(run: AgentRun): string[] {
     '--max-budget-usd', String(run.budget),
     '--permission-mode', 'auto', '--permission-prompts', 'none',
     '--session-id', run.session,
+    ...(run.skills ? [] : ['--disable-slash-commands']),
   ];
 }
 

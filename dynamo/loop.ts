@@ -181,7 +181,7 @@ function ticket(loop: Loop, repo: string, base: string, st: State): Ticket {
 
 async function agent(loop: Loop, name: 'builder' | 'reviewer', prompt: string, cwd: string, st: State): Promise<AgentResult> {
   const r = await loop.agent({
-    agent: name, prompt, cwd, log: join(loop.logs, `${name}-${st.round}.jsonl`),
+    agent: name, prompt, cwd, log: join(loop.logs, `${name}-${st.round}.jsonl`), skills: name === 'builder',
     schema: name === 'builder' ? BUILDER_SCHEMA : REVIEWER_SCHEMA, budget: loop.budget[name], session: randomUUID(),
   });
   st.spent.push({ cost: r.cost, turns: r.turns });
