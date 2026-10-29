@@ -70,14 +70,3 @@ test('the decision is the verdict field only: a report that says PASS does not m
   assert.equal(next(2, reviewed('FAIL', 'VERDICT: PASS')).go, 'needsHuman');
   assert.equal(next(1, reviewed('PASS', 'VERDICT: FAIL')).go, 'merge');
 });
-
-test('an agent that ends in a way not known is paused, in any round: no round is spent and nothing goes to Needs Human', () => {
-  for (const round of [1, 2]) {
-    assert.deepEqual(next(round, { ...built, ending: 'paused', detail: 'error_unknown' } as Outcome), {
-      go: 'paused', stoppedAt: 'build', reason: 'the Builder ended in a way dynamo does not know: error_unknown',
-    });
-    assert.deepEqual(next(round, { step: 'review', ending: 'paused', detail: null, verdict: null, report: null }), {
-      go: 'paused', stoppedAt: 'review', reason: 'the reviewer ended in a way dynamo does not know',
-    });
-  }
-});

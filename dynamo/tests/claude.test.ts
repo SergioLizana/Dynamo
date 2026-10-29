@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { agentArgs, endingOf, parseStream } from '../agents.ts';
+import { agentArgs, parseStream } from '../agents.ts';
 import type { AgentRun } from '../agents.ts';
 import { claude, runAgent } from '../claude.ts';
 import { fakeClaudeEnv, noGhEnv, scratch } from './helpers.ts';
@@ -42,29 +42,16 @@ test('parseStream: the budget ending is also read from terminal_reason alone', (
   assert.equal(parseStream(line).ending, 'budget');
 });
 
-test('parseStream: any other end is «paused» with the subtype or the errors as detail', () => {
+test('parseStream: any other error is «error» with the subtype or the errors as detail', () => {
   const failed = JSON.stringify({ type: 'result', subtype: 'error_during_execution', is_error: true, total_cost_usd: 0.5, num_turns: 9, session_id: 's1' });
-  assert.deepEqual(parseStream(failed), { ending: 'paused', structured: null, cost: 0.5, turns: 9, session: 's1', detail: 'error_during_execution' });
+  assert.deepEqual(parseStream(failed), { ending: 'error', structured: null, cost: 0.5, turns: 9, session: 's1', detail: 'error_during_execution' });
   const limit = JSON.stringify({ type: 'result', subtype: 'error_x', is_error: true, errors: ['one', 'two'] });
   assert.equal(parseStream(limit).detail, 'one; two');
 });
 
-test('parseStream: a result that says is_error is paused even when its subtype says success', () => {
+test('parseStream: a result that says is_error is an error even when its subtype says success', () => {
   const line = JSON.stringify({ type: 'result', subtype: 'success', is_error: true });
-  assert.equal(parseStream(line).ending, 'paused');
-});
-
-test('endingOf: success, budget exhausted, and paused (no result, is_error without a known ending, an unknown or missing subtype)', () => {
-  assert.equal(endingOf({ type: 'result', subtype: 'success', is_error: false }), 'success');
-  assert.equal(endingOf({ type: 'result', subtype: 'success' }), 'success');
-  assert.equal(endingOf({ type: 'result', subtype: 'error_max_budget_usd', is_error: true }), 'budget');
-  assert.equal(endingOf({ type: 'result', subtype: 'error_during_execution', terminal_reason: 'budget_exhausted' }), 'budget');
-  assert.equal(endingOf(undefined), 'paused', 'no result line');
-  assert.equal(endingOf({ type: 'result', subtype: 'success', is_error: true }), 'paused');
-  assert.equal(endingOf({ type: 'result', subtype: 'error_unknown', is_error: true }), 'paused');
-  assert.equal(endingOf({ type: 'result', subtype: 'error_max_turns', is_error: true }), 'paused');
-  assert.equal(endingOf({ type: 'result', is_error: true }), 'paused');
-  assert.equal(endingOf({ type: 'result' }), 'paused');
+  assert.equal(parseStream(line).ending, 'error');
 });
 
 test('parseStream: a success with no structured output has null for it, so the caller decides', () => {
@@ -72,10 +59,10 @@ test('parseStream: a success with no structured output has null for it, so the c
   assert.deepEqual(parseStream(line), { ending: 'success', structured: null, cost: 0.1, turns: 1, session: null, detail: null });
 });
 
-test('parseStream: a stream with no result line (the process died) is paused, with the session of the init line', () => {
+test('parseStream: a stream with no result line (the process died) is an error, with the session of the init line', () => {
   const r = parseStream([init, step].join('\n'));
-  assert.deepEqual(r, { ending: 'paused', structured: null, cost: null, turns: null, session: SESSION, detail: 'the stream has no result line' });
-  assert.equal(parseStream('').ending, 'paused');
+  assert.deepEqual(r, { ending: 'error', structured: null, cost: null, turns: null, session: SESSION, detail: 'the stream has no result line' });
+  assert.equal(parseStream('').ending, 'error');
   assert.equal(parseStream('').session, null);
 });
 
@@ -186,38 +173,23 @@ test('runAgent decides from the stream, not from the exit code: a result that su
   assert.equal((await runAgent({ ...run, cwd: folder, log: join(folder, 'l') }, { env: fakeClaudeEnv(state) })).ending, 'success');
 });
 
-test('runAgent with no claude on the PATH and no DYNAMO_CLAUDE is paused with the reason, and the log keeps how the process ended', async () => {
+test('runAgent with no claude on the PATH and no DYNAMO_CLAUDE ends in error with the reason, and still writes an empty log', async () => {
   const folder = scratch();
   const log = join(folder, 'l.jsonl');
   const r = await runAgent({ ...run, cwd: folder, log }, { env: noGhEnv() });
-  assert.equal(r.ending, 'paused');
+  assert.equal(r.ending, 'error');
   assert.match(String(r.detail), /the stream has no result line.*claude exited 127: claude: /);
-  const [end, ...more] = readFileSync(log, 'utf8').split('\n').filter((l) => l !== '').map((l) => JSON.parse(l));
-  assert.equal(more.length, 0);
-  assert.deepEqual([end.type, end.subtype, end.exit_code], ['dynamo', 'process_end', 127]);
-  assert.match(end.stderr, /^claude: /);
+  assert.equal(existsSync(log), true);
+  assert.equal(readFileSync(log, 'utf8'), '');
 });
 
 test('runAgent with a claude that printed nothing and failed keeps the end of its stderr in the detail', async () => {
   const state = scratch();
   const folder = scratch();
   answer(state, { stderr: 'boom: no session\n', code: 1 });
-  const log = join(folder, 'l');
-  const r = await runAgent({ ...run, cwd: folder, log }, { env: fakeClaudeEnv(state) });
-  assert.equal(r.ending, 'paused');
+  const r = await runAgent({ ...run, cwd: folder, log: join(folder, 'l') }, { env: fakeClaudeEnv(state) });
+  assert.equal(r.ending, 'error');
   assert.match(String(r.detail), /claude exited 1: boom: no session/);
-  assert.match(readFileSync(log, 'utf8'), /"subtype":"process_end","exit_code":1,"stderr":"boom: no session/);
-});
-
-test('runAgent with an unknown error in the result line is paused, and its log stays exactly as claude wrote it', async () => {
-  const state = scratch();
-  const folder = scratch();
-  const unknown = JSON.stringify({ type: 'result', subtype: 'error_unknown', is_error: true, errors: ['usage limit: resets at 5pm'], total_cost_usd: 0.2, num_turns: 4 });
-  answer(state, { stdout: [init, unknown].join('\n') + '\n', code: 1 });
-  const log = join(folder, 'l');
-  const r = await runAgent({ ...run, cwd: folder, log }, { env: fakeClaudeEnv(state) });
-  assert.deepEqual([r.ending, r.detail, r.cost, r.turns], ['paused', 'usage limit: resets at 5pm', 0.2, 4]);
-  assert.equal(readFileSync(log, 'utf8'), [init, unknown].join('\n') + '\n');
 });
 
 test('runAgent is asynchronous and the log is claude\'s stdout itself: a line printed while the agent works is in the log before it exits', async () => {

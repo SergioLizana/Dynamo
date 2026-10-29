@@ -92,10 +92,3 @@ test('the table has a row per ticket, then the blocked and the skipped with thei
     '  #9: blocker #8 stopped in this run',
   ]);
 });
-
-test('a paused ticket is not running even when its agent left no result line, and it is not blocked', () => {
-  const s = statusOf([{ ticket: 1, files: { 'builder-1.jsonl': stream(said('Working on it.')), 'steps.jsonl': notes({ step: 'column', column: 'Build' }, { step: 'paused', text: 'usage limit' }) } }]);
-  assert.equal(s.rows[0].running, false);
-  assert.equal(s.rows[0].column, 'Build');
-  assert.deepEqual(s.blocked, []);
-});

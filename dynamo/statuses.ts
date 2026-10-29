@@ -4,9 +4,9 @@
 import { parseLine } from './agents.ts';
 
 // One step of a ticket, as `dynamo run` notes it: it started, its card moved to a column, an agent ended, the check ended
-// (`text`: how), it merged, it stopped (`text`: why), it paused (`text`: why) or it was skipped (`text`: why).
+// (`text`: how), it merged, it stopped (`text`: why) or it was skipped (`text`: why).
 export type Note = {
-  step: 'start' | 'column' | 'agent' | 'check' | 'merged' | 'stopped' | 'paused' | 'skipped';
+  step: 'start' | 'column' | 'agent' | 'check' | 'merged' | 'stopped' | 'skipped';
   round: number;
   at: string;
   column?: string;
@@ -46,7 +46,7 @@ export function statusOf(folders: LogFolder[]): Status {
     const agents = agentsOf(f.files);
     const results = agents.map((a) => a.text.split('\n').map(parseLine).findLast((l) => l?.type === 'result'));
     const latest = agents.at(-1);
-    const ended = last?.step === 'stopped' || last?.step === 'merged' || last?.step === 'paused';
+    const ended = last?.step === 'stopped' || last?.step === 'merged';
     if (last?.step === 'stopped') status.blocked.push({ ticket: f.ticket, reason: last.text ?? 'stopped' });
     status.rows.push({
       ticket: f.ticket,

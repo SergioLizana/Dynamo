@@ -4,9 +4,8 @@
 import type { Row } from './frontier.ts';
 import { BLOCKED } from './frontier.ts';
 
-// `waiting` until it starts; `blocked` is a ticket that stopped (in Needs Human); `paused` one whose agent ended in a way
-// dynamo does not know (a usage limit); `skipped` never starts.
-export type State = 'waiting' | 'running' | 'merged' | 'blocked' | 'paused' | 'skipped';
+// `waiting` until it starts; `blocked` is a ticket that stopped (in Needs Human); `skipped` never starts.
+export type State = 'waiting' | 'running' | 'merged' | 'blocked' | 'skipped';
 // `blockers`: the numbers of the blockers that were not done when the list was read.
 export type Item = { number: number; blockers: number[]; state: State; why: string | null };
 export type Skip = { number: number; why: string };
@@ -35,8 +34,7 @@ export function listOf(rows: Row[], given: boolean): Item[] {
 
 // What happens now: the waiting tickets that can no longer start are skipped (a blocker outside the list, stopped or
 // skipped, or a cycle of blockers), and the ones whose blockers are all merged start, by number, while fewer than
-// `atOnce` run. The list is over when nothing runs and nothing starts. Once a ticket is paused nothing starts again: the
-// ones that run are left to end and the waiting ones are skipped.
+// `atOnce` run. The list is over when nothing runs and nothing starts.
 export function schedule(items: Item[], atOnce: number): Next {
   const skip = propagate(items);
   const skipped = new Set(skip.map((s) => s.number));
@@ -44,11 +42,6 @@ export function schedule(items: Item[], atOnce: number): Next {
   const waiting = items.filter((i) => state.get(i.number) === 'waiting');
   const running = items.filter((i) => i.state === 'running').length;
   const ready = waiting.filter((i) => i.blockers.every((b) => state.get(b) === 'merged')).sort((a, b) => a.number - b.number);
-  const paused = items.find((i) => i.state === 'paused');
-  if (paused !== undefined) {
-    for (const i of waiting) skip.push({ number: i.number, why: `the list paused at #${paused.number}` });
-    return { start: [], skip, done: running === 0 };
-  }
   const start = ready.slice(0, Math.max(0, atOnce - running)).map((i) => i.number);
   // Nothing runs and nothing can start, yet some wait: each of them waits on another that waits.
   if (running === 0 && start.length === 0) {
@@ -79,6 +72,5 @@ function reason(blocker: number, state: State | undefined): string | null {
   if (state === undefined) return `${BLOCKED}#${blocker}, which is not in the list`;
   if (state === 'blocked') return `blocker #${blocker} stopped in this run`;
   if (state === 'skipped') return `blocker #${blocker} was skipped`;
-  if (state === 'paused') return `blocker #${blocker} paused`;
   return null;
 }
