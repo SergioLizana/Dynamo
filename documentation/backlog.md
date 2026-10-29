@@ -250,6 +250,23 @@ Small things found when reviewing the list #53-#58. None is a problem yet; each 
 - **Left:** the Builder still sees 41 skills. Pocock's settings (`disableBundledSkills`, `skillOverrides`, through
   `--settings`) could trim them; not tried. To check on the next list: turns and cost against 90 91 92.
 
+## PonyTail: the Builder writes less code
+
+- **Origin:** question of the human, 2026-10-29, among other skills looked at (Graphify, Superpowers, Agent Skills,
+  Karpathy, Anthropic skills, UI UX Pro Max, Taste Skill, Caveman).
+- **What it is:** an MIT Claude Code plugin by Dietrich Gebert (`DietrichGebert/ponytail`). Before writing code the agent
+  climbs a ladder: is it needed, does it already exist in the code, does the standard library or the platform do it;
+  only then the least that works. Validation, error handling, security and accessibility are never cut.
+- **Verified only from sources:** its README claims about 54 % less code and 20 % less cost; an independent JetBrains test
+  (80 paired tasks, 2026-07) measured -15 % code, -10.3 % cost and -11 % time, with no quality difference it could see
+  (80 pairs only rule out large ones). Not tried here.
+- **Why not installed as is:** it is a plugin with Node lifecycle hooks, so it would also act in the human's session, not
+  only in the Builder's; and its rules overlap with the Builder's («only what the ticket asks») and `CLAUDE.md` («no
+  speculative design»). Not checked whether a plugin's hooks run in `claude -p --agent builder`.
+- **How to try it:** one list with it against one without, on tickets of the same size: turns, cost, lines changed,
+  rounds and the reviewer's verdicts. If it helps, the ladder may fit as a rule in `builder.md` instead of the plugin.
+- **When:** after the chain of phase 3, on a list whose tickets are comparable to 90 91 92; or on the first real project.
+
 ## Tools to save tokens that were looked at and left out
 
 - **Origin:** question of the human, 2026-10-29.
