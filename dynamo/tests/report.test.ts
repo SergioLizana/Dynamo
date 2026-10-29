@@ -8,7 +8,7 @@ import { exec } from '../exec.ts';
 import { gh } from '../gh.ts';
 import { git } from '../git.ts';
 import { report } from '../report.ts';
-import { commands, remoteNote, render } from '../reports.ts';
+import { commands, remoteNote, render, skippedOf } from '../reports.ts';
 import { PLACEHOLDER, costOf, isResult, lastResult, mergedTickets, outOfTicket, prOf, remoteOf, ticketOf } from '../releases.ts';
 import { DYNAMO, fakeGhEnv, scratch } from './helpers.ts';
 import type { Deps } from '../cli.ts';
@@ -103,6 +103,15 @@ test('render has the sections Needs Human, Out of the ticket and Cost, and one C
   assert.deepEqual(text.match(/^Closes #\d+$/gm), ['Closes #3', 'Closes #5', 'Closes #6']);
   assert.match(render({ ...facts, stuck: [], tickets: [], cost: '$1' }), /### Needs Human\n\n- none\n[\s\S]*- nothing\n[\s\S]*of the session: \$1\n$/);
   assert.match(render({ ...facts, stuck: null }), /### Needs Human\n\n- not read\n/);
+  assert.doesNotMatch(text, /Skipped/);
+});
+
+test('render has the tickets a run skipped, with why, only when a run gives them; skippedOf reads them or refuses', () => {
+  const skipped = [{ number: 4, why: 'blocker #3 stopped in this run' }];
+  assert.match(render({ ...facts, skipped }), /### Needs Human\n\n- #9 «Nine»\n\n### Skipped by the run\n\n- #4: blocker #3 stopped in this run\n/);
+  assert.match(render({ ...facts, skipped: [] }), /### Skipped by the run\n\n- none\n/);
+  assert.deepEqual(skippedOf(JSON.stringify([...skipped, { number: 5, why: 'x', extra: 1 }])), [...skipped, { number: 5, why: 'x' }]);
+  for (const bad of ['', 'nope', '{}', '[1]', '[{"number":"4","why":"x"}]', '[{"number":4}]']) assert.equal(skippedOf(bad), null, bad);
 });
 
 test('commands: the push first when the remote lacks commits, then pr create, or pr edit when a PR is open', () => {
@@ -251,7 +260,21 @@ test('it refuses what it cannot report on: the main branch, an unknown branch, a
   for (const bad of ['--help', 'a b', 'x;rm', '$(x)', '']) assert.throws(() => report([bad], deps(dir)), UsageError, bad);
   assert.throws(() => report(['a', 'b'], deps(dir)), UsageError);
   assert.throws(() => report([], deps(dir, fakeGh(), { repo: 'norepo' })), /owner\/name/);
+  for (const bad of [['--skipped'], ['--skipped', ''], [BASE, 'x', '--skipped', 'f']]) assert.throws(() => report(bad, deps(dir)), UsageError, bad.join(' '));
+  assert.throws(() => report(['--skipped', join(scratch(), 'none.json')], deps(dir)), /cannot read/);
   assert.equal(existsSync(join(dir, '.claude')), false, 'nothing was written');
+});
+
+test('--skipped <file> puts the tickets a run skipped in the report, with the base given or the working branch', () => {
+  const dir = repo();
+  const file = join(scratch(), 'skipped.json');
+  writeFileSync(file, JSON.stringify([{ number: 8, why: 'blocker #7 stopped in this run' }]));
+  for (const args of [['--skipped', file], ['--skipped', file, BASE], [BASE, '--skipped', file]]) {
+    assert.equal(report(args, deps(dir)).ok, true, args.join(' '));
+    assert.match(readFileSync(join(dir, FILE), 'utf8'), /### Skipped by the run\n\n- #8: blocker #7 stopped in this run\n/);
+  }
+  writeFileSync(file, '{"not":"a list"}');
+  assert.throws(() => report(['--skipped', file], deps(dir)), /not a list of skipped tickets/);
 });
 
 // --- The entry point: `dynamo report` through node, with the real config of this repository and the fake gh. Report needs

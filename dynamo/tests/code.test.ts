@@ -91,5 +91,9 @@ test('the decisions of the loop are pure: rounds, briefs and runs import nothing
 
 test('run gets gh, git, claude and the config as parameters: it imports none of their modules', () => {
   const edges = ['./exec.ts', './gh.ts', './git.ts', './factory.ts', './claude.ts', 'node:child_process'];
-  assert.deepEqual(imports('run.ts').filter((i) => !i.type && edges.includes(i.from)), []);
+  for (const name of ['run.ts', 'loop.ts']) assert.deepEqual(imports(name).filter((i) => !i.type && edges.includes(i.from)), [], name);
+});
+
+test('the scheduling of a list is pure: lists.ts imports nothing but types and the frontier', () => {
+  assert.deepEqual(imports('lists.ts').filter((i) => !i.type && i.from !== './frontier.ts'), []);
 });
