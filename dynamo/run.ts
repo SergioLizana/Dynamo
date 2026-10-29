@@ -1,7 +1,8 @@
 // `dynamo run [n ...]`: a list of tickets through the loop (loop.ts), N at once (`ticketsAtOnce` of factory.json): the
 // tickets given or, with none, every open ticket that is ready or waits only on tickets of the list. A ticket starts once
 // its blockers of the list are merged; the dependents of one that stops, or of one skipped, are skipped and keep their card
-// where it was. Merges go one at a time: `dynamo merge` takes its lock. At the end the copies and branches of the merged
+// where it was. A ticket whose agent ends in a way not known (a usage limit) pauses the list: the agents running end, none
+// starts, the waiting tickets are skipped, the line says `paused` and the run exits 1. Merges go one at a time: `dynamo merge` takes its lock. At the end the copies and branches of the merged
 // tickets are removed (a blocked ticket keeps both for the human) and `dynamo report` writes the release report, with the
 // skipped tickets and why. Its commands are printed for the human; nothing is pushed.
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -48,7 +49,7 @@ export async function run(args: string[], deps: Deps): Promise<Output> {
     const out = results.get(n) ?? { ok: false };
     // A ticket that `dynamo board` no longer gave as ready when its turn came was never started.
     if (out.started === false) skip(items, n, typeof out.why === 'string' ? out.why : 'not ready when its turn came');
-    else set(items, n, out.merged === true ? 'merged' : 'blocked', null);
+    else set(items, n, out.merged === true ? 'merged' : out.paused === true ? 'paused' : 'blocked', null);
   }
 
   const notes: string[] = [];
@@ -59,6 +60,7 @@ export async function run(args: string[], deps: Deps): Promise<Output> {
     else notes.push(`the copy and branch of #${i.number} were not removed: ${oneLine(JSON.stringify(r.out))}`);
   }
 
+  const paused = items.filter((i) => i.state === 'paused').map((i) => i.number);
   const skipped = items.filter((i) => i.state === 'skipped').map((i) => ({ number: i.number, why: String(i.why) }));
   const file = join(logs, 'run-skipped.json');
   mkdirSync(dirname(file), { recursive: true });
@@ -69,7 +71,8 @@ export async function run(args: string[], deps: Deps): Promise<Output> {
   const sum = (key: string) => tickets.reduce((s, t) => s + (typeof t[key] === 'number' ? Number(t[key]) : 0), 0);
   return {
     ok: items.every((i) => i.state === 'merged') && made.code === 0 && notes.length === 0,
-    atOnce, tickets, cost: sum('cost'), turns: sum('turns'), removed, kept: items.filter((i) => i.state === 'blocked').map((i) => i.number),
+    atOnce, tickets, cost: sum('cost'), turns: sum('turns'), removed, kept: items.filter((i) => i.state === 'blocked' || i.state === 'paused').map((i) => i.number),
+    ...(paused.length ? { paused } : {}),
     ...(made.code === 0 ? { report: made.out.file, commands: made.out.commands } : { reportError: oneLine(JSON.stringify(made.out)) }),
     ...(notes.length ? { notes } : {}),
   };
@@ -87,5 +90,5 @@ function entry(i: Item, out: Output | undefined): Output {
   const spent = { rounds: o.rounds, cost: o.cost, turns: o.turns };
   if (i.state === 'merged') return { ok: true, ticket: i.number, merged: true, head: o.head, ...spent };
   const why = o.reason ?? o.error ?? o.commentError;
-  return { ok: false, ticket: i.number, merged: false, stoppedAt: o.stoppedAt ?? null, reason: typeof why === 'string' ? why : null, ...spent };
+  return { ok: false, ticket: i.number, merged: false, ...(i.state === 'paused' ? { paused: true } : {}), stoppedAt: o.stoppedAt ?? null, reason: typeof why === 'string' ? why : null, ...spent };
 }
