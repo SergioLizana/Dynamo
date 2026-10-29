@@ -136,6 +136,11 @@ The tickets still open when 0.1.0 was frozen are closed as superseded; what they
   - It is written with the `plugin-authoring` skill; the mod API was checked on Claude Code 2.1.312.
 - **Done when:** a list of 3 tickets with one dependency ends merged into the working branch with cost and turns
   recorded. That is «complete» (§8.1, stage 3b).
+- **State (the human, 2026-10-29): built.** `dynamo run 90 91 92` (#92 blocked by #90) ended with the three in the
+  release and their cost and turns in the comments, but not without the human: the reviewer's tools were fixed by hand
+  (`2980b4d`) and #90 and #91 relaunched, and a flaky test's revert of #91 was undone by hand (`d410780`, `bdbd94e`).
+  «Complete» stays pending: the first list of phase 3 (§3.5) proves it if it ends merged with nobody touching it, with
+  the two fixes of §3.2 in before it.
 
 ### Phase 3. Subtract, and the chain from idea to tickets
 

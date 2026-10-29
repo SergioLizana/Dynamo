@@ -250,6 +250,14 @@ Small things found when reviewing the list #53-#58. None is a problem yet; each 
 - **Left:** the Builder still sees 41 skills. Pocock's settings (`disableBundledSkills`, `skillOverrides`, through
   `--settings`) could trim them; not tried. To check on the next list: turns and cost against 90 91 92.
 
+## `dynamo report` misses a ticket whose merge was reverted and brought back by hand
+
+- **Origin:** the report of 0.2.0 (2026-10-29) lists 14 tickets and leaves out #91. It takes the tickets from the `(#n)` of
+  the merge commits since the main branch; #91's merge (`a718706`) was reverted (`c7061df`) and brought back by a revert
+  of the revert (`d410780`), which is not a merge commit. Its `Closes #91` was added to the PR by hand.
+- **When:** with the fix of §3.2 of `orchestrator-review.md` (merge and check in a copy, so nothing is reverted), this case
+  should not happen again; if it does, the report also reads the reverts.
+
 ## PonyTail: the Builder writes less code
 
 - **Origin:** question of the human, 2026-10-29, among other skills looked at (Graphify, Superpowers, Agent Skills,
