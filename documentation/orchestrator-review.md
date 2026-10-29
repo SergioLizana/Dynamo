@@ -139,7 +139,26 @@ The tickets still open when 0.1.0 was frozen are closed as superseded; what they
 
 ### Phase 3. Subtract
 
-- Delete what §4 marks; `/run` becomes the thin skill; rewrite `launch-list.md` as a short README; update `factory.md`.
+- Delete what §4 marks; `/run` becomes the thin skill, named `/autopilot` (one ticket, a list, or with no numbers
+  everything ready; the human's choice, 2026-10-29); rewrite `launch-list.md` as a short README; update `factory.md`.
+- Remove `/implement` too, once `dynamo run` has finished its first lists: it is a second implementation of the loop,
+  against the «Done when» below. With it go the line of `CLAUDE.md` «by hand only `/to-tasks`, `/implement` and the
+  `reviewer`», `documentation/launch-one-ticket.md` and its place under «Change» in the table of §4. A ticket stuck in
+  Needs Human is relaunched with `/autopilot <n>`; if `dynamo run` itself breaks, it is fixed in a plain session.
+- What the first list (`dynamo run 90 91 92`, 2026-10-29) showed, each a real problem with its evidence:
+  - **Tickets built at once that touch the same files collide at the merge, and each collision rebuilds a whole
+    ticket.** #91 was built next to #90; #90 merged first, and #91's merge stopped on a conflict in `dynamo/loop.ts`.
+    Relaunching it built it again from the start (1.49 USD, 81 turns). A lead: on a conflict, a Builder round in the
+    same copy that brings the new base into its branch and resolves it, then Verify and Review again, instead of
+    starting over. Keeping such tickets apart beforehand is harder: what a ticket touches is known only once built.
+  - **A flaky test makes the check after the merge revert a good change, and merging the same branch again brings
+    nothing back.** #91 had its reviewer's PASS, `dynamo merge` merged it (`a718706`), a test that depended on the
+    order of two agents starting at once failed, and the merge was reverted (`c7061df`). Its commits were already in
+    the release, so only a revert of the revert brought it back, by hand (`d410780`, `bdbd94e`). A lead: merge and
+    check in a copy, and move the working branch only when the check passes, so nothing is ever reverted and a
+    merge can always be repeated. Not a lead: running a failed check again by itself, which would hide flaky tests.
+  - The header of `dynamo/tests/fake-claude.ts` says that `calls.jsonl` lists the agents that run at once in the order
+    they started, which no test may rely on: the Builders read that header, and #91's test relied on it.
 - Clean up what the review of phase 1 left (2026-10-28), with the same cleanup:
   - One `setting()` in `dynamo/cli.ts`: drop the private copy in `dynamo/board.ts` and `read()` in `dynamo/merging.ts`.
     One loop that runs the checks, shared by `dynamo/verify.ts` and `dynamo/merge.ts`.
