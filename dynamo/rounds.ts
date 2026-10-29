@@ -21,10 +21,13 @@ export type Next =
   | { go: 'review' }
   | { go: 'merge' }
   | { go: 'build'; round: number; failed: string }
-  | { go: 'needsHuman'; stoppedAt: Stage; reason: string };
+  | { go: 'needsHuman'; stoppedAt: Stage; reason: string }
+  // An agent ended in a way that is not the ticket's failure: no round is spent and the card does not move.
+  | { go: 'paused'; stoppedAt: 'build' | 'review'; reason: string };
 
 export function next(round: number, o: Outcome): Next {
   if (o.step === 'build') {
+    if (o.ending === 'paused') return { go: 'paused', stoppedAt: 'build', reason: pauseOf('Builder', o.detail) };
     const stop = agentStop('Builder', o.ending, o.detail);
     if (stop !== null) return { go: 'needsHuman', stoppedAt: 'build', reason: stop };
     if (o.needsHuman) return { go: 'needsHuman', stoppedAt: 'build', reason: `the Builder needs the human: ${o.reason || 'no reason given'}` };
@@ -35,6 +38,7 @@ export function next(round: number, o: Outcome): Next {
     if (o.code === 2) return { go: 'needsHuman', stoppedAt: 'check', reason: `the automatic check did not run: ${o.output}` };
     return again(round, 'check', `the automatic check failed: ${o.output}`);
   }
+  if (o.ending === 'paused') return { go: 'paused', stoppedAt: 'review', reason: pauseOf('reviewer', o.detail) };
   const stop = agentStop('reviewer', o.ending, o.detail);
   if (stop !== null) return { go: 'needsHuman', stoppedAt: 'review', reason: stop };
   if (o.verdict === null) return { go: 'needsHuman', stoppedAt: 'review', reason: 'the reviewer gave no verdict' };
@@ -45,6 +49,10 @@ export function next(round: number, o: Outcome): Next {
 // A failure in a round that is not the last one goes to the next round with what failed; in the last one, to the human.
 function again(round: number, stoppedAt: Stage, failed: string): Next {
   return round < ROUNDS ? { go: 'build', round: round + 1, failed } : { go: 'needsHuman', stoppedAt, reason: failed };
+}
+
+function pauseOf(who: string, detail: string | null): string {
+  return `the ${who} ended in a way dynamo does not know${detail === null ? '' : `: ${detail}`}`;
 }
 
 // Why an agent's run stops the ticket, or null when it ended well: a spent budget or any other error of the agent.

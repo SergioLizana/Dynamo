@@ -214,3 +214,26 @@ test('a Builder that spends its budget sends the ticket to Needs Human, stopped 
   assert.deepEqual(f.claudeCalls().map((c) => c.agent), ['builder']);
   assert.match(f.issue().comments[0], /^run · not merged\n[\s\S]*Checks: not run\n[\s\S]*Stopped at: build\n/);
 });
+
+test('a reviewer that ends with no result line pauses the ticket in round 2 too: the round is kept, the card stays in Review, one paused comment', async () => {
+  const f = setup([
+    { agent: 'builder', ...built('a.txt'), stdout: stream(builder, 1, 5) },
+    { agent: 'reviewer', stdout: stream({ verdict: 'FAIL', report: 'VERDICT: FAIL\nFor the Builder: fix 1' }, 0.5, 3) },
+    { agent: 'builder', ...built('b.txt'), stdout: stream(builder, 1, 5) },
+    { agent: 'reviewer', stderr: 'Claude usage limit reached\n', code: 1 },
+  ]);
+  const out = await runTicket(7, f.deps);
+
+  assert.deepEqual([out.ok, out.merged, out.paused, out.rounds, out.stoppedAt], [false, false, true, 2, 'review']);
+  assert.deepEqual(moves(f.ghCalls()), ['Build', 'Verify', 'Review', 'Build', 'Verify', 'Review']);
+  assert.equal(f.claudeCalls().length, 4);
+  assert.deepEqual(branches(f.dir), ['ticket/7-run-one-ticket']);
+  const comments: string[] = f.issue().comments;
+  assert.equal(comments.length, 1);
+  assert.match(comments[0], /^run · paused\nPaused at: review\nRounds: 2\/2 /);
+  assert.match(comments[0], /"subtype":"process_end","exit_code":1,"stderr":"Claude usage limit reached/);
+  assert.match(comments[0], /\.claude\/worktrees\/logs\/7\/reviewer-2\.jsonl/);
+  const notes = jsonl(join(logs(f.dir), 'steps.jsonl'));
+  assert.equal(notes.at(-1).step, 'paused');
+  assert.ok(!notes.some((n) => n.column === 'Needs Human'));
+});

@@ -197,6 +197,56 @@ test('with no numbers the list is the open tickets that are ready or wait on it;
   assert.equal(Math.max(...f.claudeCalls().map((c) => c.running)), 1);
 });
 
+// What claude printed when the agent met a limit it has no name for: a result with an error subtype dynamo does not know.
+const limit = [
+  JSON.stringify({ type: 'system', subtype: 'init', session_id: 's' }),
+  JSON.stringify({ type: 'result', subtype: 'error_unknown', is_error: true, errors: ['usage limit: resets at 5pm'], total_cost_usd: 0.2, num_turns: 1, session_id: 's' }),
+].join('\n') + '\n';
+
+test('an agent that ends with an unknown error pauses the list: no round, no Needs Human, the running end, none starts, one comment, exit 1', async () => {
+  const hold = join(scratch(), 'hold');
+  const f = setup({ 1: [], 2: [], 3: [], 4: [1] }, [
+    { agent: 'builder', ticket: 1, stdout: limit, code: 1 },
+    { agent: 'builder', ticket: 2, commit: { file: '2.txt', text: '2', message: '2 (#2)' }, stdout: stream(answer) },
+    { agent: 'reviewer', ticket: 2, waitFor: hold, stdout: stream({ verdict: 'PASS', report: 'VERDICT: PASS' }) },
+    ...builds(3),
+  ]);
+  const running = run(['1', '2', '3', '4'], f.deps);
+  // #2 is still in its review when #1 pauses: it is left to end (its reviewer is released only after #1's comment).
+  const until = Date.now() + 15000;
+  while (f.issue(1).comments.length === 0 && Date.now() < until) await new Promise((r) => setTimeout(r, 25));
+  assert.equal(f.issue(1).comments.length, 1);
+  writeFileSync(hold, '');
+  const out = await running;
+
+  assert.equal(out.ok, false);
+  assert.deepEqual(out.paused, [1]);
+  const [one, two, three, four] = out.tickets as Record<string, unknown>[];
+  assert.deepEqual([one.ticket, one.merged, one.paused, one.stoppedAt, one.rounds], [1, false, true, 'build', 1]);
+  assert.match(String(one.reason), /the Builder ended in a way dynamo does not know: usage limit: resets at 5pm/);
+  assert.equal(two.merged, true);
+  assert.deepEqual(three, { ok: false, ticket: 3, skipped: 'the list paused at #1' });
+  assert.deepEqual(four, { ok: false, ticket: 4, skipped: 'blocker #1 paused' });
+  assert.deepEqual(out.kept, [1]);
+
+  // No round spent and the card where it was: Build, never Needs Human. The other tickets never started.
+  assert.deepEqual(moves(f.ghCalls(), 1), ['Build']);
+  assert.equal(f.issue(1).column, 'Build');
+  assert.deepEqual([3, 4].map((n) => f.issue(n).column), ['Todo', 'Todo']);
+  assert.deepEqual(f.claudeCalls().map((c) => [c.agent, c.ticket]), [['builder', 1], ['builder', 2], ['reviewer', 2]]);
+  assert.equal(f.claudeCalls().filter((c) => c.ticket === 1).length, 1, 'no second round');
+  assert.deepEqual(branches(f.dir), ['ticket/1-ticket-1']);
+
+  // One comment on the paused ticket: paused, the raw end of the agent from its log, how to relaunch.
+  const comments: string[] = f.issue(1).comments;
+  assert.equal(comments.length, 1);
+  assert.match(comments[0], /^run · paused\n/);
+  assert.match(comments[0], /"subtype":"error_unknown"/);
+  assert.match(comments[0], /usage limit: resets at 5pm/);
+  assert.match(comments[0], /To relaunch:.*dynamo run 1/);
+  assert.equal(readFileSync(join(f.dir, '.claude', 'worktrees', 'logs', '1', 'builder-1.jsonl'), 'utf8'), limit);
+});
+
 test('wrong arguments are a usage error', async () => {
   const f = setup({}, []);
   for (const args of [['x'], ['0'], ['7', '-1']]) await assert.rejects(() => run(args, f.deps), /usage: run \[n \.\.\.\]/, args.join(' '));

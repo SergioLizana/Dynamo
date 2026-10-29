@@ -89,3 +89,14 @@ test('schedule ends the list when nothing runs and nothing can start; an empty l
   assert.deepEqual(schedule([], 2), { start: [], skip: [], done: true });
   assert.equal(schedule([item(1, 'running')], 2).done, false);
 });
+
+test('schedule starts nothing once a ticket is paused: the waiting are skipped, the running are left to end', () => {
+  const items = [item(1, 'paused'), item(2, 'running'), item(3, 'waiting'), item(4, 'waiting', [1]), item(5, 'waiting', [2])];
+  assert.deepEqual(schedule(items, 3), {
+    start: [],
+    skip: [{ number: 4, why: 'blocker #1 paused' }, { number: 3, why: 'the list paused at #1' }, { number: 5, why: 'the list paused at #1' }],
+    done: false,
+  });
+  assert.deepEqual(schedule([item(1, 'paused'), item(2, 'merged'), item(3, 'skipped')], 3), { start: [], skip: [], done: true });
+  assert.deepEqual(schedule([item(1, 'paused'), item(2, 'waiting')], 2), { start: [], skip: [{ number: 2, why: 'the list paused at #1' }], done: true });
+});
