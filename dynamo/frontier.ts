@@ -8,6 +8,9 @@ export type Row = {
   ready: boolean; why: string | null;
 };
 
+// The start of the reason of a ticket that waits only on its blockers: a list run takes it to wait for them.
+export const BLOCKED = 'blocker not done: ';
+
 const isDone = (t: { state: string; doneLabel: boolean }) => t.state === 'CLOSED' || t.doneLabel;
 
 // The first reason that applies, in this order: done, in Needs Human, a blocker not done (closed or with the done label).
@@ -16,7 +19,7 @@ function whyNot(t: Ticket, rules: Rules): string | null {
   if (t.doneLabel) return `done (${rules.doneLabel})`;
   if (t.column === rules.needsHuman) return `in ${rules.needsHuman}`;
   const open = t.blockers.filter((b) => !isDone(b));
-  return open.length ? `blocker not done: ${open.map((b) => `#${b.number}`).join(', ')}` : null;
+  return open.length ? `${BLOCKED}${open.map((b) => `#${b.number}`).join(', ')}` : null;
 }
 
 export function frontier(tickets: Tickets, rules: Rules): Row[] {

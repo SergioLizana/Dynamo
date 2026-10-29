@@ -39,6 +39,12 @@ the release report; `read.js` reads `maxLine` and the project data from this fil
 agent that reaches it stops, and the ticket goes to *Needs Human* with that reason. Each is a number above 0; the
 `run` workflow does not read them.
 
+`ticketsAtOnce` is how many tickets of a list `dynamo run` takes at once, each in its own copy: so it is also the most
+agents that run at the same time, since a ticket runs one agent at a time. A ticket waits for a free place and for its
+blockers of the list to be merged; merges still go one at a time, whatever the number. It is a whole number from 1 (1
+runs the list one ticket after another); more spends more of the usage limit at once. The `run` workflow does not read
+it.
+
 The phases of the `run` workflow (order, column, model, effort,
 agent type and where a failure goes) are in `.claude/factory.json`. How to change them or add a phase:
 `documentation/launch-list.md`, «The phases».

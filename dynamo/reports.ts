@@ -12,7 +12,25 @@ export type Facts = {
   stuck: { number: number; title: string }[] | null;
   // The `/cost` line kept from the open PR, if there is one and it has one.
   cost: string | null;
+  // The tickets a `dynamo run` skipped, with why; only a run knows them, so a report made by hand has none.
+  skipped?: Skipped[];
 };
+
+export type Skipped = { number: number; why: string };
+
+// The skipped tickets as `run` writes them for the report (`[{ "number", "why" }]`), or null when that is not their shape.
+export function skippedOf(json: string): Skipped[] | null {
+  let list: unknown;
+  try { list = JSON.parse(json); } catch { return null; }
+  if (!Array.isArray(list)) return null;
+  const out: Skipped[] = [];
+  for (const s of list) {
+    const { number, why } = typeof s === 'object' && s !== null ? (s as Record<string, unknown>) : {};
+    if (typeof number !== 'number' || typeof why !== 'string') return null;
+    out.push({ number, why });
+  }
+  return out;
+}
 
 function line(e: Entry): string {
   if (e.title === null) return `- #${e.number}: merged; no ticket data on GitHub`;
@@ -35,6 +53,9 @@ export function render(f: Facts): string {
     `Tickets merged into ${f.base} since ${f.main}: ${f.tickets.length}, from the \`(#n)\` of its merge commits.`, '',
     '### Tickets', '', ...(f.tickets.length ? f.tickets.map(line) : ['- none']), '',
     `### ${f.needsHuman}`, '', ...stuck, '',
+    ...(f.skipped === undefined ? [] : [
+      '### Skipped by the run', '', ...(f.skipped.length ? f.skipped.map((s) => `- #${s.number}: ${oneLine(s.why, 200)}`) : ['- none']), '',
+    ]),
     '### Out of the ticket (for the backlog)', '', ...(seen.length ? seen : ['- nothing']), '',
     '### Cost', '', `- \`/cost\` of the session: ${f.cost ?? PLACEHOLDER}`, '',
     ...f.tickets.map((e) => `Closes #${e.number}`),

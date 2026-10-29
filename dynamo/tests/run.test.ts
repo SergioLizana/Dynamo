@@ -1,8 +1,9 @@
-// `dynamo run` end to end: a temporary repository, the fake gh (one issue that keeps its card, labels and comments) and the
-// fake claude (a Builder that commits in its copy, a reviewer that answers PASS or FAIL), with no gh or claude on the PATH.
+// `dynamo run [n ...]`, a list end to end: a temporary repository, the fake gh with many issues that keep their cards,
+// labels, comments and blockers, and the fake claude (Builders that commit in their copies, reviewers that pass), with no
+// gh or claude on the PATH.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runAgent } from '../claude.ts';
 import type { Deps } from '../cli.ts';
@@ -10,13 +11,13 @@ import { exec } from '../exec.ts';
 import type { Factory } from '../factory.ts';
 import { gh } from '../gh.ts';
 import { git } from '../git.ts';
-import { lastResult } from '../releases.ts';
+import { LOCK } from '../merging.ts';
 import { run } from '../run.ts';
 import { fakeClaudeEnv, fakeGhEnv, scratch } from './helpers.ts';
 
 const BASE = 'release/1.0.0';
 const options = { Todo: '1', Build: '2', Verify: '3', Review: '4', 'Needs Human': '5', Done: '6' };
-const factory = {
+const factory = (atOnce: number) => ({
   project: {
     repo: 'o/r', mainBranch: 'main', workingBranch: BASE, doneLabel: 'in-release', checks: ['node pass.js', 'git diff --check <base>'],
     boardOwner: 'o', boardNumber: 1, boardId: 'B', boardName: 'Dynamo', statusFieldId: 'S',
@@ -24,8 +25,9 @@ const factory = {
   columns: { todo: 'Todo', needsHuman: 'Needs Human', done: 'Done' },
   options,
   budgetUsd: { builder: 3, reviewer: 1 },
+  ticketsAtOnce: atOnce,
   phases: [{ name: 'Build', column: 'Build' }, { name: 'Verify', column: 'Verify' }, { name: 'Review', column: 'Review' }, { name: 'Merge', column: 'Done' }],
-} as unknown as Factory;
+}) as unknown as Factory;
 
 const sh = (cwd: string, ...args: string[]) => {
   const r = git(['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd });
@@ -33,7 +35,6 @@ const sh = (cwd: string, ...args: string[]) => {
   return r.stdout.trim();
 };
 
-// `main` with the gitignore of the copies and a check that passes; the working branch one commit past it, checked out.
 function repo(): string {
   const dir = scratch();
   sh(dir, 'init', '-q', '-b', 'main');
@@ -42,176 +43,154 @@ function repo(): string {
   sh(dir, 'add', '.');
   sh(dir, 'commit', '-q', '-m', 'A');
   sh(dir, 'checkout', '-q', '-b', BASE);
-  writeFileSync(join(dir, 'b.txt'), 'b');
-  sh(dir, 'add', 'b.txt');
-  sh(dir, 'commit', '-q', '-m', 'B');
   return dir;
 }
 
-const conn = (nodes: unknown[]) => ({ totalCount: nodes.length, nodes });
-const boardAnswer = (blockers: unknown[]) => JSON.stringify({ data: { repository: { t7: {
-  number: 7, title: 'Run one ticket', state: 'OPEN', labels: conn([]),
-  projectItems: conn([{ project: { id: 'B' }, fieldValues: conn([{ name: 'Todo', field: { id: 'S' } }]) }]), blockedBy: conn(blockers),
-} } } });
-
-// One line of the stream with the answer, as `claude -p --output-format stream-json` ends.
-const stream = (structured: unknown, cost: number, turns: number) => [
+const stream = (structured: unknown) => [
   JSON.stringify({ type: 'system', subtype: 'init', session_id: 's' }),
-  JSON.stringify({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: cost, num_turns: turns, session_id: 's', structured_output: structured }),
+  JSON.stringify({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0.5, num_turns: 2, session_id: 's', structured_output: structured }),
 ].join('\n') + '\n';
-const built = (file: string) => ({ commit: { file, text: file, message: `${file} (#7)` } });
-const builder = { commit: 'x', needsHuman: false, needsHumanReason: '', published: '', noTrace: '', outOfTicket: '' };
+const answer = { commit: 'x', needsHuman: false, needsHumanReason: '', published: '', noTrace: '', outOfTicket: '' };
+// A Builder of ticket n that commits n.txt, and its reviewer that passes; `extra` goes on the Builder's answer.
+const builds = (n: number, extra: Record<string, unknown> = {}) => [
+  { agent: 'builder', ticket: n, commit: { file: `${n}.txt`, text: String(n), message: `${n} (#${n})` }, stdout: stream(answer), ...extra },
+  { agent: 'reviewer', ticket: n, stdout: stream({ verdict: 'PASS', report: 'VERDICT: PASS' }) },
+];
 
-type Call = { args: string[]; stdin: string; cwd: string; agent: string; watched?: string };
+type Call = { agent: string; ticket: number; running: number; cwd: string };
 
-function setup(answers: Record<string, unknown>[], blockers: unknown[] = []) {
+function setup(issues: Record<number, number[]>, answers: Record<string, unknown>[], atOnce = 2) {
   const dir = repo();
   const ghState = scratch();
   const claudeState = scratch();
-  writeFileSync(join(ghState, 'answers.json'), JSON.stringify([{ args: ['api', 'graphql'], stdout: boardAnswer(blockers) }]));
-  writeFileSync(join(ghState, 'issue.json'), JSON.stringify({ title: 'Run one ticket', boardName: 'Dynamo', options, column: 'Todo', labels: [], comments: [] }));
-  writeFileSync(join(claudeState, 'answers.json'), JSON.stringify(answers.map((a) => ({ ...a, watch: dir }))));
+  const board = {
+    boardId: 'B', statusFieldId: 'S', boardName: 'Dynamo', options,
+    issues: Object.fromEntries(Object.entries(issues).map(([n, blockedBy]) => [n, { title: `Ticket ${n}`, column: 'Todo', labels: [], comments: [], blockedBy }])),
+  };
+  writeFileSync(join(ghState, 'board.json'), JSON.stringify(board));
+  writeFileSync(join(ghState, 'answers.json'), JSON.stringify([{ args: ['pr', 'list'], stdout: '[]' }]));
+  writeFileSync(join(claudeState, 'answers.json'), JSON.stringify(answers));
   const ghEnv = fakeGhEnv(ghState);
   const claudeEnv = { ...fakeClaudeEnv(claudeState), FAKE_CLAUDE_PATH: process.env.PATH ?? process.env.Path };
   const deps: Deps = {
     gh: (args, o) => gh(args, { ...o, env: ghEnv }),
     git: (args, o) => git(['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: dir, ...o }),
     exec,
-    factory: () => factory,
+    factory: () => factory(atOnce),
     agent: (r, o) => runAgent(r, { ...o, env: claudeEnv }),
   };
   const lines = (file: string) => (existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter((l) => l !== '').map((l) => JSON.parse(l)) : []);
   return {
-    dir, deps,
+    dir, deps, claudeState,
     ghCalls: (): string[][] => lines(join(ghState, 'calls.jsonl')).map((c) => c.args),
     claudeCalls: (): Call[] => lines(join(claudeState, 'calls.jsonl')),
-    issue: () => JSON.parse(readFileSync(join(ghState, 'issue.json'), 'utf8')),
+    issue: (n: number) => JSON.parse(readFileSync(join(ghState, 'board.json'), 'utf8')).issues[n],
   };
 }
 
-const moves = (calls: string[][]) => calls.filter((c) => c[0] === 'project' && c[1] === 'item-edit').map((c) => c[c.indexOf('--value') + 1]);
+const moves = (calls: string[][], n: number) => calls
+  .filter((c) => c[0] === 'project' && c[1] === 'item-edit' && c[c.indexOf('--url') + 1].endsWith(`/issues/${n}`))
+  .map((c) => c[c.indexOf('--value') + 1]);
 const branches = (dir: string) => sh(dir, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/ticket/').split('\n').filter((b) => b !== '');
-const logs = (dir: string) => join(dir, '.claude', 'worktrees', 'logs', '7');
-const flag = (c: Call, name: string) => (c.args.includes(name) ? c.args[c.args.indexOf(name) + 1] : undefined);
+const copies = (dir: string) => sh(dir, 'worktree', 'list', '--porcelain').split('\n').filter((l) => l.startsWith('worktree ')).length - 1;
+const mergeOf = (dir: string, n: number) => sh(dir, 'log', '--first-parent', '--format=%H %s', BASE).split('\n').find((l) => l.endsWith(`(#${n})`))?.split(' ')[0] ?? '';
 
-test('a ready ticket is built, checked, reviewed and merged: cards in order, one comment with cost and turns', async () => {
-  const f = setup([
-    { agent: 'builder', ...built('built.txt'), stdout: stream(builder, 1.5, 12) },
-    { agent: 'reviewer', stdout: stream({ verdict: 'PASS', report: 'VERDICT: PASS\nCheckboxes:\n- [x] it works — built.txt:1' }, 0.25, 3) },
+test('never more than N agents at once, and two builds overlap in time', async () => {
+  const [a, b] = [join(scratch(), 'a'), join(scratch(), 'b')];
+  const f = setup({ 1: [], 2: [], 3: [] }, [
+    ...builds(1, { touch: a, waitFor: b }), ...builds(2, { touch: b, waitFor: a }), ...builds(3),
   ]);
-  mkdirSync(logs(f.dir), { recursive: true });
-  writeFileSync(join(logs(f.dir), 'builder-9.jsonl'), 'an old run');
-  const before = sh(f.dir, 'rev-parse', 'HEAD');
+  const started = Date.now();
+  const out = await run([], f.deps);
+  assert.equal(out.ok, true, JSON.stringify(out));
+  assert.equal(out.atOnce, 2);
+  const calls = f.claudeCalls();
+  assert.equal(calls.length, 6);
+  assert.equal(Math.max(...calls.map((c) => c.running)), 2, JSON.stringify(calls.map((c) => [c.agent, c.ticket, c.running])));
+  // The builders of #1 and #2 each wait for the other to start: had they run one after the other, one would wait 20 s.
+  assert.ok(Date.now() - started < 20000);
+  assert.equal(calls.filter((c) => c.ticket === 3)[0].agent, 'builder');
+  assert.ok(calls.findIndex((c) => c.ticket === 3) > 1, 'the third ticket waits for a free place');
+});
 
-  const out = await run(['7'], f.deps);
+test('a list of 3 tickets with 1 dependency is all merged: the dependent starts when its blocker merges, one merge at a time', async () => {
+  const f = setup({ 1: [], 2: [1], 3: [] }, [...builds(1), ...builds(2), ...builds(3)]);
+  const out = await run(['1', '2', '3'], f.deps);
 
   assert.equal(out.ok, true, JSON.stringify(out));
-  assert.equal(out.merged, true);
-  assert.equal(out.rounds, 1);
-  assert.deepEqual([out.cost, out.turns], [1.75, 15]);
-  assert.deepEqual(moves(f.ghCalls()), ['Build', 'Verify', 'Review', 'Verify', 'Done']);
-  assert.equal(sh(f.dir, 'log', '-1', '--format=%s'), `Merge ticket/7-run-one-ticket into ${BASE} (#7)`);
-  assert.equal(sh(f.dir, 'rev-parse', 'HEAD^1'), before);
-  assert.equal(readFileSync(join(f.dir, 'built.txt'), 'utf8'), 'built.txt');
-  assert.equal(out.head, sh(f.dir, 'rev-parse', '--short', 'HEAD'));
-  assert.deepEqual(branches(f.dir), ['ticket/7-run-one-ticket']);
-  assert.deepEqual(f.issue().labels, ['in-release']);
-
-  // The logs: one per agent run, a new run starts with the folder empty, and the main folder stays clean throughout.
-  assert.deepEqual(readdirSync(logs(f.dir)).sort(), ['builder-1.jsonl', 'comment.md', 'reviewer-1.jsonl']);
-  assert.equal(readFileSync(join(logs(f.dir), 'builder-1.jsonl'), 'utf8'), stream(builder, 1.5, 12));
+  assert.deepEqual((out.tickets as { ticket: number; merged: boolean }[]).map((t) => [t.ticket, t.merged]), [[1, true], [2, true], [3, true]]);
+  assert.deepEqual([out.cost, out.turns], [3, 12]);
+  for (const n of [1, 2, 3]) {
+    assert.deepEqual(moves(f.ghCalls(), n), ['Build', 'Verify', 'Review', 'Verify', 'Done'], `#${n}`);
+    assert.deepEqual(f.issue(n).labels, ['in-release']);
+    assert.match(f.issue(n).comments[0], /^run · PASS and merged into release\/1\.0\.0\n/);
+  }
+  // #2 was built from the working branch after #1's merge: its branch starts past that merge.
+  assert.notEqual(mergeOf(f.dir, 2), '');
+  sh(f.dir, 'merge-base', '--is-ancestor', mergeOf(f.dir, 1), `${mergeOf(f.dir, 2)}^2`);
   const calls = f.claudeCalls();
-  assert.deepEqual(calls.map((c) => c.watched), ['', '']);
+  assert.ok(calls.findIndex((c) => c.ticket === 2) > calls.findIndex((c) => c.ticket === 1 && c.agent === 'reviewer'));
+  // One merge at a time: each merge's first parent is the merge before it, and the lock is free at the end.
+  assert.equal(sh(f.dir, 'log', '--first-parent', '--format=%s', `main..${BASE}`).split('\n').length, 3);
+  assert.equal(git(['show-ref', '--verify', '--quiet', LOCK], { cwd: f.dir }).code, 1);
+
+  // At the end the copies and branches of the merged tickets are gone, and the report is written, its commands printed.
+  assert.deepEqual(out.removed, [1, 2, 3]);
+  assert.deepEqual(branches(f.dir), []);
+  assert.equal(copies(f.dir), 0);
+  const report = readFileSync(join(f.dir, String(out.report)), 'utf8');
+  assert.match(report, /Tickets merged into release\/1\.0\.0 since main: 3/);
+  assert.match(report, /### Skipped by the run\n\n- none\n/);
+  assert.ok((out.commands as string[]).some((c) => c.startsWith('gh pr create -R o/r --base main --head release/1.0.0')));
+  assert.ok(!f.ghCalls().some((c) => c[0] === 'pr' && c[1] !== 'list'), 'no PR made');
   assert.equal(sh(f.dir, 'status', '--porcelain'), '');
-
-  // The reviewer gets read-only tools and no MCP server by flag; the Builder neither. Both run in the copy.
-  const [b, r] = calls;
-  assert.deepEqual([b.agent, r.agent], ['builder', 'reviewer']);
-  assert.equal(flag(r, '--tools'), 'Read,Grep,Glob,Bash');
-  assert.ok(r.args.includes('--strict-mcp-config'));
-  assert.ok(!b.args.includes('--tools') && !b.args.includes('--strict-mcp-config'));
-  assert.equal(flag(b, '--max-budget-usd'), '3');
-  assert.equal(flag(r, '--max-budget-usd'), '1');
-  const copy = realpathSync(join(f.dir, '.claude', 'worktrees', 'ticket-7'));
-  assert.deepEqual([realpathSync(b.cwd), realpathSync(r.cwd)], [copy, copy]);
-
-  // One comment, the ticket's result for `dynamo report`.
-  const comments: string[] = f.issue().comments;
-  assert.equal(comments.length, 1);
-  const lines = comments[0].split('\n');
-  assert.equal(lines[0], `run · PASS and merged into ${BASE}`);
-  assert.ok(lines.some((l) => l.startsWith('Cost: 1.7500 USD')));
-  assert.ok(lines.includes('Turns: 15 (the sum of num_turns)'));
-  assert.ok(lines.includes('Checks: node pass.js → 0; git diff --check <base> → 0'));
-  assert.deepEqual(lastResult(comments)?.rounds, '1/2');
 });
 
-test('a ticket the reviewer fails twice goes to Needs Human after round 2, on the same copy and branch, not merged', async () => {
-  const fail = (n: number) => ({ verdict: 'FAIL', report: `VERDICT: FAIL\nFor the Builder: fix ${n}` });
-  const f = setup([
-    { agent: 'builder', ...built('one.txt'), stdout: stream(builder, 1, 5) },
-    { agent: 'reviewer', stdout: stream(fail(1), 0.5, 2) },
-    { agent: 'builder', ...built('two.txt'), stdout: stream({ ...builder, outOfTicket: 'the docs are old' }, 1, 4) },
-    { agent: 'reviewer', stdout: stream(fail(2), 0.5, 2) },
+test('a blocked ticket keeps its copy and branch; its dependent is skipped with its card where it was and its reason in the line and the report', async () => {
+  const f = setup({ 1: [], 2: [1], 3: [] }, [
+    { agent: 'builder', ticket: 1, stdout: stream({ ...answer, commit: null, needsHuman: true, needsHumanReason: 'the ticket contradicts itself' }) },
+    ...builds(3),
   ]);
-  const before = sh(f.dir, 'rev-parse', 'HEAD');
-
-  const out = await run(['7'], f.deps);
+  const out = await run(['1', '2', '3'], f.deps);
 
   assert.equal(out.ok, false);
-  assert.equal(out.merged, false);
-  assert.equal(out.rounds, 2);
-  assert.equal(out.stoppedAt, 'review');
-  assert.deepEqual(moves(f.ghCalls()), ['Build', 'Verify', 'Review', 'Build', 'Verify', 'Review', 'Needs Human']);
-  assert.equal(sh(f.dir, 'rev-parse', 'HEAD'), before, 'nothing merged');
-  assert.deepEqual(f.issue().labels, []);
+  const [one, two, three] = out.tickets as Record<string, unknown>[];
+  assert.deepEqual([one.ticket, one.merged, one.stoppedAt], [1, false, 'build']);
+  assert.match(String(one.reason), /the Builder needs the human: the ticket contradicts itself/);
+  assert.deepEqual(two, { ok: false, ticket: 2, skipped: 'blocker #1 stopped in this run' });
+  assert.equal(three.merged, true);
+  assert.deepEqual(moves(f.ghCalls(), 1), ['Build', 'Needs Human']);
+  assert.deepEqual(moves(f.ghCalls(), 2), []);
+  assert.equal(f.issue(2).column, 'Todo');
+  assert.deepEqual(f.issue(2).comments, []);
+  assert.ok(!f.claudeCalls().some((c) => c.ticket === 2));
 
-  // Round 2 works on the same copy and branch: one ticket/7-* branch, with the commits of both rounds.
-  assert.deepEqual(branches(f.dir), ['ticket/7-run-one-ticket']);
-  assert.equal(sh(f.dir, 'rev-list', '--count', `${BASE}..ticket/7-run-one-ticket`), '2');
-  const calls = f.claudeCalls();
-  assert.equal(new Set(calls.map((c) => realpathSync(c.cwd))).size, 1);
-  assert.match(calls[2].stdin, /Round 2 of 2[\s\S]*What failed in round 1, word for word:\nthe reviewer's verdict: VERDICT: FAIL\nFor the Builder: fix 1/);
-  assert.match(calls[3].stdin, /Your previous verdict, word for word:\nVERDICT: FAIL\nFor the Builder: fix 1/);
-  assert.deepEqual(readdirSync(logs(f.dir)).sort(), ['builder-1.jsonl', 'builder-2.jsonl', 'comment.md', 'reviewer-1.jsonl', 'reviewer-2.jsonl']);
-  assert.deepEqual(calls.map((c) => c.watched), ['', '', '', '']);
-  assert.equal(sh(f.dir, 'status', '--porcelain'), '');
-
-  const comments: string[] = f.issue().comments;
-  assert.equal(comments.length, 1);
-  const lines = comments[0].split('\n');
-  assert.equal(lines[0], 'run · not merged');
-  assert.ok(lines.includes('Rounds: 2/2'));
-  assert.ok(lines.includes('Turns: 13 (the sum of num_turns)'));
-  assert.ok(lines.includes('Out of the ticket (for the backlog): the docs are old'));
-  assert.ok(lines.includes("Reason: the reviewer's verdict: VERDICT: FAIL"));
-  assert.ok(lines.includes('Stopped at: review'));
-  assert.ok(lines.some((l) => /^Left: the copy .*ticket-7 and the branch ticket\/7-run-one-ticket$/.test(l)));
-  assert.equal(lastResult(comments)?.head, 'not merged');
+  assert.deepEqual([out.removed, out.kept], [[3], [1]]);
+  assert.deepEqual(branches(f.dir), ['ticket/1-ticket-1']);
+  assert.equal(copies(f.dir), 1);
+  const report = readFileSync(join(f.dir, String(out.report)), 'utf8');
+  assert.match(report, /### Needs Human\n\n- #1 «Ticket 1»\n/);
+  assert.match(report, /### Skipped by the run\n\n- #2: blocker #1 stopped in this run\n/);
 });
 
-test('a ticket dynamo board does not give as ready is not started: the JSON line says why, no card moves, no agent', async () => {
-  const f = setup([], [{ number: 3, state: 'OPEN', labels: conn([]) }]);
-  const out = await run(['7'], f.deps);
-  assert.deepEqual(out, { ok: false, ticket: 7, started: false, why: 'blocker not done: #3' });
-  assert.deepEqual(f.ghCalls().map((c) => c.slice(0, 2)), [['api', 'graphql']]);
-  assert.deepEqual(f.claudeCalls(), []);
-  assert.equal(existsSync(logs(f.dir)), false);
-});
+test('with no numbers the list is the open tickets that are ready or wait on it; a merge that finds the lock taken stops', async () => {
+  const f = setup({ 1: [], 2: [9], 4: [99], 9: [] }, [...builds(1), ...builds(9)], 1);
+  sh(f.dir, 'update-ref', LOCK, 'HEAD');
+  const out = await run([], f.deps);
 
-test('a Builder that spends its budget sends the ticket to Needs Human, stopped at build, without a check or a reviewer', async () => {
-  const spent = JSON.stringify({ type: 'result', subtype: 'error_max_budget_usd', is_error: true, total_cost_usd: 3.1, num_turns: 30, errors: ['Reached maximum budget ($3)'] });
-  const f = setup([{ agent: 'builder', stdout: spent + '\n', code: 1 }]);
-  const out = await run(['7'], f.deps);
   assert.equal(out.ok, false);
-  assert.equal(out.stoppedAt, 'build');
-  assert.match(String(out.reason), /the Builder spent its budget \(Reached maximum budget \(\$3\)\)/);
-  assert.deepEqual(moves(f.ghCalls()), ['Build', 'Needs Human']);
-  assert.deepEqual(f.claudeCalls().map((c) => c.agent), ['builder']);
-  assert.match(f.issue().comments[0], /^run · not merged\n[\s\S]*Checks: not run\n[\s\S]*Stopped at: build\n/);
+  assert.deepEqual((out.tickets as { ticket: number }[]).map((t) => t.ticket), [1, 2, 9], 'not #4: its blocker #99 is not in the list');
+  const [one, nine, two] = [1, 9, 2].map((n) => (out.tickets as Record<string, unknown>[]).find((t) => t.ticket === n));
+  assert.deepEqual([one?.merged, one?.stoppedAt], [false, 'merge']);
+  assert.match(String(one?.reason), /another merge holds the lock/);
+  assert.equal(nine?.stoppedAt, 'merge');
+  assert.equal(two?.skipped, 'blocker #9 stopped in this run');
+  assert.equal(sh(f.dir, 'log', '--first-parent', '--format=%s', `main..${BASE}`), '', 'nothing merged');
+  // N = 1: one agent at a time.
+  assert.equal(Math.max(...f.claudeCalls().map((c) => c.running)), 1);
 });
 
 test('wrong arguments are a usage error', async () => {
-  const f = setup([]);
-  for (const args of [[], ['x'], ['0'], ['7', '8']]) await assert.rejects(() => run(args, f.deps), /usage: run <n>/, args.join(' '));
+  const f = setup({}, []);
+  for (const args of [['x'], ['0'], ['7', '-1']]) await assert.rejects(() => run(args, f.deps), /usage: run \[n \.\.\.\]/, args.join(' '));
 });

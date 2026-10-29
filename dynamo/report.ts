@@ -2,14 +2,14 @@
 // a file: the tickets merged into it since the main branch (the `(#n)` of its merge commits), the last result comment of
 // each, the tickets in Needs Human (read from the card of each open issue, never from the board's list of cards) and the
 // `/cost` line of the open release PR. It prints the commands the human runs next (the push, then `gh pr create` or
-// `gh pr edit`) and never runs them.
-import { mkdirSync, writeFileSync } from 'node:fs';
+// `gh pr edit`) and never runs them. `--skipped <file>` adds the tickets a `dynamo run` skipped, which no state keeps.
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Deps, Output } from './cli.ts';
 import { setting, usage } from './cli.ts';
 import { endOf } from './checks.ts';
-import type { Entry } from './reports.ts';
-import { commands, remoteNote, render } from './reports.ts';
+import type { Entry, Skipped } from './reports.ts';
+import { commands, remoteNote, render, skippedOf } from './reports.ts';
 import { costOf, lastResult, mergedTickets, prOf, remoteOf, ticketOf } from './releases.ts';
 import { readTickets } from './tickets.ts';
 
@@ -17,12 +17,15 @@ import { readTickets } from './tickets.ts';
 const SAFE = /^[A-Za-z0-9_][A-Za-z0-9._/-]*$/;
 
 export function report(args: string[], deps: Deps): Output {
-  if (args.length > 1) usage('usage: report [base]');
+  const at = args.indexOf('--skipped');
+  const rest = at === -1 ? args : args.filter((_, i) => i !== at && i !== at + 1);
+  if (rest.length > 1 || (at !== -1 && !args[at + 1])) usage('usage: report [base] [--skipped <file>]');
+  const skipped = at === -1 ? undefined : readSkipped(args[at + 1]);
   const factory = deps.factory();
   const project = factory.project;
   const repo = setting(project, 'project', 'repo');
   const main = setting(project, 'project', 'mainBranch');
-  const base = args[0] ?? setting(project, 'project', 'workingBranch');
+  const base = rest[0] ?? setting(project, 'project', 'workingBranch');
   const needsHuman = setting(factory.columns, 'columns', 'needsHuman');
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error(`factory.json: project.repo «${repo}» is not owner/name`);
   if (!SAFE.test(base)) usage(`${base} is not a branch name that is safe to put in a command`);
@@ -84,7 +87,7 @@ export function report(args: string[], deps: Deps): Output {
   const dir = join(top, '.claude', 'worktrees');
   const name = `release-report-${base.replace(/[^A-Za-z0-9._-]+/g, '-')}.md`;
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, name), render({ base, main, needsHuman, tickets, stuck, cost: pr === null ? null : costOf(pr.body) }));
+  writeFileSync(join(dir, name), render({ base, main, needsHuman, tickets, stuck, cost: pr === null ? null : costOf(pr.body), skipped }));
 
   // Relative to the repository root, with forward slashes: the commands read the same on every system.
   const file = `.claude/worktrees/${name}`;
@@ -93,4 +96,12 @@ export function report(args: string[], deps: Deps): Output {
     pr: pr === null ? null : pr.number, prKnown, remote: remote.state,
     commands: commands(base, main, repo, file, remote, pr === null ? null : pr.number), notes,
   };
+}
+
+function readSkipped(path: string): Skipped[] {
+  let text: string;
+  try { text = readFileSync(path, 'utf8'); } catch (e) { throw new Error(`cannot read ${path}: ${e instanceof Error ? e.message : String(e)}`); }
+  const skipped = skippedOf(text);
+  if (skipped === null) throw new Error(`${path} is not a list of skipped tickets ([{ "number", "why" }])`);
+  return skipped;
 }

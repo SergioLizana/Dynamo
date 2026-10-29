@@ -33,6 +33,7 @@
   "small": { "model": "haiku", "effort": "high" },
   "runner": { "maxCommand": 1500, "maxOutput": 1500, "maxLine": 400 },
   "budgetUsd": { "builder": 10, "reviewer": 4 },
+  "ticketsAtOnce": 2,
   "phases": [
     { "name": "Build", "column": "Build", "moveCard": "start", "model": null, "effort": null, "agentType": "builder", "onFail": "Needs Human" },
     { "name": "Verify", "column": "Verify", "moveCard": "start", "model": "haiku", "effort": "high", "agentType": null, "onFail": "Build" },
