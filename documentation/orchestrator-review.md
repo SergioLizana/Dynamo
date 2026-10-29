@@ -139,13 +139,13 @@ The tickets still open when 0.1.0 was frozen are closed as superseded; what they
 - **State (the human, 2026-10-29): built.** `dynamo run 90 91 92` (#92 blocked by #90) ended with the three in the
   release and their cost and turns in the comments, but not without the human: the reviewer's tools were fixed by hand
   (`2980b4d`) and #90 and #91 relaunched, and a flaky test's revert of #91 was undone by hand (`d410780`, `bdbd94e`).
-  «Complete» stays pending: the first list of phase 3 (§3.5) proves it if it ends merged with nobody touching it, with
+  «Complete» stays pending: the first list of phase 3 (§3.6) proves it if it ends merged with nobody touching it, with
   the two fixes of §3.2 in before it.
 
 ### Phase 3. Subtract, and the chain from idea to tickets
 
 In this order: first one loop, then what the first list showed, then the chain that makes the tickets (by hand, so
-the next lists are made with it), then the cleanup, and last the comparison with the workflow.
+the next lists are made with it), then closing a release, then the cleanup, and last the comparison with the workflow.
 
 #### 3.1 One loop
 
@@ -238,7 +238,20 @@ and the Builder gets it through a pointer instead of exploring it again.
     read the parent) in `documentation/github-board.md`, tried with `gh` first (the REST `issues/<n>/sub_issues` is
     expected to take the internal id, as `blocked_by` does: not checked).
 
-#### 3.4 Clean up
+#### 3.4 Closing a release
+
+- The backlog's «A skill to close a release» (ticket #74) said: «If closing 0.2.0 hurts again, it becomes a ticket». It
+  did: the report of 0.2.0 left out #91 (its merge was reverted and brought back by hand), and its `Closes` line was
+  added to PR #93 by hand. Decided (the human, 2026-10-29): a ticket of this phase.
+- `dynamo release check`: the `Closes` lines of the release PR against every ticket merged since the main branch, those
+  brought back by a revert of a revert among them; it stops with the difference for the human.
+- `dynamo release close`, after the human merges the PR: the milestone with the version's tickets, the tag `v<x.y.z>` on
+  the merge commit, a GitHub Release with the report, and the next `release/<x.y.z>` with `workingBranch` set in
+  `factory.json`, in one commit. «Closed» keeps meaning «in the main branch»; no label is added (the human, 2026-10-28).
+- A thin skill calls them, as `/autopilot` calls `dynamo run`. A release closed before the ticket is done is closed by
+  hand.
+
+#### 3.5 Clean up
 
 - Clean up what the review of phase 1 left (2026-10-28), with the same cleanup:
   - One `setting()` in `dynamo/cli.ts`: drop the private copy in `dynamo/board.ts` and `read()` in `dynamo/merging.ts`.
@@ -257,7 +270,7 @@ and the Builder gets it through a pointer instead of exploring it again.
   - `dynamo copy` (#87): `remove` does not see a copy left detached at `.claude/worktrees/ticket-<n>` (`add` does, by
     path), and `add` gives git's generic error when the folder exists on disk without being a registered worktree.
 
-#### 3.5 Compare with the workflow
+#### 3.6 Compare with the workflow
 
 - Compare the first lists of the program with the comments of the past `/run` runs: agents per ticket, plumbing
   failures, cost, duration. Write it down as `workflow-trial.md` was.

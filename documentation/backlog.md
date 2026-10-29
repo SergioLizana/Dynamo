@@ -177,6 +177,8 @@ Small things found when reviewing the list #53-#58. None is a problem yet; each 
   Release with the report and the next `release/<x.y.z>` with `workingBranch` set, in one commit.
 - **When:** 0.1.0 is closed by hand. If closing 0.2.0 hurts again, it becomes a ticket, as a `dynamo` subcommand or a
   skill that calls it.
+- **Moved to phase 3 (2026-10-29):** closing 0.2.0 hurt (#91 missing from the report); `documentation/orchestrator-review.md`,
+  phase 3, §3.4.
 
 ## The multi-project harness (ideas of the external diagnosis)
 
