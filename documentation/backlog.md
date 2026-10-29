@@ -216,3 +216,36 @@ Small things found when reviewing the list #53-#58. None is a problem yet; each 
     live and does not depend on the buffer. It changes `exec.ts`, and the result is read back from the file.
   - Move to an asynchronous `spawn`, which running two tickets at once (N = 2 with a merge lock) needs anyway.
 - **When:** the ticket that builds `dynamo run` or the live view, whichever comes first. Nothing to fix before.
+
+## The Builder explores the code again on every ticket
+
+- **Origin:** the cost of the first `dynamo run` list (2026-10-29). The Builder's cost is turns × context: #91's Builder
+  read 3.15 M cached tokens in 63 turns and wrote 35 k; it read about 106 k characters with Read (#90's, about 51 k),
+  mostly to find its way, and carried them through every turn after.
+- **Ideas, none chosen (the human, 2026-10-29):**
+  - `project.map` in `factory.json`: a command or file that gives each project's map of the code (in Dynamo, the header
+    of each `dynamo/*.ts`), read first by the Builder. The human is not convinced: left out for now.
+  - An explorer per list, before the Builders (Pocock's `implement-spec`, step 2): it reads what the list's tickets need
+    and leaves short notes outside the repository that every Builder reads. The first place where a cheaper model would
+    fit: it reads a lot, writes little and does not code.
+- **When:** if the Builders of the lists made with the new chain (phase 3, §3.3 of `orchestrator-review.md`) still
+  read as much; or on the first real project, which has no Dynamo headers to lean on.
+
+## The Builder starts with tools it never uses
+
+- **Origin:** the `init` line of `.claude/worktrees/logs/91/builder-1.jsonl` (2026-10-29): 36 tools (the Claude Docs MCP,
+  Workflow, Cron, WebSearch, DesignSync…) and about 70 skills, because `builder.md` has no `tools:` line and `claude -p`
+  inherits everything. All of it is in the context of each of its turns.
+- **Idea:** a `tools:` line in `builder.md` (Read, Edit, Write, Bash, Glob, Grep, StructuredOutput), as `reviewer.md`
+  has, and `--strict-mcp-config` and `--disable-slash-commands` in `dynamo/claude.ts` (both in `claude --help` of
+  2.1.312). Not measured how much it saves.
+- **When:** the human decides; it is measured on one list against 90 91 92.
+
+## Tools to save tokens that were looked at and left out
+
+- **Origin:** question of the human, 2026-10-29.
+- **Caveman** (a skill that makes the answers terse): it compresses prose, and the Builder's output is mostly code in
+  Edit and Write; independent measures give 12-23 % of the output. The texts of tickets and verdicts would lose quality.
+- **Headroom** (a proxy that compresses tool outputs): 95 % of the Builder's input already arrives cached; the Builder
+  needs the code it reads verbatim; and it adds a Python service in front of every run.
+- **A Haiku agent for the mechanical steps:** in `dynamo` they are code, at no cost and with real exit codes.

@@ -137,7 +137,12 @@ The tickets still open when 0.1.0 was frozen are closed as superseded; what they
 - **Done when:** a list of 3 tickets with one dependency ends merged into the working branch with cost and turns
   recorded. That is «complete» (§8.1, stage 3b).
 
-### Phase 3. Subtract
+### Phase 3. Subtract, and the chain from idea to tickets
+
+In this order: first one loop, then what the first list showed, then the chain that makes the tickets (by hand, so
+the next lists are made with it), then the cleanup, and last the comparison with the workflow.
+
+#### 3.1 One loop
 
 - Delete what §4 marks; `/run` becomes the thin skill, named `/autopilot` (one ticket, a list, or with no numbers
   everything ready; the human's choice, 2026-10-29); rewrite `launch-list.md` as a short README; update `factory.md`.
@@ -145,20 +150,91 @@ The tickets still open when 0.1.0 was frozen are closed as superseded; what they
   against the «Done when» below. With it go the line of `CLAUDE.md` «by hand only `/to-tasks`, `/implement` and the
   `reviewer`», `documentation/launch-one-ticket.md` and its place under «Change» in the table of §4. A ticket stuck in
   Needs Human is relaunched with `/autopilot <n>`; if `dynamo run` itself breaks, it is fixed in a plain session.
-- What the first list (`dynamo run 90 91 92`, 2026-10-29) showed, each a real problem with its evidence:
-  - **Tickets built at once that touch the same files collide at the merge, and each collision rebuilds a whole
-    ticket.** #91 was built next to #90; #90 merged first, and #91's merge stopped on a conflict in `dynamo/loop.ts`.
-    Relaunching it built it again from the start (1.49 USD, 81 turns). A lead: on a conflict, a Builder round in the
-    same copy that brings the new base into its branch and resolves it, then Verify and Review again, instead of
-    starting over. Keeping such tickets apart beforehand is harder: what a ticket touches is known only once built.
-  - **A flaky test makes the check after the merge revert a good change, and merging the same branch again brings
-    nothing back.** #91 had its reviewer's PASS, `dynamo merge` merged it (`a718706`), a test that depended on the
-    order of two agents starting at once failed, and the merge was reverted (`c7061df`). Its commits were already in
-    the release, so only a revert of the revert brought it back, by hand (`d410780`, `bdbd94e`). A lead: merge and
-    check in a copy, and move the working branch only when the check passes, so nothing is ever reverted and a
-    merge can always be repeated. Not a lead: running a failed check again by itself, which would hide flaky tests.
-  - The header of `dynamo/tests/fake-claude.ts` says that `calls.jsonl` lists the agents that run at once in the order
-    they started, which no test may rely on: the Builders read that header, and #91's test relied on it.
+
+#### 3.2 What the first list showed
+
+What the first list (`dynamo run 90 91 92`, 2026-10-29) showed, each a real problem with its evidence:
+
+- **Tickets built at once that touch the same files collide at the merge, and each collision rebuilds a whole
+  ticket.** #91 was built next to #90; #90 merged first, and #91's merge stopped on a conflict in `dynamo/loop.ts`.
+  Relaunching it built it again from the start (1.49 USD, 81 turns). Keeping such tickets apart beforehand is harder:
+  what a ticket touches is known only once built. Decided (the human, 2026-10-29):
+  - **The Builder brings the working branch into its own branch before it reports done**, and resolves any conflict
+    there, so Verify and Review judge the change on top of the current base (as Pocock's `implement-spec` does:
+    «merges the integration branch tip into its own branch before reporting done»).
+  - If the merge still stops on a conflict (another ticket merged in between), a Builder round in the same copy brings
+    the new base in and resolves it, then Verify and Review again, instead of starting over.
+- **A flaky test makes the check after the merge revert a good change, and merging the same branch again brings
+  nothing back.** #91 had its reviewer's PASS, `dynamo merge` merged it (`a718706`), a test that depended on the
+  order of two agents starting at once failed, and the merge was reverted (`c7061df`). Its commits were already in
+  the release, so only a revert of the revert brought it back, by hand (`d410780`, `bdbd94e`). A lead: merge and
+  check in a copy, and move the working branch only when the check passes, so nothing is ever reverted and a
+  merge can always be repeated. Not a lead: running a failed check again by itself, which would hide flaky tests.
+- The header of `dynamo/tests/fake-claude.ts` says that `calls.jsonl` lists the agents that run at once in the order
+  they started, which no test may rely on: the Builders read that header, and #91's test relied on it.
+
+#### 3.3 The chain from idea to tickets
+
+Decided with the human on 2026-10-29, after reading how Matt Pocock does it (`mattpocock/skills`: `to-spec`,
+`to-tickets`, `implement-spec` and `ask-matt/PHASE-BOUNDARIES.md`). The aim: the design is decided once, with the human,
+and the Builder gets it through a pointer instead of exploring it again.
+
+```text
+/discover <idea | #n>
+   ├─ one ticket          → /to-tickets
+   ├─ one spec            → /to-spec → /to-tickets #spec
+   ├─ several specs       → /to-spec (one epic per block) → /to-tickets per epic
+   └─ several /discover   → an idea issue + one short issue per theme
+                            → each theme: /discover #n in its own session
+```
+
+- **`/discover`** keeps its rounds of questions, and:
+  - takes an issue number as its start (a theme, or a block left to define) and reads what its parent already decided,
+    without asking it again;
+  - has four results instead of two: one ticket, one spec, several specs (blocks), several `/discover` (themes);
+  - with blocks, it closes **what is common to every block and what each block carries**, and the human approves the
+    blocks and their order. Its summary (step 4) is split by block;
+  - with themes, it closes only the decisions common to all of them and creates the idea issue (those decisions) and
+    one short issue per theme (what is left to decide, what it depends on, «pending `/discover`»);
+  - checks facts in its own session, reading only what it needs (`grep`, a part of a file): a subagent starts with its
+    own base context and costs more than a small check. A subagent only for a check that has to read a lot of code;
+  - at the end, says how full the context is and recommends going on or `/compact` with an instruction before
+    `/to-spec` (`PHASE-BOUNDARIES.md`: going on is the default; the spec wants the conversation as its primary source).
+- **`/to-request` is renamed `/to-spec`.** It writes the specs **itself, in the same session as `/discover`, with no
+  agents**: an agent would write from a summary of the conversation, not from the conversation (Pocock: «a fresh session
+  that is confidently wrong about a decision the summary flattened»).
+  - Each spec is a GitHub issue (an **epic**), with the request template and a `spec` label, and **not on the board**:
+    it is not built, and `dynamo run` with no numbers must not take it as a ready ticket.
+  - With blocks, one epic per block, and the native «blocked by» relation between epics where one block gates another.
+  - It still decides nothing: anything not closed goes to «Notes» as pending, and `/to-tickets` does not split an epic
+    with pending items.
+- **`/to-tasks` is renamed `/to-tickets`.**
+  - Given an epic (`/to-tickets #100`), its tickets are created as **sub-issues** of the epic. From the conversation or a
+    file, they have no parent.
+  - A list of one when the source is a single ticket (`/discover` said «one ticket»); 5-8 otherwise. No second skill for
+    a single ticket: it would repeat the template, the approval and the board steps.
+  - Tickets say only what to build and their checkboxes, with **no file paths or code** (they go stale fast; Pocock's
+    rule too), and point to their epic, where the Builder reads the context.
+- **The epic holds the context**: problem, solution, decisions with their why (the modules touched and the tests to
+  follow among them), how it is tested, what is out. The tickets do not repeat it.
+- **On the board** only tickets. The human sets up once a table view grouped by «Parent issue», which shows each epic
+  with its tickets. The sub-issue progress bar counts closed issues, so it moves only when the release reaches the main
+  branch (Done is not closed).
+- **At the end of a release**, the PR closes an epic only when all of its tickets are in the release; before closing it,
+  the decisions that still hold go to the repository's documentation (the plan, this review, `CLAUDE.md`), since the
+  issue is a work order and the repository keeps what lasts.
+- **What changes, and how:**
+  - By hand (`CLAUDE.md` allows it for this chain): `/discover`, `/to-spec` (with the rename), `/to-tickets` (with the
+    rename) and the request template; the references to the old names (`CLAUDE.md`, `.claude/factory.md`, plan §5 and
+    §6, `documentation/board-guide.md`, this review's §1 and §4).
+  - As tickets, made with the new chain: `project.specifications` in `factory.json` can say «issue» (with the label of
+    a spec) instead of a path; `dynamo board` and `dynamo run` ignore issues with that label; `dynamo report` writes
+    `Closes #<epic>` only when all of its sub-issues are in the release; the sub-issue commands (create the relation,
+    read the parent) in `documentation/github-board.md`, tried with `gh` first (the REST `issues/<n>/sub_issues` is
+    expected to take the internal id, as `blocked_by` does: not checked).
+
+#### 3.4 Clean up
+
 - Clean up what the review of phase 1 left (2026-10-28), with the same cleanup:
   - One `setting()` in `dynamo/cli.ts`: drop the private copy in `dynamo/board.ts` and `read()` in `dynamo/merging.ts`.
     One loop that runs the checks, shared by `dynamo/verify.ts` and `dynamo/merge.ts`.
@@ -175,9 +251,18 @@ The tickets still open when 0.1.0 was frozen are closed as superseded; what they
     chosen; since #85 the base is always the working branch.
   - `dynamo copy` (#87): `remove` does not see a copy left detached at `.claude/worktrees/ticket-<n>` (`add` does, by
     path), and `add` gives git's generic error when the folder exists on disk without being a registered worktree.
+
+#### 3.5 Compare with the workflow
+
 - Compare the first lists of the program with the comments of the past `/run` runs: agents per ticket, plumbing
   failures, cost, duration. Write it down as `workflow-trial.md` was.
-- **Done when:** there is one implementation of the loop and the documentation describes only it.
+- First data (2026-10-29): the workflow, $8.11 for 4 tickets and $2.13 for 1 (PR #66, the session's `/cost`, with the
+  orchestrator and 95 agents); `dynamo run 90 91 92`, $8.37 for 3 (the sum of `total_cost_usd`, without the session that
+  launched it), of which about $5.90 went to the reviewer with no verdict, the rebuild of #91 and the revert. The good
+  attempts: about $1.30 per ticket. The next lists also record the `/cost` of the session that launches `dynamo run`, so
+  both sides count the same.
+- **Done when:** there is one implementation of the loop, the documentation describes only it, and the next list is
+  made with `/discover`, `/to-spec` and `/to-tickets`, its tickets as sub-issues of their epic.
 
 ### Phase 4. Unattended for real
 
