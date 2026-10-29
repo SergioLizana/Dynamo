@@ -29,7 +29,8 @@ test('no subcommand, or a name that is only a property of objects, is an error t
   }
 });
 
-// Every file of dynamo/ imports only node: modules and files inside dynamo/: nothing from outside, and no package.
+// Every file of dynamo/ imports only node: modules and files inside dynamo/: nothing from outside, and no package
+// (a test may also import the pure logic of the mods/ pane).
 test('dynamo imports only node: modules and its own files', () => {
   const root = resolve(import.meta.dirname, '..');
   const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true })
@@ -42,7 +43,11 @@ test('dynamo imports only node: modules and its own files', () => {
       const spec = m[1];
       if (spec.startsWith('node:')) continue;
       assert.ok(spec.startsWith('.'), `${relative(root, f)} imports ${spec}`);
-      assert.ok(!relative(root, resolve(dirname(f), spec)).startsWith('..'), `${relative(root, f)} imports ${spec}`);
+      const target = relative(root, resolve(dirname(f), spec));
+      // The one exception: a test may import the pure logic of the mod in mods/ (the dependency points from the test
+      // to the mod, never from dynamo/ code to anything outside).
+      const modLogic = relative(root, f).startsWith('tests') && /^\.\.[\\/]mods[\\/]/.test(target);
+      assert.ok(!target.startsWith('..') || modLogic, `${relative(root, f)} imports ${spec}`);
     }
   }
 });
