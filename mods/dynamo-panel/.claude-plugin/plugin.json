@@ -1,0 +1,6 @@
+{
+  "name": "dynamo-panel",
+  "version": "0.1.0",
+  "description": "A «Dynamo» pane beside the chat: one row per ticket of the run, from `dynamo status --json`.",
+  "types": "./types/index.d.ts"
+}
