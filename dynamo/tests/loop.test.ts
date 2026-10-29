@@ -124,12 +124,10 @@ test('a ready ticket is built, checked, reviewed and merged: cards in order, one
   assert.deepEqual(calls.map((c) => c.watched), ['', '']);
   assert.equal(sh(f.dir, 'status', '--porcelain'), '');
 
-  // The reviewer gets read-only tools and no MCP server by flag; the Builder neither. Both run in the copy.
+  // Neither gets tools by flag: the reviewer is held to read-only tools by its agent file. Both run in the copy.
   const [b, r] = calls;
   assert.deepEqual([b.agent, r.agent], ['builder', 'reviewer']);
-  assert.equal(flag(r, '--tools'), 'Read,Grep,Glob,Bash');
-  assert.ok(r.args.includes('--strict-mcp-config'));
-  assert.ok(!b.args.includes('--tools') && !b.args.includes('--strict-mcp-config'));
+  for (const c of [b, r]) assert.ok(!c.args.includes('--tools') && !c.args.includes('--strict-mcp-config'), c.agent);
   assert.equal(flag(b, '--max-budget-usd'), '3');
   assert.equal(flag(r, '--max-budget-usd'), '1');
   const copy = realpathSync(join(f.dir, '.claude', 'worktrees', 'ticket-7'));

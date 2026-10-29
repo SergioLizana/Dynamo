@@ -117,8 +117,10 @@ The tickets still open when 0.1.0 was frozen are closed as superseded; what they
 ### Phase 2. `dynamo run`: the loop (tickets with `/implement`)
 
 - `git worktree add` from the working branch; `claude -p --agent builder` with `--json-schema`, `--max-budget-usd`,
-  `--permission-mode auto` and `--permission-prompts none`; then `dynamo verify`; then `claude -p --agent reviewer`
-  with read-only tools by flag.
+  `--permission-mode auto` and `--permission-prompts none`; then `dynamo verify`; then `claude -p --agent reviewer`,
+  read-only by the `tools:` line of its agent file. Not by flag: on 2.1.312 that line wins over `--tools`, and it must
+  list StructuredOutput, the tool of the `--json-schema` answer (the first list, 2026-10-29: both reviewers said PASS
+  in text only and their tickets went to Needs Human).
 - Rounds (max. 2), Needs Human with its reason, skipping dependents, N = 2 with a merge lock.
 - `total_cost_usd` and `num_turns` in each ticket's comment: the measurement CLAUDE.md asks for, for free.
 - A log per ticket and `dynamo status`. A probe of the usage-limit failure; until it is understood, stop cleanly.

@@ -1,7 +1,7 @@
 // One ticket of `dynamo run` through the loop, in its own copy: the card at every step, the Builder (`claude -p --agent
-// builder`), `dynamo verify`, the reviewer (read-only tools by flag), at most two rounds on the same copy and branch,
-// `dynamo merge`, and one result comment with the cost and turns of its agents. A ticket that stops goes to Needs Human
-// with its reason. Each agent's stream goes to its own log as it arrives, `.claude/worktrees/logs/<n>/<agent>-<round>
+// builder`), `dynamo verify`, the reviewer (read-only by the tools of its agent file), at most two rounds on the same
+// copy and branch, `dynamo merge`, and one result comment with the cost and turns of its agents. A ticket that stops
+// goes to Needs Human with its reason. Each agent's stream goes to its own log as it arrives, `.claude/worktrees/logs/<n>/<agent>-<round>
 // .jsonl` of the main folder (ignored by git with the copies), and a new run of the ticket starts with that folder empty.
 // Several tickets run this at once: only the agents wait, and `dynamo merge` takes its lock.
 import { randomUUID } from 'node:crypto';
@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import type { AgentResult } from './agents.ts';
 import { board } from './board.ts';
 import type { BuilderAnswer, ReviewerAnswer, Ticket } from './briefs.ts';
-import { BUILDER_SCHEMA, REVIEWER_SCHEMA, REVIEWER_TOOLS, builderPrompt, readBuilder, readReviewer, reviewerPrompt } from './briefs.ts';
+import { BUILDER_SCHEMA, REVIEWER_SCHEMA, builderPrompt, readBuilder, readReviewer, reviewerPrompt } from './briefs.ts';
 import { card } from './card.ts';
 import type { Check } from './checks.ts';
 import type { RunAgent } from './claude.ts';
@@ -122,7 +122,7 @@ async function steps(loop: Loop, repo: string, base: string, st: State): Promise
       st.stage = 'review';
       await move(columns.review);
       const t = ticket(loop, repo, base, st);
-      const r = await agent(loop, 'reviewer', reviewerPrompt(t, st.round > 1 ? st.review?.report ?? null : null), t.copy, st, REVIEWER_TOOLS);
+      const r = await agent(loop, 'reviewer', reviewerPrompt(t, st.round > 1 ? st.review?.report ?? null : null), t.copy, st);
       const v = readReviewer(r);
       st.review = v.answer;
       o = v.outcome;
@@ -161,10 +161,10 @@ function ticket(loop: Loop, repo: string, base: string, st: State): Ticket {
   return { n: loop.n, title: loop.title, repo, base, copy: String(st.copy), branch: String(st.branch) };
 }
 
-async function agent(loop: Loop, name: 'builder' | 'reviewer', prompt: string, cwd: string, st: State, tools: string[] | null): Promise<AgentResult> {
+async function agent(loop: Loop, name: 'builder' | 'reviewer', prompt: string, cwd: string, st: State): Promise<AgentResult> {
   const r = await loop.agent({
     agent: name, prompt, cwd, log: join(loop.logs, `${name}-${st.round}.jsonl`),
-    schema: name === 'builder' ? BUILDER_SCHEMA : REVIEWER_SCHEMA, budget: loop.budget[name], session: randomUUID(), tools,
+    schema: name === 'builder' ? BUILDER_SCHEMA : REVIEWER_SCHEMA, budget: loop.budget[name], session: randomUUID(),
   });
   st.spent.push({ cost: r.cost, turns: r.turns });
   return r;

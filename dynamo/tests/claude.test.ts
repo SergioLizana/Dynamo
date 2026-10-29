@@ -79,7 +79,7 @@ test('parseStream treats what claude printed as unknown: a field of the wrong ty
 });
 
 const run: AgentRun = {
-  agent: 'builder', prompt: 'Build #86.', cwd: '/copy', log: '/logs/86.jsonl', schema: { type: 'object' }, budget: 2.5, session: SESSION, tools: null,
+  agent: 'builder', prompt: 'Build #86.', cwd: '/copy', log: '/logs/86.jsonl', schema: { type: 'object' }, budget: 2.5, session: SESSION,
 };
 
 test('agentArgs: the flags the loop needs, each with its value', () => {
@@ -89,10 +89,24 @@ test('agentArgs: the flags the loop needs, each with its value', () => {
   ]);
 });
 
-test('agentArgs: a run with tools gets them by flag and no MCP server; one without gets neither flag', () => {
-  const args = agentArgs({ ...run, agent: 'reviewer', tools: ['Read', 'Grep', 'Glob', 'Bash'] });
-  assert.deepEqual(args.slice(args.indexOf('--tools')), ['--tools', 'Read,Grep,Glob,Bash', '--strict-mcp-config']);
-  assert.ok(!agentArgs(run).includes('--tools') && !agentArgs(run).includes('--strict-mcp-config'));
+test('agentArgs never sets the tools by flag: the agent file is the one list, and it wins over --tools', () => {
+  for (const agent of ['builder', 'reviewer']) {
+    const args = agentArgs({ ...run, agent });
+    assert.ok(!args.includes('--tools') && !args.includes('--allowedTools') && !args.includes('--strict-mcp-config'), agent);
+  }
+});
+
+// The tools line of an agent file is its whole list, with no exceptions: on Claude Code 2.1.312 an agent whose file
+// names tools without StructuredOutput cannot give the answer of --json-schema, even with --tools adding it (probed
+// 2026-10-29, after both reviewers of the first list said PASS in text only).
+test('every agent dynamo runs with a schema can answer with it: a tools line in its file lists StructuredOutput', () => {
+  for (const agent of ['builder', 'reviewer']) {
+    const text = readFileSync(join(import.meta.dirname, '..', '..', '.claude', 'agents', `${agent}.md`), 'utf8');
+    const front = text.split(/^---$/m)[1] ?? '';
+    const line = front.split(/\r?\n/).find((l) => l.startsWith('tools:'));
+    if (line === undefined) continue;
+    assert.ok(line.slice('tools:'.length).split(',').map((t) => t.trim()).includes('StructuredOutput'), `${agent}.md: ${line}`);
+  }
 });
 
 // --- The edge (claude.ts), with the fake claude and no real one on the PATH.

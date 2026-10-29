@@ -3,10 +3,14 @@
 // comments on #86): the last line is a `result` with the cost, the turns, the session and, when a schema was given, the
 // `structured_output`; a spent `--max-budget-usd` ends it with subtype `error_max_budget_usd`, terminal_reason
 // `budget_exhausted` and is_error true.
+//
+// The tools of an agent come only from its agent file, never by flag (probed on 2.1.312, 2026-10-29): a `tools:` line is
+// the agent's whole list, with no MCP tools, and it wins over `--tools`; with no line the agent gets the session's. The
+// answer of `--json-schema` is the tool StructuredOutput, so an agent file with a `tools:` line must list it
+// (tests/claude.test.ts checks the agents dynamo runs).
 
 // One agent run: the agent of `.claude/agents/<agent>.md`, the folder (a copy) it works in, the file that keeps its whole
-// stream, the JSON schema of its answer, the most it may spend (USD), the session id it gets, and the only tools it may
-// use (null: those of its agent file and the session).
+// stream, the JSON schema of its answer, the most it may spend (USD), and the session id it gets.
 export type AgentRun = {
   agent: string;
   prompt: string;
@@ -15,7 +19,6 @@ export type AgentRun = {
   schema: unknown;
   budget: number;
   session: string;
-  tools: string[] | null;
 };
 
 // How an agent ended: success, its budget spent, or any other error (including a stream with no result at all).
@@ -31,8 +34,7 @@ export type AgentResult = {
 };
 
 // The agent runs without anyone to answer a permission prompt: `none` denies what would ask, and `auto` decides the rest.
-// The prompt goes on stdin, so its length is no limit on the command line. A run with `tools` gets those by flag and no
-// MCP server (`--strict-mcp-config` with no `--mcp-config`): its agent file alone does not hold it to them.
+// The prompt goes on stdin, so its length is no limit on the command line.
 export function agentArgs(run: AgentRun): string[] {
   return [
     '-p', '--agent', run.agent,
@@ -41,7 +43,6 @@ export function agentArgs(run: AgentRun): string[] {
     '--max-budget-usd', String(run.budget),
     '--permission-mode', 'auto', '--permission-prompts', 'none',
     '--session-id', run.session,
-    ...(run.tools === null ? [] : ['--tools', run.tools.join(','), '--strict-mcp-config']),
   ];
 }
 

@@ -4,9 +4,6 @@ import type { AgentResult } from './agents.ts';
 import type { Outcome } from './rounds.ts';
 import { ROUNDS } from './rounds.ts';
 
-// The reviewer's tools, set by flag: it reads and runs commands that observe, never edits (`.claude/agents/reviewer.md`).
-export const REVIEWER_TOOLS = ['Read', 'Grep', 'Glob', 'Bash'];
-
 const text = { type: 'string' };
 
 export const BUILDER_SCHEMA = {

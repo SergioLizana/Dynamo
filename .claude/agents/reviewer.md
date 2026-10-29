@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Read-only judge for one ticket. Reviews the change on the current branch against the ticket's acceptance checkboxes and flags anything outside the ticket. Returns PASS or FAIL with evidence. Use after the automatic check passes, never to edit code.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, StructuredOutput
 model: opus
 ---
 
