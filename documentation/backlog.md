@@ -237,10 +237,14 @@ Small things found when reviewing the list #53-#58. None is a problem yet; each 
   Workflow, Cron, WebSearch, DesignSync…) and about 70 skills, because `builder.md` had no `tools:` line and `claude -p`
   inherits everything. Matt Pocock trims the same («How To Kill The Bloat In Claude Code's System Prompt», aihero.dev).
 - **Done (by hand, the human's choice, 2026-10-29):** `builder.md` has `tools: Read, Edit, Write, Bash, Glob, Grep, Skill,
-  StructuredOutput` (what the Builders of 90 91 92 used); the reviewer runs with `--disable-slash-commands`. The Builder
+  WebSearch, WebFetch, Agent(Explore), StructuredOutput`; the reviewer runs with `--disable-slash-commands`. The first
+  eight are what the Builders of 90 91 92 used; the web and `Explore` (built into Claude Code, so in any project) stay
+  because a ticket of another project may need a library's documentation or a wide search of a big repository.
+  `Agent(Explore)` is enforced: asked for `general-purpose`, the tool answers «Agent type 'general-purpose' not found.
+  Available agents: Explore». The web costs about 1.7 k tokens of context (19.7 k against 18.0 k). The Builder
   keeps the skills: #92's used `plugin-authoring`, which its ticket asked for. `--strict-mcp-config` is not needed: a
   `tools:` line already leaves out every MCP tool (probed with #91's fix, `2980b4d`).
-- **Probed** with `claude -p --agent <name> --model haiku` and a schema: the Builder starts with 8 tools and 18.0 k tokens
+- **Probed** with `claude -p --agent <name> --model haiku` and a schema: the Builder starts with 11 tools and 19.7 k tokens
   of context in its first turn (25.7-27.4 k in 90 91 92); the reviewer with 0 skills, no MCP server and 9.8 k (10.2 k).
   Both answered with their schema.
 - **Left:** the Builder still sees 41 skills. Pocock's settings (`disableBundledSkills`, `skillOverrides`, through
