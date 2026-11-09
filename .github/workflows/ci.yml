@@ -1,0 +1,99 @@
+# The checks of the project and a secret scan. It runs on every pull request to `main` (the merge repeats the same tree, so
+# the push to `main` does not run it), and it can be launched by hand from the Actions tab, which needs no pull request:
+# the first release reaches `main` by a push, and this is how its CI is run. A newer push to a pull request cancels the
+# run it made stale. What gives the same answer on any system (the plugin validation, the whitespace check) runs once, on
+# Ubuntu; the tests run on Ubuntu, Windows and macOS.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: checks (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # `git diff --check` needs the base of the change
+
+      # The Node version dynamo/README.md names («Node version»).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.2
+
+      # Needs the `claude` program but no login (checked with an empty home folder: it validates the plugin files
+      # and talks to no account).
+      - name: claude plugin validate . --strict
+        run: |
+          npm install --global @anthropic-ai/claude-code
+          claude plugin validate . --strict
+
+      # `git diff --check <base>`: on a pull request the base is the branch it goes to. Launched by hand there is no
+      # base, so it checks what the last commit changed (a release is one commit, so that is the whole release); with
+      # one commit and no parent, it checks the whole tree against an empty one.
+      - name: git diff --check
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+          elif git rev-parse --verify -q HEAD^ > /dev/null; then
+            base="HEAD^"
+          else
+            base="$(git hash-object -t tree /dev/null)"
+          fi
+          git diff --check "$base" HEAD
+
+  tests:
+    name: tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash # the same command on the three systems; Git Bash on Windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.2
+
+      - name: node --test
+        run: node --test "dynamo/tests/*.test.ts"
+
+  secrets:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.30.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the whole history, which is what gitleaks scans
+
+      # The gitleaks program, not `gitleaks/gitleaks-action`: on a pull request the action adds `--log-opts` with the
+      # range of the pull request's commits, so it scans only those. Run by hand, with no `--log-opts`, `detect` scans
+      # every commit reachable from HEAD. The download is checked against the checksums of the same release.
+      - name: Install gitleaks
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          file="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -O "${base}/${file}" -O "${base}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " ${file}\$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum --check -
+          tar -xzf "${file}" gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+
+      # Fails the job on a finding (exit code 2). The secrets found are redacted in the log.
+      - name: gitleaks detect
+        run: gitleaks detect --redact -v --exit-code=2

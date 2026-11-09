@@ -1,0 +1,11 @@
+# Dependabot for the GitHub Actions of the workflows only: Dynamo has no dependencies of its own (plain Node, no
+# `node_modules`), so there is no other ecosystem to update.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

@@ -1,0 +1,12 @@
+{
+  "name": "dynamo",
+  "description": "The Dynamo agent factory for Claude Code.",
+  "owner": { "name": "Sergio Lizana" },
+  "plugins": [
+    {
+      "name": "dynamo",
+      "source": "./",
+      "description": "Skills, agents, hooks and an engine that turn ideas into tickets and let agents build, test and review them."
+    }
+  ]
+}

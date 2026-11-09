@@ -1,0 +1,88 @@
+// What `dynamo run` tells each agent and what it takes from its answer: the prompts, the JSON schemas of the answers, and
+// the answers read as data into the outcome of the step. Pure: the subcommand `run` runs the agents.
+import type { AgentResult } from './agents.ts';
+import type { Check } from './checks.ts';
+import type { Outcome } from './rounds.ts';
+import { ROUNDS } from './rounds.ts';
+
+const text = { type: 'string' };
+
+export const BUILDER_SCHEMA = {
+  type: 'object',
+  properties: {
+    commit: { type: ['string', 'null'] }, needsHuman: { type: 'boolean' }, needsHumanReason: text,
+    published: text, noTrace: text, outOfTicket: text,
+  },
+  required: ['commit', 'needsHuman', 'needsHumanReason', 'published', 'noTrace', 'outOfTicket'],
+  additionalProperties: false,
+};
+
+export const REVIEWER_SCHEMA = {
+  type: 'object',
+  properties: { verdict: { type: 'string', enum: ['PASS', 'FAIL'] }, report: text },
+  required: ['verdict', 'report'],
+  additionalProperties: false,
+};
+
+export type Ticket = { n: number; title: string; repo: string; base: string; copy: string; branch: string };
+
+// What a Builder whose conversation is resumed is told: it already has the ticket, the rules and the round.
+export const RESUME_PROMPT = 'Your run was cut off before it ended. Go on where you left it.';
+
+// What a Builder stopped by an outage of the permission check is told once the wait is over: its answer does not stand.
+export const OUTAGE_PROMPT = 'The permission check is back: it failed for a while, which says nothing of your commands. Any answer you gave because of it does not stand. Go on where you left it, finish the work and answer again.';
+
+// `resumed`: a run of this ticket was cut off, so its copy may already hold work (a new Builder goes on from it).
+export function builderPrompt(t: Ticket, round: number, failed: string | null, resumed = false): string {
+  return [
+    `Ticket #${t.n} «${t.title}» of ${t.repo}. Base: ${t.base}. Round ${round} of ${ROUNDS}.`,
+    `You run under \`dynamo run\` in your copy ${t.copy}, on the branch ${t.branch}: follow «In a copy under \`dynamo run\`» `
+      + 'of your agent file, and answer with the fields of the schema.',
+    ...(resumed ? ['A run of this ticket was cut off before it ended: the copy may already hold the work of an earlier Builder (git log and git status show it). Go on from it; do not start over.'] : []),
+    ...(failed === null ? [] : ['', `What failed in round ${round - 1}, word for word:`, failed]),
+  ].join('\n');
+}
+
+// The result of the check goes in the prompt: it is the proof of any checkbox that asks for the check, which the reviewer
+// never runs again (the suite outlasts Bash's limit and an agent that waits on it can hang).
+export function reviewerPrompt(t: Ticket, previous: string | null, checks: Check[] | null): string {
+  return [
+    `Ticket #${t.n} of ${t.repo}. Base: ${t.base}.`,
+    `The change: the Builder's copy ${t.copy} (it is your working folder), HEAD of its branch ${t.branch}.`,
+    ...(checks === null ? [] : ['The automatic check, which dynamo ran on this change (each command and its exit code):', ...checks.map((c) => `- ${c.command} → exit ${c.code}`)]),
+    'Answer with the structured reply: PASS or FAIL in `verdict`, and your whole report in `report`.',
+    ...(previous === null ? [] : ['', 'Your previous verdict, word for word:', previous]),
+  ].join('\n');
+}
+
+export type BuilderAnswer = {
+  commit: string | null; needsHuman: boolean; needsHumanReason: string; published: string; noTrace: string; outOfTicket: string;
+};
+export type ReviewerAnswer = { verdict: 'PASS' | 'FAIL'; report: string };
+
+export const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
+const isText = (x: unknown): x is string => typeof x === 'string';
+
+// The answers of the agents as data, or null when what came is not the one of their schema (unknown until checked).
+export function asBuilder(s: unknown): BuilderAnswer | null {
+  return isObject(s) && (s.commit === null || isText(s.commit)) && typeof s.needsHuman === 'boolean'
+    && isText(s.needsHumanReason) && isText(s.published) && isText(s.noTrace) && isText(s.outOfTicket)
+    ? { commit: s.commit, needsHuman: s.needsHuman, needsHumanReason: s.needsHumanReason, published: s.published, noTrace: s.noTrace, outOfTicket: s.outOfTicket }
+    : null;
+}
+
+export function asReviewer(s: unknown): ReviewerAnswer | null {
+  return isObject(s) && (s.verdict === 'PASS' || s.verdict === 'FAIL') && isText(s.report) ? { verdict: s.verdict, report: s.report } : null;
+}
+
+// The answer of an agent is unknown until checked: one that ended well without an answer of its schema is an error.
+export function readBuilder(r: AgentResult): { outcome: Outcome; answer: BuilderAnswer | null } {
+  const answer = asBuilder(r.structured);
+  const [ending, detail] = r.ending === 'success' && answer === null ? ['error' as const, 'its answer is not the one of its schema'] : [r.ending, r.detail];
+  return { outcome: { step: 'build', ending, detail, needsHuman: answer?.needsHuman ?? false, reason: answer?.needsHumanReason ?? null }, answer };
+}
+
+export function readReviewer(r: AgentResult): { outcome: Outcome; answer: ReviewerAnswer | null } {
+  const answer = asReviewer(r.structured);
+  return { outcome: { step: 'review', ending: r.ending, detail: r.detail, verdict: answer?.verdict ?? null, report: answer?.report ?? null }, answer };
+}
