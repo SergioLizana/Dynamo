@@ -119,7 +119,7 @@ const facts = {
     { number: 5, title: 'Five', cost: 0.25, result: null },
     { number: 6, title: null, cost: null, result: null },
   ],
-  stuck: [{ number: 9, title: 'Nine' }],
+  stuck: [{ number: 9, title: 'Nine', cost: null }],
 };
 
 test('render has the sections Needs Human, Out of the ticket and Cost, and one Closes per merged ticket', () => {
@@ -141,13 +141,37 @@ test('render has the sections Needs Human, Out of the ticket and Cost, and one C
 test('render writes Closes for each epic it closes, after the tickets, with one reminder line per epic; none without epics', () => {
   const text = render({ ...facts, epics: [94, 12] });
   assert.deepEqual(text.match(/^Closes #\d+$/gm), ['Closes #3', 'Closes #5', 'Closes #6', 'Closes #94', 'Closes #12']);
-  assert.match(text, /### Epics this release closes\n\n- #94: .*documentation.*\n- #12: .*documentation.*\n/);
-  assert.equal(text.match(/documentation/g)?.length, 2);
+  assert.match(text, /### Epics this release closes\n\n[^\n]*documentation[^\n]*\n\n- #94\n- #12\n/);
+  assert.equal(text.match(/documentation/g)?.length, 1);
   assert.ok(text.indexOf('### Epics this release closes') < text.indexOf('### Cost'));
   for (const none of [render(facts), render({ ...facts, epics: [] })]) {
     assert.doesNotMatch(none, /Epics this release closes/);
     assert.deepEqual(none.match(/^Closes #\d+$/gm), ['Closes #3', 'Closes #5', 'Closes #6']);
   }
+});
+
+test('render adds to Cost the tickets stopped in Needs Human that have a run cost, and the total includes them', () => {
+  const text = render({ ...facts, stuck: [{ number: 9, title: 'Nine', cost: 0.5 }, { number: 4, title: 'Four', cost: null }] });
+  assert.match(text, /### Cost\n\n- #3: 1\.5000 USD\n- #5: 0\.2500 USD\n- #6: no cost recorded\n- #9: 0\.5000 USD \(not merged\)\n- Total: 2\.2500 USD\n/);
+  assert.doesNotMatch(text, /- #4: .*USD/);
+  assert.match(text, /### Needs Human\n\n- #9 «Nine»\n- #4 «Four»\n/);
+  assert.deepEqual(text.match(/^Closes #\d+$/gm), ['Closes #3', 'Closes #5', 'Closes #6'], 'a ticket not merged is not closed');
+});
+
+test('render shows a long result entry, Out of the ticket entry, title and skipped reason whole, with no «…»', () => {
+  const long = 'word '.repeat(300).trim();
+  const text = render({
+    ...facts, skipped: [{ number: 4, why: long }], stuck: [{ number: 9, title: long, cost: null }],
+    tickets: [{ number: 3, title: 'Three', cost: 1, result: { head: long, rounds: '1/2', out: 'Out of the ticket: ' + long } }],
+  });
+  assert.doesNotMatch(text, /…/);
+  assert.equal(text.split(long).length - 1, 4, 'the head, the entry, the title and the reason are all whole');
+});
+
+test('render says the sentence about moving the decisions once with two epics, followed by the epics', () => {
+  const text = render({ ...facts, epics: [94, 12] });
+  assert.equal(text.match(/documentation/g)?.length, 1);
+  assert.match(text, /### Epics this release closes\n\n[^\n]*documentation[^\n]*\n\n- #94\n- #12\n/);
 });
 
 test('render has the tickets a run skipped, with why, only when a run gives them; skippedOf reads them or refuses', () => {
@@ -266,7 +290,7 @@ test('an epic whose sub-issues are all merged in the release or closed before ge
   const out = report([], deps(dir, withEpic([[7, 'OPEN'], [3, 'CLOSED']])));
   const text = readFileSync(join(dir, FILE), 'utf8');
   assert.deepEqual(text.match(/^Closes #\d+$/gm), ['Closes #7', 'Closes #50']);
-  assert.match(text, /### Epics this release closes\n\n- #50: .*documentation/);
+  assert.match(text, /### Epics this release closes\n\n[^\n]*documentation[^\n]*\n\n- #50\n/);
   assert.equal(text.match(/documentation/g)?.length, 1);
   assert.equal((out.notes as string[]).filter((n) => /epic|#50/.test(n)).length, 0);
 });
@@ -301,6 +325,15 @@ test('the cost of a ticket is the sum of its run comments, the total the sum of 
   assert.doesNotMatch(text, /\/cost|a line the human wrote/);
   assert.equal(out.pr, 21);
   assert.deepEqual((out.commands as string[]).slice(-1), [`gh pr edit 21 -R o/r --body-file ${FILE}`]);
+});
+
+test('a ticket stopped in Needs Human with a run cost appears in Cost and in the total', () => {
+  const dir = repo();
+  const comments = [{ body: 'run · stopped\nStopped at: build\nCost: 0.7500 USD (the sum of total_cost_usd of 1 agent runs)' }];
+  const fake = fakeGh([{ args: ['issue', 'view', '9'], stdout: JSON.stringify({ title: 'Nine', comments, parent: null }) }]);
+  report([], deps(dir, fake));
+  const text = readFileSync(join(dir, FILE), 'utf8');
+  assert.match(text, /### Cost\n\n- #7: no cost recorded\n- #9: 0\.7500 USD \(not merged\)\n- Total: 0\.7500 USD\n/);
 });
 
 test('it prints the push and gh pr create when the remote lacks the branch, and runs neither', () => {

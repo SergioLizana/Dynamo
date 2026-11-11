@@ -169,14 +169,14 @@ to require it. Pushing the workflow is the human's, with the release.
 
 ## Setting up a project
 
-`node dynamo/dynamo.ts setup --check <command> [--check <command>]...` (run in the project) writes `.claude/factory.json` with the
+`node dynamo/dynamo.ts setup --check <command> [--check <command>]... [--language <name>]` (run in the project) writes `.claude/factory.json` with the
 board, `.claude/settings.json` and `.gitignore`, creates the labels and seeds or checks the CI. What it wrote is committed on the working branch (last bullet).
 The path of the engine changes with each version of the plugin, so a person launches it with the skill `/dynamo:setup`
-(`skills/setup/SKILL.md`): it proposes the checks from the scripts of the project, the human confirms them, and it runs
-the command with one `--check` each and reports what it printed.
+(`skills/setup/SKILL.md`): it proposes the checks from the scripts of the project, the human confirms them and chooses the language of the documents, and it runs
+the command with one `--check` each (and `--language`) and reports what it printed.
 
 - `repo` and `boardOwner` are read with gh, `mainBranch` from git (the branch `origin/HEAD` points to, else the one
-  checked out); every other value comes from `templates/factory.json`. A project with no `factory.json` needs at least one `--check`.
+  checked out); `project.documentsLanguage` is the `--language` given (English when none is, and an existing `factory.json` keeps its own); every other value comes from `templates/factory.json`. A project with no `factory.json` needs at least one `--check`.
 - Each check is run once before anything is written, in a temporary detached worktree of `HEAD` (what is committed, not
   the loose files), as Verify runs it, with `<base>` as `HEAD`. The worktree is removed afterwards.
 - A check that fails leaves nothing written: the output says which one and how it ended. One that gives 127 (its program
@@ -193,7 +193,7 @@ the command with one `--check` each and reports what it printed.
   what the file had: its rules in their order, with the missing ones added at the end once each, and every key the template
   does not name; a file that is not JSON stops the setup before anything is written. `.claude/worktrees/` is added to
   `.gitignore` unless a line already ignores it.
-- `project.doneLabel` and `project.epicLabel` are created in the repository if it lacks them.
+- `project.doneLabel`, `project.epicLabel` and `project.ideaLabel` are created in the repository if it lacks them.
 - It can run again. With a `board` block it copies no second board and reads the ids again (also after a column is
   renamed), and labels that exist are left alone; the settings and `.gitignore` get nothing twice. With no `--check` it keeps the checks of the file and runs none; with a
   `--check` it runs them and, if they pass, replaces the file's checks.
@@ -307,7 +307,21 @@ is left (the copy and the branch). `dynamo run` skips a ticket in that column, s
 1. Solve what stopped it, or decide it is not done.
 2. Move its card to *Todo* (`guides/github-board.md` of the plugin, «Needs Human»).
 3. Delete or rename the branch `ticket/<n>-*` and remove its copy, the ones the comment's «Left» line names: `dynamo
-   copy add` refuses while either exists, and agents do not delete branches.
-4. Launch it again: `/dynamo:autopilot <n>`.
+   copy add` refuses while either exists, and agents do not delete branches. A ticket stopped at merge is the exception:
+   it keeps its copy, its branch and its file (`.claude/worktrees/runs/<n>.json`), so skip this step; to start it from zero instead, remove its copy and branch as above: its kept file is then ignored and the ticket starts from round 1 with a new copy. So is a ticket
+   whose Builder stopped to ask the human: it keeps its copy, its branch and its file too, with the id of the Builder's
+   conversation. So is one the Reviewer failed in the last round (round 2): the Builder's conversation of that round is kept.
+4. Launch it again: `/dynamo:autopilot <n>`. A ticket stopped at merge runs only the merge again, with no Builder and no Reviewer.
+   A ticket whose Builder asked resumes that Builder's conversation (`claude -p --resume <id>`), and its prompt carries the
+   comments of the ticket written after the notice (the last comment that starts with «run · »): answer the question in a
+   comment of the ticket before launching it. A ticket the Reviewer failed in the last round resumes the Builder's conversation
+   the same way, and its prompt carries the Reviewer's verdict, word for word, and the comments written after the notice (they are
+   optional); it goes through Verify and Review again. If the conversation cannot be resumed, a new Builder works on the same copy
+   with the same comments.
+
+Claude Code keeps a conversation that `--resume` can open as a transcript under `~/.claude/projects/`, and deletes it on startup
+once it is older than `cleanupPeriodDays` of its settings: **30 days by default** (minimum 1). A ticket answered within that time can be
+resumed; later, the new Builder above takes its place.
+Source: `https://code.claude.com/docs/en/claude-directory`, «Cleaned up automatically».
 
 If `dynamo run` itself breaks, fix it in a plain session; there is no other launcher.

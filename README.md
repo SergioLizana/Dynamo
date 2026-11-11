@@ -260,6 +260,7 @@ Every command is launched by you; agents never start them on their own.
 | `/dynamo:to-tickets [#epic]` | Splits an epic into tickets with their blockers, after your approval |
 | `/dynamo:autopilot [n ...]` | Builds the tickets given, or every ticket that is ready |
 | `/dynamo:park <n ...>` | Moves written tickets to *Backlog*, so they are not built yet |
+| `/dynamo:backlog «idea»` | Puts an idea on the board as a short issue with the idea label, its card in *Backlog* |
 | `/dynamo:close-release <patch\|minor\|major>` | Closes the release once its pull request is merged |
 
 ## Configuration

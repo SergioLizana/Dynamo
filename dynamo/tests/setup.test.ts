@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { UsageError } from '../cli.ts';
-import { TEMPLATE_BOARD, boardOf, boardTitle, checksOf, copiedNumber, dependabotFile, failedCheck, hintFor, isPublic, mainBranchOf, managerOf, missingLabels, repoOf, withBoard, withValues } from '../setups.ts';
+import { TEMPLATE_BOARD, boardOf, boardTitle, checksOf, copiedNumber, dependabotFile, failedCheck, hintFor, isPublic, mainBranchOf, managerOf, missingLabels, repoOf, setupArgsOf, withBoard, withValues } from '../setups.ts';
 import { setup } from '../setup.ts';
 import { missingChecks, runLinesOf, seedOf } from '../setupci.ts';
 import { fillSettings, gapsOf, keptSettings, mergeSettings, neededSettings, ruleOf, withIgnore } from '../setupsettings.ts';
@@ -24,6 +24,22 @@ test('checksOf reads each --check, in order, as «--check x» or «--check=x»; 
   for (const bad of [['--check'], ['--check', ' '], ['--check='], ['x'], ['--check', 'a', '--other']]) {
     assert.throws(() => checksOf(bad), UsageError, JSON.stringify(bad));
   }
+});
+
+test('setupArgsOf reads --language as «--language x» or «--language=x», trimmed, null when not given; an empty one is a usage error and --check is read as before', () => {
+  assert.deepEqual(setupArgsOf(['--check', 'a', '--language', ' Español ']), { checks: ['a'], language: 'Español' });
+  assert.deepEqual(setupArgsOf(['--language=Deutsch', '--check=b']), { checks: ['b'], language: 'Deutsch' });
+  assert.deepEqual(setupArgsOf(['--check', 'a']), { checks: ['a'], language: null });
+  for (const bad of [['--language'], ['--language', ' '], ['--language=']]) assert.throws(() => setupArgsOf(bad), UsageError, JSON.stringify(bad));
+  assert.deepEqual(checksOf(['--language', 'Español', '--check', 'a']), ['a']);
+});
+
+test('withValues sets project.documentsLanguage from the language given, and keeps English when none is', () => {
+  const template = readTemplate();
+  const values = { repo: 'o/r', boardOwner: 'o', mainBranch: 'main' };
+  assert.equal(withValues(template, values, ['x'], 'Español').project.documentsLanguage, 'Español');
+  assert.equal(withValues(template, values, ['x']).project.documentsLanguage, 'English');
+  assert.equal(template.project.documentsLanguage, 'English');
 });
 
 test('repoOf reads the name and the owner of the repository from gh and nothing from anything else', () => {
@@ -138,7 +154,7 @@ function project(): string {
 const REPO = '{"nameWithOwner":"acme/shop","owner":{"login":"acme"}}';
 type Answer = { args: string[]; stdout?: string; stderr?: string; code?: number };
 // What gh says about the board of a project: the copy, its link, its description and its fields, and the labels of the repository.
-const boardAnswers = (labels: string[] = ['epic']): Answer[] => [
+const boardAnswers = (labels: string[] = ['epic', 'idea']): Answer[] => [
   { args: ['project', 'copy'], stdout: '{"number":7,"id":"PVT_new","title":"shop"}' },
   { args: ['project', 'link'] },
   { args: ['project', 'view'], stdout: view },
@@ -173,6 +189,30 @@ test('the repository, the board owner and the main branch are read from gh and g
   assert.deepEqual(written.project, { ...template.project, repo: 'acme/shop', boardOwner: 'acme', mainBranch: 'trunk', checks: ['node pass.js'] });
   assert.equal(written.version, template.version);
   assert.equal(written.board !== undefined, true);
+});
+
+test('setup given a language writes it as project.documentsLanguage in the factory.json of its commit', async () => {
+  const dir = project();
+  const out = await setup(['--check', 'node pass.js', '--language', 'Español'], gitWith(dir));
+  assert.equal(out.ok, true, JSON.stringify(out));
+  assert.equal(readBack(dir).project.documentsLanguage, 'Español');
+  assert.equal((JSON.parse(run(dir, 'show', 'HEAD:.claude/factory.json')) as Factory).project.documentsLanguage, 'Español');
+});
+
+test('setup given no language writes English, in the file and in its commit', async () => {
+  const dir = project();
+  assert.equal((await setup(['--check', 'node pass.js'], gitWith(dir))).ok, true);
+  assert.equal(readBack(dir).project.documentsLanguage, 'English');
+  assert.equal((JSON.parse(run(dir, 'show', 'HEAD:.claude/factory.json')) as Factory).project.documentsLanguage, 'English');
+});
+
+test('run again with no language it keeps the one the file has; with a language it changes it', async () => {
+  const dir = project();
+  assert.equal((await setup(['--check', 'node pass.js', '--language', 'Español'], gitWith(dir))).ok, true);
+  assert.equal((await setup([], gitWith(dir))).ok, true);
+  assert.equal(readBack(dir).project.documentsLanguage, 'Español');
+  assert.equal((await setup(['--language', 'Deutsch'], gitWith(dir))).ok, true);
+  assert.equal(readBack(dir).project.documentsLanguage, 'Deutsch');
 });
 
 test('the main branch is the one origin/HEAD points to when the remote says so', async () => {
@@ -273,13 +313,28 @@ test('the ids are read back from the copy into the board block of factory.json',
   assert.ok(calls.includes('project field-list 7 --owner acme --format json'));
 });
 
-test('a done label and an epic label that the repository lacks are created; one it has is left alone', async () => {
+test('a done label, an epic label and an idea label that the repository lacks are created; one it has is left alone', async () => {
   const state = scratch();
   const out = await setup(['--check', 'node pass.js'], gitWith(project(), state));
   assert.deepEqual(out.labelsCreated, ['in-release']);
   assert.deepEqual(callsOf(state).filter((c) => c.startsWith('label create')), ['label create in-release -R acme/shop']);
   const none = await setup(['--check', 'node pass.js'], gitWith(project(), scratch(), REPO, answering('copy', {}, [])));
-  assert.deepEqual(none.labelsCreated, ['in-release', 'epic']);
+  assert.deepEqual(none.labelsCreated, ['in-release', 'epic', 'idea']);
+});
+
+test('the idea label is created from project.ideaLabel when it is missing, as the epic label is', async () => {
+  const state = scratch();
+  const out = await setup(['--check', 'node pass.js'], gitWith(project(), state, REPO, answering('copy', {}, ['epic', 'in-release'])));
+  assert.deepEqual(out.labelsCreated, ['idea']);
+  assert.deepEqual(callsOf(state).filter((c) => c.startsWith('label create')), ['label create idea -R acme/shop']);
+});
+
+test('the factory.json that setup writes has project.ideaLabel "idea" and no project.backlog', async () => {
+  const dir = project();
+  assert.equal((await setup(['--check', 'node pass.js'], gitWith(dir))).ok, true);
+  const written = readBack(dir).project as Record<string, unknown>;
+  assert.equal(written.ideaLabel, 'idea');
+  assert.equal('backlog' in written, false);
 });
 
 test('a board that is not a copy of the template (a column missing) writes no factory.json', async () => {
@@ -310,7 +365,7 @@ test('run again, it copies no second board and reads the ids again, even if a co
   const before = readBack(dir);
   const state = scratch();
   const renamed = fieldList().replace('id-Review', 'id-Review-new');
-  const again = await setup([], gitWith(dir, state, REPO, answering('field-list', { stdout: renamed }, ['epic', 'in-release'])));
+  const again = await setup([], gitWith(dir, state, REPO, answering('field-list', { stdout: renamed }, ['epic', 'idea', 'in-release'])));
   assert.equal(again.ok, true, JSON.stringify(again));
   assert.equal(again.boardCopied, false);
   const calls = callsOf(state);
@@ -496,7 +551,9 @@ test('there is one rule per check, added to the allow list of the filled templat
   const made = neededSettings(fillSettings(files.settingsTemplate(), GAPS), ['node --run build', 'git diff --check <base>']) as Template;
   assert.equal(ruleOf('node --run build'), 'Bash(node --run build)');
   assert.equal(made.permissions.allow.filter((r) => r === 'Bash(node --run build)').length, 1);
-  assert.equal(made.permissions.allow.filter((r) => r === 'Bash(git diff --check <base>)').length, 1);
+  assert.equal(made.permissions.allow.filter((r) => r === 'Bash(git diff --check *)').length, 1);
+  assert.ok(!made.permissions.allow.some((r) => r.includes('<base>')));
+  assert.equal(ruleOf('git diff --check <base>'), 'Bash(git diff --check *)');
   assert.equal(made.permissions.allow.length, (files.settingsTemplate() as Template).permissions.allow.length + 2);
   assert.throws(() => neededSettings([], []), /not a JSON object/);
 });
@@ -594,7 +651,7 @@ test('the setup writes the rules of the template filled with the repository and 
   assert.deepEqual(s.attribution, { commit: '', pr: '' });
   assert.deepEqual(s.enabledPlugins, { 'dynamo@dynamo': true });
   const allow: string[] = s.permissions.allow;
-  assert.ok(allow.includes('Bash(node pass.js)') && allow.includes('Bash(git diff --check <base>)'));
+  assert.ok(allow.includes('Bash(node pass.js)') && allow.includes('Bash(git diff --check *)'));
   assert.ok(allow.includes('Bash(gh project item-list 7 --owner acme *)'));
   assert.ok(allow.includes('Bash(gh api repos/acme/shop/issues/*)'));
   assert.ok(allow.includes('Bash(gh project item-edit --id * --project-id PVT_new --field-id PVTSSF_new --single-select-option-id *)'));

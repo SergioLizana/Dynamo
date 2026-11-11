@@ -56,6 +56,14 @@ Size: a list of one when `/dynamo:discover` said «one ticket»; 5-8 otherwise. 
 **first list** (the tickets that unblock the rest) and name the remaining work in one line per item as «next list»,
 without creating it.
 
+Level: each ticket gets one level of difficulty, `low`, `medium` or `high`, which decides the model and effort its
+Builder and Reviewer run with. The criterion:
+- `low`: text, styles or a single file, with no new logic;
+- `medium`: new logic in a few files, with tests;
+- `high`: several modules, design, or something delicate (security, data, money).
+
+When in doubt between two levels, the one above. Judge each ticket by its own size, not by the epic's.
+
 Scope: only what the spec asks. Anything else you notice is not a ticket: mention it so the human can put it in
 the backlog.
 
@@ -66,6 +74,7 @@ Show the list before creating anything, as a numbered list (no table: it breaks 
 ```text
 N1. <Title>
     Blocked by: — | N2, #3
+    Level: low | medium | high
     What it delivers: <one or two lines>
     Done when:
     - [ ] <checkbox>
@@ -78,6 +87,8 @@ New tickets are `N1, N2…`; `#n` is only for issues that already exist. Then as
 human in):
 - Is the size right (too big or too fine)?
 - Is each blocker real?
+- Is each level right? The human can change any of them here; they can also edit the `Level:` line of a created
+  ticket before launching it.
 - Anything to merge or split?
 
 Adjust and show the full list again after each change. **Create nothing until the human explicitly approves the
@@ -93,7 +104,8 @@ duplicate). Then, in dependency order (blockers first), for each ticket:
    `--parent <epic>` when there is one (if the shell rewrites a title that starts with `/`, see the board commands
    file). The body is the template filled in: Problem, What it delivers, Acceptance criteria as checkboxes, Blocked
    by with real numbers (each `Nk` replaced by the `#n` it got, or «None.»), Out of scope, and the «Spec» line: the
-   epic (`#<n>`), else the section of the document the spec points at, or the spec file. No labels unless the human gave one on
+   epic (`#<n>`), else the section of the document the spec points at, or the spec file; and the `Level:` line with the
+   level the human approved in the list, as `Level: low`, `Level: medium` or `Level: high`. No labels unless the human gave one on
    approval.
 2. Move the card to the column *Todo* (the issue lands on the board with no status; see the board commands
    file).

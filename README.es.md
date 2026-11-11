@@ -264,6 +264,7 @@ Todos los comandos los lanzas tú; los agentes nunca los inician por su cuenta.
 | `/dynamo:to-tickets [#épica]` | Divide una épica en tickets con sus bloqueos, tras tu aprobación |
 | `/dynamo:autopilot [n ...]` | Construye los tickets indicados o todos los que estén listos |
 | `/dynamo:park <n ...>` | Pasa tickets ya escritos a *Backlog* para que no se construyan todavía |
+| `/dynamo:backlog «idea»` | Pone una idea en el tablero como una issue corta con la etiqueta de idea, su tarjeta en *Backlog* |
 | `/dynamo:close-release <patch\|minor\|major>` | Cierra la versión cuando su pull request está fusionada |
 
 ## Configuración

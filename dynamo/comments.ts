@@ -17,15 +17,28 @@ export function sameBody(written: string, posted: string): boolean {
   return plain(written) === plain(posted);
 }
 
-// The last comment in what `gh issue view --json comments` printed (unknown until checked), or null when there is none.
-export function lastComment(json: string): Posted | null {
+// The comments in what `gh issue view --json comments` printed (unknown until checked), each with its body.
+function commentList(json: string): Record<string, unknown>[] {
   let data: unknown;
   try { data = JSON.parse(json); } catch { throw new Error('gh did not print JSON for comments'); }
   const list = typeof data === 'object' && data !== null ? (data as Record<string, unknown>).comments : undefined;
   if (!Array.isArray(list) || !list.every((c) => typeof c === 'object' && c !== null && typeof (c as Record<string, unknown>).body === 'string')) {
     throw new Error('gh printed no comments list with a body in each');
   }
+  return list as Record<string, unknown>[];
+}
+
+// The last comment in what `gh issue view --json comments` printed (unknown until checked), or null when there is none.
+export function lastComment(json: string): Posted | null {
+  const list = commentList(json);
   if (list.length === 0) return null;
   const last = list[list.length - 1] as Record<string, unknown>;
   return { body: String(last.body), url: typeof last.url === 'string' ? last.url : null };
+}
+
+// What the human wrote after the notice of the run (the last comment that starts with «run · », which is what a stop or a pause
+// posts), in the order written; every comment when there is no notice. `json` is what `gh issue view --json comments` printed.
+export function afterNotice(json: string): string[] {
+  const bodies = commentList(json).map((c) => String(c.body));
+  return bodies.slice(bodies.findLastIndex((b) => b.startsWith('run · ')) + 1);
 }

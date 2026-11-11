@@ -14,6 +14,10 @@ function run(command, dir = cwd) {
   return spawnSync('node', [hook], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: dir }), encoding: 'utf8' });
 }
 
+// The contrast calculation quoted in #209: it writes nothing, and its divisions follow a digit, a letter or a closing bracket.
+const CONTRAST =
+  "node -e \"const L=h=>{const c=[1,3,5].map(i=>parseInt(h.substr(i,2),16)/255).map(v=>v<=0.03928?v/12.92:((v+0.055)/1.055)**2.4); return 0.2126*c[0]+0.7152*c[1]+0.0722*c[2]}; console.log(L('#ffffff'))\"";
+
 const refused = [
   'touch ../outside-test',
   'touch ../../../../../outside-test',
@@ -37,6 +41,8 @@ const refused = [
   'tar -czf ../outside.tgz .',
   'curl -o ../outside.txt https://example.invalid',
   'mktemp',
+  "node -e \"require('fs').writeFileSync('/outside-from-node','')\"",
+  "node -e \"const x=(1+2)/3; require('fs').writeFileSync('/outside-from-node', String(x))\"",
 ];
 
 const allowed = [
@@ -59,6 +65,9 @@ const allowed = [
   'git commit -m "msg with > redirect text"',
   'echo "a > b"',
   "node -e \"console.log(1)\"",
+  'node -e "x/255"',
+  'node -e "console.log((1+2)/3, [4][0]/5)"',
+  CONTRAST,
   "sh -c 'printf %s abc | base64 --decode | { mkdir -p .claude/worktrees; cat > .claude/worktrees/release-report-x.md; }'",
   "sh -c 'git worktree remove --force .claude/worktrees/x || true'",
   'git worktree add -b ticket/1-x .claude/worktrees/x release/0.1.0',

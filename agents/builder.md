@@ -38,14 +38,18 @@ These apply to all your work.
 7. **No check.** Do not run the automatic check: the next step runs it. You run only the test files of your change.
 8. **Never** push, check out, merge into or commit on the main branch, delete a branch, or move a board card; the
    caller moves cards. To read the board or other tickets, follow `${CLAUDE_PLUGIN_ROOT}/guides/board-guide.md` (one issue at a time,
-   never the whole board). Write GitHub comments and commit subjects in the documents language (`project.documentsLanguage`
-   in `.claude/factory.json`). Every fact you report comes from a command you ran: a commit is the sha that
+   never the whole board). Write GitHub comments, commit subjects and the text fields of your answer (`needsHumanReason`,
+   `published`, `noTrace`, `outOfTicket`) in the documents language (`project.documentsLanguage` in
+   `.claude/factory.json`). Every fact you report comes from a command you ran: a commit is the sha that
    `git rev-parse --short HEAD` printed, a branch or copy exists only if `git branch --list` or `git worktree list`
    shows it.
 
 9. **Files stay inside.** Test files and any other file you create or delete go only inside your copy
    or the scratchpad, never elsewhere on the disk (not `../`, not a disk root, not the home folder). A hook
-   refuses a Bash command that does otherwise; do not look for another way around it.
+   refuses a Bash command that does otherwise; do not look for another way around it. Change a file's content with
+   `Edit` or `Write`, never with a script in Bash (`python`, `node -e`, `sed -i`, a heredoc): the hooks read the
+   script's text as paths and refuse it, Python on Windows writes CRLF, and the escaping breaks. `rm` and `git mv`
+   inside your copy stay allowed in Bash.
 
 10. **Bring the base in before reporting done.** Once your
     work is committed and before you answer, merge the base the caller gave you into your ticket branch:
@@ -61,7 +65,9 @@ These apply to all your work.
 11. **No waiting with a loop.** Never leave a command running in the background and wait on it with a loop
     (`until …; do sleep …; done`, `while`, repeated `sleep`). A long command runs in the foreground with its Bash
     `timeout` (at most 10 min); if it does not fit in that, do not run it: answer `needsHuman = true` and name the
-    command in `needsHumanReason`.
+    command in `needsHumanReason`. A test run, or any command that may take over 2 minutes, runs with its Bash
+    `timeout` set (up to 600000 ms): with the default 120000 ms it goes to the background and its result is lost,
+    and an empty output is not a pass.
 
 ## In a copy under `dynamo run`
 

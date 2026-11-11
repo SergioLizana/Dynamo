@@ -10,13 +10,13 @@
 //                 its lines is not reliable (they append as they happen to start), so no test may depend on it: look
 //                 a call up by its ticket or its agent, never by its position
 //   running/      one file per fake claude while it runs
-// An answer can also, in this order: create the file `touch`, `commit` a file in the folder it runs in ({ file, text,
+// An answer can also, in this order: create the file `touch` (with its folders; relative to the folder it runs in), `commit` a file in the folder it runs in ({ file, text,
 // message }), print `stdout`, start a child that never ends and write its pid to the file `child` (the shell an agent
 // leaves running), wait until the file `waitFor` exists, and print `then`. A call with no answer exits 1 with
 // «fake claude: no answer». `commit` and `watch` run git, found on FAKE_CLAUDE_PATH.
 import { spawn, spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 type Answer = {
   agent?: string; ticket?: number; stdout?: string; stderr?: string; code?: number; then?: string; waitFor?: string; watch?: string;
@@ -63,7 +63,11 @@ if (!answer) {
   process.stderr.write('fake claude: no answer\n');
   leave(1);
 } else {
-  if (answer.touch !== undefined) writeFileSync(answer.touch, '');
+  if (answer.touch !== undefined) {
+    const file = resolve(process.cwd(), answer.touch); // a relative one is in the folder the call runs in
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, '');
+  }
   if (answer.commit) {
     writeFileSync(answer.commit.file, answer.commit.text);
     git('add', answer.commit.file);

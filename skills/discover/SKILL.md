@@ -8,7 +8,7 @@ disable-model-invocation: true
 # /dynamo:discover
 
 Turn a loose idea into closed decisions that the next skill can write down. Talk to the human in the language their
-`CLAUDE.md` asks for. Every project value (repository, labels, backlog) comes from `.claude/factory.json`, with
+`CLAUDE.md` asks for. Every project value (repository, labels) comes from `.claude/factory.json`, with
 its meaning in `${CLAUDE_PLUGIN_ROOT}/guides/factory.md`.
 
 You do not write specs and you do not create tickets: that is `/dynamo:to-spec` and `/dynamo:to-tickets`. Write no files, no issues

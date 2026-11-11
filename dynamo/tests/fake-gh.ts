@@ -2,12 +2,12 @@
 // is the folder in FAKE_GH:
 //   answers.json  [{ "args": ["issue", "view"], "code": 0, "stdout": "...", "stderr": "" }]: the first answer whose args
 //                 begin the call's arguments is the reply
-//   issue.json    optional, one issue that keeps what is done to it: { "title", "boardName", "options", "column",
+//   issue.json    optional, one issue that keeps what is done to it: { "title", "body", "boardName", "options", "column",
 //                 "labels": [], "comments": [] }. With it, `project item-edit … --value <column>` moves its card,
 //                 `issue edit … --add-label` adds a label, `issue comment … --body-file -` adds a comment, and
 //                 `issue view … --json <fields>` prints those fields of it; any other call goes to answers.json
 //   board.json    optional, many issues that keep what is done to them: { "boardId", "statusFieldId", "boardName",
-//                 "options", "issues": { "<n>": { "title", "column", "labels": [], "comments": [], "blockedBy": [<n>] } } }.
+//                 "options", "issues": { "<n>": { "title", "body", "column", "labels": [], "comments": [], "blockedBy": [<n>] } } }.
 //                 With it, the calls issue.json handles act on the issue they name (a card by its `--url …/issues/<n>`),
 //                 and `api graphql` answers the query of dynamo/tickets.ts: the issues it names (`t<n>:issue`), or all
 //                 `repo view <repo> --json nameWithOwner` answers `repoName` of board.json (a renamed repository), else <repo>
@@ -17,8 +17,8 @@ import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 type Answer = { args: string[]; code?: number; stdout?: string; stderr?: string };
-type Issue = { title: string; boardName: string; options: Record<string, string>; column: string | null; labels: string[]; comments: string[] };
-type Item = { title: string; column: string | null; labels: string[]; comments: string[]; blockedBy: number[] };
+type Issue = { title: string; body?: string; boardName: string; options: Record<string, string>; column: string | null; labels: string[]; comments: string[] };
+type Item = { title: string; body?: string; column: string | null; labels: string[]; comments: string[]; blockedBy: number[] };
 type Board = { repoName?: string; boardId: string; statusFieldId: string; boardName: string; options: Record<string, string>; issues: Record<string, Item> };
 
 const state = process.env.FAKE_GH ?? '';
@@ -40,6 +40,7 @@ if (issue) {
     const i = issue;
     const fields: Record<string, () => unknown> = {
       title: () => i.title,
+      body: () => i.body ?? '',
       labels: () => i.labels.map((name) => ({ name })),
       comments: () => i.comments.map((body, k) => ({ body, url: `https://github.com/o/r/issues/1#issuecomment-${k + 1}` })),
       projectItems: () => (i.column === null ? [] : [{ title: i.boardName, status: { name: i.column, optionId: i.options[i.column] } }]),
@@ -72,6 +73,7 @@ if (board) {
   if (issue && c === 'view' && args.includes('--json')) {
     const fields: Record<string, () => unknown> = {
       title: () => issue.title,
+      body: () => issue.body ?? '',
       labels: () => issue.labels.map((name) => ({ name })),
       comments: () => issue.comments.map((body, k) => ({ body, url: `https://github.com/o/r/issues/${n}#issuecomment-${k + 1}` })),
       projectItems: () => (issue.column === null ? [] : [{ title: b.boardName, status: { name: issue.column, optionId: b.options[issue.column] } }]),

@@ -1,6 +1,6 @@
 // The file that says a ticket is held by a run: `.claude/worktrees/runs/<n>.json` of the main folder (ignored by git with the
 // copies). `dynamo run` writes it on taking the ticket, rewrites it at every phase and round and at every agent it starts,
-// and removes it when the ticket ends, merged or in Needs Human. A ticket that paused keeps it: that run did not finish.
+// and removes it when the ticket ends, merged or in Needs Human. A ticket that paused keeps it: that run did not finish; so does a stop at merge (marked `stopped`), which is ignored once the human removes the ticket's copy and branch.
 // It also keeps what the run knew of the ticket (what failed, what the agents spent and answered), so that a run that goes
 // on from it (resumes.ts) writes the same comment as the one that died would have. Like the notes, a file that cannot be
 // written never stops the ticket. `readHold` gives it back, or null when there is none or it is not what a run writes. It keeps too
@@ -31,6 +31,11 @@ export type Hold = {
   review: ReviewerAnswer | null;
   checks: Check[] | null;
   resetsAt: string | null;
+  // True on the file a stop at merge keeps (loop.ts): the ticket stopped there, it was not cut by a dead run.
+  stopped: boolean;
+  // The Builder stopped to ask the human: the ticket is in Needs Human with its copy, branch and this file, and the run that
+  // goes on resumes the Builder's conversation with what the human wrote after the notice.
+  asked: boolean;
 };
 
 const PHASES: Stage[] = ['start', 'build', 'check', 'review', 'merge'];
@@ -63,7 +68,7 @@ export function readHold(main: string, n: number): Hold | null {
   return {
     pid, startedAt, round, phase: phase as Stage, sessions: { builder: id(sessions.builder), reviewer: id(sessions.reviewer) },
     failed: id(raw.failed), spent, builder: asBuilder(raw.builder), review: asReviewer(raw.review), checks: checksOf({ ok: true, checks: raw.checks }),
-    resetsAt: id(raw.resetsAt),
+    resetsAt: id(raw.resetsAt), stopped: raw.stopped === true, asked: raw.asked === true,
   };
 }
 

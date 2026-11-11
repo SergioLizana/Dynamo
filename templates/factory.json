@@ -6,12 +6,26 @@
     "boardOwner": "<…>",
     "doneLabel": "in-release",
     "epicLabel": "epic",
+    "ideaLabel": "idea",
     "checks": ["<…>"],
     "budgetUsd": { "builder": 10, "reviewer": 4 },
     "timeoutMinutes": { "builder": 30, "reviewer": 15 },
     "checkTimeoutMinutes": 15,
+    "levels": {
+      "low": {
+        "builder": { "model": "sonnet", "effort": "low" },
+        "reviewer": { "model": "sonnet", "effort": "medium" }
+      },
+      "medium": {
+        "builder": { "model": "sonnet", "effort": "medium" },
+        "reviewer": { "model": "sonnet", "effort": "high" }
+      },
+      "high": {
+        "builder": { "model": "sonnet", "effort": "high" },
+        "reviewer": { "model": "opus" }
+      }
+    },
     "ticketsAtOnce": 1,
-    "documentsLanguage": "English",
-    "backlog": "documentation/ideas.md"
+    "documentsLanguage": "English"
   }
 }

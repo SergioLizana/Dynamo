@@ -25,8 +25,9 @@ export function fillSettings(template: unknown, gaps: Gaps): unknown {
   return template;
 }
 
-// The rule that lets the factory run a check as it is written in factory.json.
-export const ruleOf = (check: string): string => `Bash(${check})`;
+// The rule that lets the factory run a check as it is written in factory.json. A `<base>` in the check is the branch a run
+// names, which a rule cannot know, so it becomes `*`.
+export const ruleOf = (check: string): string => `Bash(${check.replaceAll('<base>', '*')})`;
 
 // The settings the setup needs, from the filled template: its `allow` list gets one rule per check, and the block is checked to
 // be a settings object. Throws, saying what is wrong, for a template that is not one.

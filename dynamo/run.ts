@@ -9,13 +9,15 @@
 // ends and when it pauses, one line goes to the human through `deps.notify` (notify.ts). Its commands are printed for the
 // human; nothing is pushed. One run at a time: the lock of the
 // run (runlock.ts) makes a second `dynamo run` exit at once while one is alive, saying which pid holds it. Before all that, a
-// `project.repo` that GitHub resolves to another name (a renamed repository) stops the run before any card moves (repocheck.ts).
+// `project.repo` that GitHub resolves to another name (a renamed repository) stops the run before any card moves (repocheck.ts), and so does a main folder with uncommitted
+// files, which it lists (dirtycheck.ts).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Deps, Output } from './cli.ts';
 import type { Exit } from './cli.ts';
 import { exit, usage } from './cli.ts';
 import { copy } from './copy.ts';
+import { checkClean } from './dirtycheck.ts';
 import type { Item, State } from './lists.ts';
 import { atOnceOf, listOf, schedule } from './lists.ts';
 import { mainFolder } from './holds.ts';
@@ -35,6 +37,9 @@ export async function run(args: string[], deps: Deps): Promise<Output> {
   // project.repo must be the repository's current name before any card moves (repocheck.ts).
   const renamed = checkRepo(deps);
   if (renamed !== null) return renamed;
+  // The main folder must be clean: `dynamo merge` refuses a dirty one, and it would fail only after the tickets were spent (dirtycheck.ts).
+  const dirty = checkClean(deps);
+  if (dirty !== null) return dirty;
   // One run at a time (runlock.ts): a live lock ends this run before it touches anything.
   const lock = takeLock(join(mainFolder(deps), '.claude', 'worktrees', 'run.json'), { pid: process.pid, now: Date.now });
   if ('held' in lock) {

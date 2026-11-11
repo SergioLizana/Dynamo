@@ -11,6 +11,12 @@
 // the agent's whole list, with no MCP tools, and it wins over `--tools`; with no line the agent gets the session's. The
 // answer of `--json-schema` is the tool StructuredOutput, so an agent file with a `tools:` line must list it
 // (tests/claude.test.ts checks the agents dynamo runs).
+//
+// A project's `.mcp.json` is loaded by `claude -p` by itself, so the launch passes no `--mcp-config` (probed on 2.1.322,
+// 2026-11-10: in a folder with a `.mcp.json` and no flag, the init line lists the server with source `project`, and an agent
+// whose `--agents` tools named its tool called it).
+
+import type { JoinedAgent } from './reinforce.ts';
 
 // One agent run: the plugin's `agents/<agent>.md`, launched as `dynamo:<agent>` (so it cannot clash with an agent of the project), the folder (a copy) it works in, the file that keeps its whole
 // stream, the JSON schema of its answer, the most it may spend (USD), the most time it may take (`timeoutMs`; past it with
@@ -28,6 +34,13 @@ export type AgentRun = {
   session: string;
   skills: boolean;
   resume?: boolean;
+  // The model and effort of the agent, those of the ticket's level (levels.ts); an effort of null sets none: the agent runs
+  // with the one of its own file or of its model.
+  model: string;
+  effort: string | null;
+  // Dynamo's agent joined with the project's reinforcement (reinforce.ts), passed with `--agents` under the name that `--agent`
+  // launches, so it takes the place of the plugin's file for this run; absent, the plugin's agent is launched as it is.
+  joined?: JoinedAgent;
 };
 
 // How an agent ended: success, its budget spent, timeout (past its time limit with no result: the ticket's reason for
@@ -57,6 +70,8 @@ export type AgentResult = {
 export function agentArgs(run: AgentRun): string[] {
   return [
     '-p', '--agent', `dynamo:${run.agent}`,
+    ...(run.joined === undefined ? [] : ['--agents', JSON.stringify({ [`dynamo:${run.agent}`]: run.joined })]),
+    '--model', run.model, ...(run.effort === null ? [] : ['--effort', run.effort]),
     '--output-format', 'stream-json', '--verbose',
     '--json-schema', JSON.stringify(run.schema),
     '--max-budget-usd', String(run.budget),

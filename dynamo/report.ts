@@ -54,15 +54,28 @@ export function report(args: string[], deps: Deps): Output {
   // An epic is closed by the release when all its sub-issues are in it; one that cannot be read is left open, with a note.
   const epics = closedEpics(deps.gh, repo, parents, merged, notes);
 
+  // What the agents of a ticket that was not merged cost: its run comments say it all the same. A ticket that cannot be read
+  // adds a note and counts as no cost.
+  const costOf = (n: number): number | null => {
+    try {
+      const r = deps.gh(['issue', 'view', String(n), '-R', repo, '--json', 'title,comments,parent']);
+      if (r.code !== 0) throw new Error(endOf(r));
+      return runCost(ticketOf(r.stdout).comments);
+    } catch (e) {
+      notes.push(`the cost of #${n}, in ${needsHuman}, could not be read: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
+  };
+
   // The cards of the open issues: one query for them all, with their columns, not the board's list.
-  let stuck: { number: number; title: string }[] | null = null;
+  let stuck: { number: number; title: string; cost: number | null }[] | null = null;
   try {
     const where = {
       repo, boardId: setting(factory.board, 'board', 'boardId'), statusFieldId: setting(factory.board, 'board', 'statusFieldId'),
       doneLabel: setting(project, 'project', 'doneLabel'),
     };
     stuck = readTickets(deps.gh, where, []).found.filter((t) => t.column === needsHuman).sort((a, b) => a.number - b.number)
-      .map((t) => ({ number: t.number, title: t.title }));
+      .map((t) => ({ number: t.number, title: t.title, cost: costOf(t.number) }));
   } catch (e) {
     notes.push(`the cards in ${needsHuman} could not be read: ${e instanceof Error ? e.message : String(e)}`);
   }

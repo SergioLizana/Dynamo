@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join } from 'node:path';
 import { runAgent } from '../claude.ts';
 import type { Deps } from '../cli.ts';
+import { exit } from '../cli.ts';
 import { execAsync } from '../exec.ts';
 import type { Factory } from '../factory.ts';
 import { gh } from '../gh.ts';
@@ -283,7 +284,7 @@ test('an agent that hits the usage limit pauses the list: no round, no Needs Hum
   assert.match(comments[0], /^Resets at: 2026-11-02T18:40:00\.000Z$/m);
   assert.match(comments[0], /^Cost so far: 0\.2000 USD in 1 turns \(1 agent runs\)$/m);
   assert.match(comments[0], /To relaunch:.*\/dynamo:autopilot 1/);
-  assert.equal(readFileSync(join(f.dir, '.claude', 'worktrees', 'logs', '1', 'builder-1.jsonl'), 'utf8'), limit);
+  assert.equal(readFileSync(join(f.dir, '.claude', 'worktrees', 'logs', '1', 'attempt-1', 'builder-1.jsonl'), 'utf8'), limit);
 });
 
 test('a project.repo that GitHub resolves to another name stops the run before any card moves, naming both names', async () => {
@@ -299,6 +300,26 @@ test('a project.repo that GitHub resolves to another name stops the run before a
   assert.equal(f.issue(1).column, 'Todo');
   assert.equal(f.claudeCalls().length, 0);
   assert.deepEqual(branches(f.dir), []);
+});
+
+test('an uncommitted file in the main folder stops the run before any agent or card, exit 1, and the line names it', async () => {
+  const f = setup({ 1: [] }, builds(1));
+  writeFileSync(join(f.dir, 'notes.txt'), 'x');
+  writeFileSync(join(f.dir, 'pass.js'), 'changed');
+  const { code, out } = await exit(() => run(['1'], f.deps));
+
+  assert.equal(code, 1);
+  assert.equal(out.ok, false);
+  assert.deepEqual([...(out.dirty as string[])].sort(), ['notes.txt', 'pass.js']);
+  assert.match(String(out.error), /main folder is not clean/);
+  assert.match(String(out.error), /notes\.txt/);
+  assert.match(String(out.error), /pass\.js/);
+  assert.match(String(out.error), /nothing was started/);
+  assert.ok(!f.ghCalls().some((c) => c[0] === 'project'), 'no card moved');
+  assert.equal(f.issue(1).column, 'Todo');
+  assert.equal(f.claudeCalls().length, 0);
+  assert.deepEqual(branches(f.dir), []);
+  assert.equal(existsSync(join(f.dir, '.claude', 'worktrees', 'run.json')), false, 'the lock is not left');
 });
 
 test('a project.repo that is the current name (whatever its case) goes on as before', async () => {
@@ -317,7 +338,7 @@ test('wrong arguments are a usage error', async () => {
 });
 
 // The notes of a ticket's steps (steps.jsonl of its log folder), each with the time it was written.
-const notesOf = (dir: string, n: number): { step: string; ending?: string; text?: string; at: string }[] => readFileSync(join(dir, '.claude', 'worktrees', 'logs', String(n), 'steps.jsonl'), 'utf8')
+const notesOf = (dir: string, n: number): { step: string; ending?: string; text?: string; at: string }[] => readFileSync(join(dir, '.claude', 'worktrees', 'logs', String(n), 'attempt-1', 'steps.jsonl'), 'utf8')
   .split('\n').filter((l) => l !== '').map((l) => JSON.parse(l));
 
 test('while one ticket\'s check runs (a check that sleeps), another ticket\'s agent past its limit is closed on time', async () => {
