@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lastComment, postArgs, readArgs, sameBody } from '../comments.ts';
+import { afterNotice, lastComment, postArgs, readArgs, sameBody } from '../comments.ts';
 
 const list = (...c: unknown[]) => JSON.stringify({ comments: c });
 
@@ -42,4 +42,13 @@ test('lastComment refuses what is not JSON or has no comments list with a body i
   assert.throws(() => lastComment('nope'), /JSON/);
   const bad = ['null', '[]', '{}', '{"comments":5}', list({ body: 5 }), list({ body: 'ok' }, {})];
   for (const b of bad) assert.throws(() => lastComment(b), /comments/, b);
+});
+
+test('afterNotice gives the bodies written after the last «run · » comment, oldest first, and none when nothing follows it', () => {
+  const c = (body: string) => ({ body, url: 'u' });
+  assert.deepEqual(afterNotice(list(c('before'), c('run · not merged\nReason: x'), c('use the second option'), c('and add a test'))), ['use the second option', 'and add a test']);
+  assert.deepEqual(afterNotice(list(c('run · paused'), c('old answer'), c('run · not merged'), c('new answer'))), ['new answer']);
+  assert.deepEqual(afterNotice(list(c('run · not merged'))), []);
+  assert.deepEqual(afterNotice(list(c('one'), c('two'))), ['one', 'two'], 'with no notice, every comment is after it');
+  assert.deepEqual(afterNotice(list()), []);
 });

@@ -2,11 +2,14 @@
 import type { Stage } from './rounds.ts';
 
 // A step that stops the ticket (Needs Human), with where it stopped.
+// `asked`: the Builder stopped to ask the human, so the ticket keeps its copy, branch and the Builder's conversation (loop.ts).
 export class Stop extends Error {
   stoppedAt: Stage;
-  constructor(stoppedAt: Stage, reason: string) {
+  asked: boolean;
+  constructor(stoppedAt: Stage, reason: string, asked = false) {
     super(reason);
     this.stoppedAt = stoppedAt;
+    this.asked = asked;
   }
 }
 

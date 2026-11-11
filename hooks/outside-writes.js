@@ -248,7 +248,9 @@ function analyze(src, ctx, depth = 0) {
     else if (!isAllowed(p)) bad.push(p);
   };
   const scanCode = (text) => {
-    const found = text.match(/[A-Za-z]:[\\/][^\s'"`)]*|(?<![\w:./])\/[\w.~-][^\s'"`)]*|\.\.[\\/][^\s'"`)]*|~[\\/][^\s'"`)]*/g) || [];
+    // A "/" right after a word character, "." or ":" is part of a path or a URL; right after ")" or "]" it is a division
+    // (`(a+b)/255`, `c[0]/2`), not the start of an absolute path.
+    const found = text.match(/[A-Za-z]:[\\/][^\s'"`)]*|(?<![\w:./)\]])\/[\w.~-][^\s'"`)]*|\.\.[\\/][^\s'"`)]*|~[\\/][^\s'"`)]*/g) || [];
     for (const f of found) target({ t: f, dyn: false });
   };
   const command = (words) => {

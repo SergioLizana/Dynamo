@@ -69,7 +69,10 @@ export type Facts = {
   spent: Spent[];
   noTrace: string | null;
   outOfTicket: string | null;
-  stop: { stoppedAt: Stage; reason: string; left: string | null } | null;
+  // What was removed from the copy because git did not track it (cleaning.ts); the comment names it only when there is any.
+  removed: string[];
+  // `asked`: the Builder stopped to ask the human, or the Reviewer failed it in the last round (loop.ts keeps its conversation, the copy and the branch).
+  stop: { stoppedAt: Stage; reason: string; left: string | null; asked?: boolean } | null;
 };
 
 // Lines after the first are indented, so no line of an agent's text can start a field of the comment.
@@ -98,15 +101,23 @@ export function resultComment(f: Facts, n: number): string {
     `Turns: ${turns} (the sum of num_turns)`,
     `No trace: ${block(filled(f.noTrace) ?? 'none')}`,
     `Out of the ticket (for the backlog): ${block(filled(f.outOfTicket) ?? 'nothing')}`,
+    ...(f.removed.length === 0 ? [] : [`Removed from the copy (git did not track it): ${block(f.removed.join(', '))}`]),
   ];
   if (f.stop !== null) {
-    lines.push(
-      `Reason: ${block(f.stop.reason)}`,
-      `Stopped at: ${f.stop.stoppedAt}`,
-      `Left: ${f.stop.left ?? 'nothing'}`,
-      'To relaunch: take the card out of *Needs Human* (`guides/github-board.md` of the plugin), remove what «Left» names '
-        + `(\`git worktree remove\`, then \`git branch -D\`), and launch \`/dynamo:autopilot ${n}\`.`,
-    );
+    // A stop at merge keeps the copy, the branch and the ticket's file (loop.ts): the relaunch runs only the merge, so nothing is removed.
+    const relaunch = f.stop.stoppedAt === 'merge'
+      ? 'To relaunch: take the card out of *Needs Human* (`guides/github-board.md` of the plugin) and launch '
+        + `\`/dynamo:autopilot ${n}\`: the copy and the branch are kept, and only the merge is retried (no Builder, no Reviewer).`
+      // A Builder that asked keeps its conversation too: it goes on with the comments written after this notice.
+      : f.stop.asked === true && f.stop.stoppedAt === 'review'
+        ? 'To relaunch: answer or guide in a comment of this ticket if you want, take the card out of *Needs Human* (`guides/github-board.md` of the plugin) and launch '
+          + `\`/dynamo:autopilot ${n}\`: the copy, the branch and the Builder's conversation are kept, and the Builder goes on with the Reviewer's verdict and what you write here after this notice.`
+        : f.stop.asked === true
+        ? 'To relaunch: answer in a comment of this ticket, take the card out of *Needs Human* (`guides/github-board.md` of the plugin) and launch '
+          + `\`/dynamo:autopilot ${n}\`: the copy, the branch and the Builder's conversation are kept, and the Builder goes on with what you write here after this notice.`
+        : 'To relaunch: take the card out of *Needs Human* (`guides/github-board.md` of the plugin), remove what «Left» names '
+          + `(\`git worktree remove\`, then \`git branch -D\`), and launch \`/dynamo:autopilot ${n}\`.`;
+    lines.push(`Reason: ${block(f.stop.reason)}`, `Stopped at: ${f.stop.stoppedAt}`, `Left: ${f.stop.left ?? 'nothing'}`, relaunch);
   }
   return lines.join('\n') + '\n';
 }

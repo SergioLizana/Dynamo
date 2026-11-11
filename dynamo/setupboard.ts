@@ -1,5 +1,5 @@
 // The part of `dynamo setup` that talks to GitHub about the board and the labels: copy the template board for the project,
-// link it to the repository, read its ids back, and create the two labels the factory needs. The decisions are in setups.ts;
+// link it to the repository, read its ids back, and create the labels the factory needs. The decisions are in setups.ts;
 // this module only calls gh, which it is given. The owner is always passed by name (`--target-owner @me` failed in the probe).
 import type { Deps } from './cli.ts';
 import { endOf } from './checks.ts';

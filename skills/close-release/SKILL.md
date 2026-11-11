@@ -1,6 +1,6 @@
 ---
 name: close-release
-description: Close the release the working branch names, once the human merged its release PR in GitHub - fetch, check the merged PR, make the milestone, the tag, the GitHub Release and the next branch, close the milestone, push the tag and the next branch, and leave the next branch checked out, all with no questions. Use when the human runs /dynamo:close-release <patch|minor|major> after merging the release PR.
+description: Close the release the working branch names, once the human merged its release PR in GitHub - fetch, check the merged PR, rewrite the merged PR's release report in the documents language, make the milestone, the tag, the GitHub Release and the next branch, close the milestone, push the tag and the next branch, and leave the next branch checked out, all with no questions. Use when the human runs /dynamo:close-release <patch|minor|major> after merging the release PR.
 argument-hint: <patch|minor|major>
 allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/dynamo/dynamo.ts" *)
 disable-model-invocation: true
@@ -44,7 +44,28 @@ Any failure: **stop** and show the literal output. Nothing was written.
 - Any other exit 1 or 2 (the release PR is not merged, there is no release branch above the last
   tag, …): **stop** and show the literal line. Nothing was written, and the PR is not merged by this skill.
 
-## 4. Close
+## 4. The report
+
+The release report is written by `dynamo report` with a frame of fixed English text, and the code cannot know every
+language; you can. What the human merged is the body of the release PR, and `release close` takes the text of the GitHub
+Release from that body, so the rewrite is made on the body of the merged PR: that is what reaches the Release. Its file
+is `.claude/worktrees/release-report-<base>.md`, with `<base>` the `base` of step 3 and its `/` written as `-`; it is
+only where you write the rewrite.
+
+1. Read `project.documentsLanguage` and `project.repo` in `.claude/factory.json`. If the language is English, say so
+   and go on to step 5: there is nothing to rewrite.
+2. Read the body of the PR (`pr` of step 3): `gh pr view <pr> -R <repo> --json body --jq .body`.
+3. Rewrite it in that language, section by section, and write it to the file of the report. Change no number, no `#n`
+   (a `Closes #n` line stays exactly as it is), no command, no path, no branch, tag or version name and no cost: only
+   the words around them. A quoted result comment or ticket title is translated like the rest. Do not add, drop or
+   reorder a line, a section or a list item.
+4. `gh pr edit <pr> -R <repo> --body-file <file>`. Any failure: **stop** and show the literal output; nothing else
+   was written.
+5. Run the dry run of step 3 again: the rewritten body must still pass it. With `missing` or `extra` in the line:
+   **stop** and show its `message`; the rewrite changed a `Closes #n` line and the human decides.
+6. Say in one line that the body of the PR, and so the GitHub Release, will carry the report in that language.
+
+## 5. Close
 
 1. `node "${CLAUDE_PLUGIN_ROOT}/dynamo/dynamo.ts" release close --bump <bump>` (the same bump, without `--dry-run`).
    - Exit 0: go on. The subcommand has closed the milestone of the release too (it is the last thing it writes): nothing

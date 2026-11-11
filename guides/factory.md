@@ -63,6 +63,8 @@ If a state is renamed or recreated, read the ids again with `gh project field-li
   list of issues: what makes an issue a ticket is its card on the board, and an epic has none, because nothing adds it
   (the board does not add an issue by itself, not even a sub-issue). Its tickets are its sub-issues, and they get a card
   because `/dynamo:to-tickets` creates them with `--project`. Any name; the label must exist in the repository.
+- `project.ideaLabel`: the label of an idea, an issue for something that is not a ticket yet. It tells an idea from a
+  parked ticket in the *Backlog* column of the board. Any name; `dynamo setup` creates it in the repository if it lacks it.
 
 ## Limits of a run
 
@@ -86,6 +88,26 @@ the most agents that run at the same time, since a ticket runs one agent at a ti
 for its blockers of the list to be merged; merges still go one at a time, whatever the number. It is a whole number
 from 1 (1 runs the list one ticket after another); more spends more of the usage limit at once. Start with 1 and raise
 it when the project has independent tickets and the usage limit allows it.
+
+## Levels
+
+`project.levels` holds, per level of difficulty (`low`, `medium`, `high`), the model and the effort of the two agents of a
+ticket of that level: `builder` and `reviewer`, each with `model` (`sonnet`, `opus`, or any name `claude --model` takes)
+and `effort` (`low`, `medium`, `high`, `xhigh` or `max`, as `claude --effort`). The whole block is optional, and so is
+every level, agent and value in it: what is not set takes the starting value, so a file with no `levels` runs with them.
+The template lists them, which are:
+
+| Level | Builder | Reviewer |
+| --- | --- | --- |
+| `low` | sonnet, effort low | sonnet, effort medium |
+| `medium` | sonnet, effort medium | sonnet, effort high |
+| `high` | sonnet, effort high | opus, no effort set (the model's own) |
+
+To change one, write only that value: `"levels": { "medium": { "reviewer": { "model": "opus" } } }` makes the Reviewer of
+`medium` an opus with the effort the table gives it, and leaves the rest as it is. A key that is not a level, an agent,
+`model` or `effort`, or a value that is not a model name or one of those efforts, is an error that names the key, so a typo
+is not taken for the default. Haiku is not among the starting values: a cheap Builder that fails and repeats costs more
+than a good one at the first try. The budgets and timeouts of «Limits of a run» do not change with the level.
 
 ## Automatic check
 
@@ -118,8 +140,65 @@ slowest command of the check.
 
 - `project.documentsLanguage`: the language of documents, commits, GitHub comments and verdicts, written as the name of
   the language (`English`). Choose the language the people who read the repository work in.
-- `project.backlog`: the path of the file where ideas that are not tickets go (the example is
-  `documentation/ideas.md`). A plain file in the repository; create it if the project has none.
+
+## Reinforcing the Builder and the Reviewer
+
+Dynamo's Builder and Reviewer carry the tools every project has and the rules that hold in any project. A project that
+needs more (a browser to check a page, an agent of its own) adds it in two optional files, committed in the project so
+that every ticket's copy has them:
+
+- `.claude/dynamo/builder.md`: reinforces the Builder.
+- `.claude/dynamo/reviewer.md`: reinforces the Reviewer.
+
+A project with neither file runs as without them, and keeps getting Dynamo's improvements with `claude plugin update`.
+Write only the file of the agent that needs it.
+
+Each file has two parts:
+
+- The front matter, with `tools:`: the tools the file adds, a comma-separated list like the `tools:` of an agent. They
+  join the tools of Dynamo's agent; they do not replace them. MCP tools are named `mcp__<server>__<tool>`: a tool of an
+  MCP server is not available to the agent until it is listed here.
+- The body, the rules the file adds: how to use those tools and what the project asks of the agent in its own terms.
+
+At launch `dynamo run` joins the two into one agent: Dynamo's tools plus the project's, and Dynamo's text unchanged with
+the project's body below it, under the heading «Rules of this project: they add to the rules above, never override
+them». Name and description stay Dynamo's, and nothing is written to a file. So the file holds only what is the
+project's; copying a whole agent into the project would leave it behind every improvement of Dynamo.
+
+An example, `.claude/dynamo/reviewer.md` of a web project whose Reviewer checks a page in a browser:
+
+```markdown
+---
+tools: mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_resize
+---
+
+When a checkbox is about what a page shows, open it with the browser tools and look at it at 1024 px and at 390 px
+wide before judging; a checkbox about a page that nobody saw is not proven.
+```
+
+### What a reinforcement cannot do
+
+A reinforcement only adds. It cannot:
+
+- **Remove Dynamo's rules or tools.** Its rules come after Dynamo's and add to them; if they contradict Dynamo's,
+  Dynamo's win. It has no way to take a tool off the list.
+- **Change the model or the effort.** They are set by the level of each ticket, whatever the file says.
+- **Give the Reviewer Edit or Write.** The judge must not touch what it judges: if `.claude/dynamo/reviewer.md` lists
+  `Edit` or `Write`, `dynamo run` stops and says why, and launches no agent.
+
+### An agent of the project as a tool
+
+A tool can be `Agent(<name>)`, where `<name>` is an agent of the project in `.claude/agents/<name>.md`: the Builder or
+the Reviewer then hands a part of its work to that agent and gets its answer back. For example, a Reviewer that hands
+the check of a page to the project's `page-checker`:
+
+```markdown
+---
+tools: Agent(page-checker)
+---
+
+For a checkbox about what a page shows, ask `page-checker` and use its answer as evidence.
+```
 
 ## Permissions
 

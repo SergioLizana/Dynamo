@@ -32,6 +32,14 @@ export const STEPS_FILE = 'steps.jsonl';
 // An agent's log is `builder-<round>.jsonl` or `reviewer-<round>.jsonl`. Within a round the Builder comes before the reviewer.
 const AGENT_FILE = /^(builder|reviewer)-([1-9]\d*)\.jsonl$/;
 
+// The folder of one attempt of a ticket: `attempt-<k>` inside `logs/<n>/`. A new run takes the next number; the earlier ones stay.
+const ATTEMPT_FOLDER = /^attempt-([1-9]\d*)$/;
+
+// The number of the latest attempt among the names of a ticket's log folder (0 when there is none); other names are not attempts.
+export function latestAttemptOf(names: string[]): number {
+  return Math.max(0, ...names.map((n) => Number(ATTEMPT_FOLDER.exec(n)?.[1] ?? 0)));
+}
+
 type Agent = { round: number; order: number; text: string };
 
 export function statusOf(folders: LogFolder[]): Status {

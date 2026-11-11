@@ -90,8 +90,11 @@ export function lastResult(bodies: string[]): Result | null {
   return { head: lines[0].replace(RESULT, ''), rounds: rounds === undefined ? null : rounds.slice(8).trim(), out: k < 0 ? null : lines.slice(k).join('\n') };
 }
 
+// A text on one line, whole: the report cuts nothing.
+export const flat = (s: string): string => s.replace(/\s+/g, ' ').trim();
+
 export const oneLine = (s: string, max = 300): string => {
-  const x = s.replace(/\s+/g, ' ').trim();
+  const x = flat(s);
   return x.length > max ? `${x.slice(0, max - 1)}…` : x;
 };
 
@@ -110,7 +113,7 @@ export function outOfTicket(block: string | null): string | null {
     if (!inside && /^(Stopped at|Left|To relaunch|Reason)\b/.test(l.trim())) break;
     body.push(l);
   }
-  const text = oneLine(body.join(' '), 600);
+  const text = flat(body.join(' '));
   return text === '' || /^(nothing|none)\.?$/i.test(text) ? null : text;
 }
 

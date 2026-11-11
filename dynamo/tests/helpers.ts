@@ -64,9 +64,9 @@ export function scratch(): string {
 export const TEST_FACTORY: Factory = {
   version: 1,
   project: {
-    repo: 'owner/project', mainBranch: 'main', boardOwner: 'owner', doneLabel: 'in-release', epicLabel: 'epic', checks: ['true'],
+    repo: 'owner/project', mainBranch: 'main', boardOwner: 'owner', doneLabel: 'in-release', epicLabel: 'epic', ideaLabel: 'idea', checks: ['true'],
     budgetUsd: { builder: 10, reviewer: 4 }, timeoutMinutes: { builder: 30, reviewer: 15 }, checkTimeoutMinutes: 15,
-    ticketsAtOnce: 5, documentsLanguage: 'English', backlog: 'documentation/ideas.md',
+    ticketsAtOnce: 5, documentsLanguage: 'English',
   },
   board: {
     boardNumber: 1, boardId: 'PVT_board', boardName: 'Dynamo', statusFieldId: 'PVTSSF_status',

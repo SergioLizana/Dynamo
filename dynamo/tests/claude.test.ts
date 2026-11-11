@@ -110,14 +110,23 @@ test('parseStream treats what claude printed as unknown: a field of the wrong ty
 
 const run: AgentRun = {
   agent: 'builder', prompt: 'Build #86.', cwd: '/copy', log: '/logs/86.jsonl', schema: { type: 'object' }, budget: 2.5, session: SESSION,
-  skills: true, timeoutMs: 60_000,
+  skills: true, timeoutMs: 60_000, model: 'sonnet', effort: 'high',
 };
 
 test('agentArgs: the flags the loop needs, each with its value', () => {
   assert.deepEqual(agentArgs(run), [
-    '-p', '--agent', 'dynamo:builder', '--output-format', 'stream-json', '--verbose', '--json-schema', '{"type":"object"}',
+    '-p', '--agent', 'dynamo:builder', '--model', 'sonnet', '--effort', 'high', '--output-format', 'stream-json', '--verbose', '--json-schema', '{"type":"object"}',
     '--max-budget-usd', '2.5', '--permission-mode', 'auto', '--permission-prompts', 'none', '--session-id', SESSION,
   ]);
+});
+
+test('agentArgs: the model and effort of the run are the ones launched, and an effort of null sets no --effort', () => {
+  const args = agentArgs({ ...run, agent: 'reviewer', model: 'opus', effort: 'xhigh' });
+  assert.equal(args[args.indexOf('--model') + 1], 'opus');
+  assert.equal(args[args.indexOf('--effort') + 1], 'xhigh');
+  const own = agentArgs({ ...run, agent: 'reviewer', model: 'opus', effort: null });
+  assert.equal(own[own.indexOf('--model') + 1], 'opus');
+  assert.ok(!own.includes('--effort'));
 });
 
 // The plugin's agents are namespaced so they do not clash with a project's own agents.
@@ -126,6 +135,19 @@ test('agentArgs launches the plugin agents: dynamo:builder and dynamo:reviewer',
     const args = agentArgs({ ...run, agent });
     assert.equal(args[args.indexOf('--agent') + 1], `dynamo:${agent}`);
   }
+});
+
+test('agentArgs with no joined agent are the ones of today: no --agents', () => {
+  assert.ok(!agentArgs(run).includes('--agents'));
+});
+
+test('agentArgs with a joined agent passes it with --agents under the name --agent launches, and the model and effort stay the flags', () => {
+  const joined = { description: 'd', prompt: 'Dynamo text.\n\n## H\n\nProject rules.\n', tools: ['Read', 'mcp__a__b'] };
+  const args = agentArgs({ ...run, joined });
+  assert.equal(args[args.indexOf('--agent') + 1], 'dynamo:builder');
+  assert.deepEqual(JSON.parse(args[args.indexOf('--agents') + 1]), { 'dynamo:builder': joined });
+  assert.equal(args[args.indexOf('--model') + 1], 'sonnet');
+  assert.equal(args[args.indexOf('--effort') + 1], 'high');
 });
 
 test('agentArgs: a run without skills gets --disable-slash-commands, one with skills does not', () => {
@@ -137,6 +159,9 @@ test('agentArgs never sets the tools by flag: the agent file is the one list, an
   for (const agent of ['builder', 'reviewer']) {
     const args = agentArgs({ ...run, agent });
     assert.ok(!args.includes('--tools') && !args.includes('--allowedTools') && !args.includes('--strict-mcp-config'), agent);
+    // A project's `.mcp.json` is loaded by `claude -p` by itself (probed on 2.1.322), so no launch passes --mcp-config.
+    const joined = { description: 'd', prompt: 'p', tools: ['Read'] };
+    assert.ok(!args.includes('--mcp-config') && !agentArgs({ ...run, agent, joined }).includes('--mcp-config'), agent);
   }
 });
 

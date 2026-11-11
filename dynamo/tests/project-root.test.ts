@@ -19,8 +19,8 @@ function project(repo: string) {
   mkdirSync(inner, { recursive: true });
   writeFileSync(join(copy, '.git'), `gitdir: ${join(main, '.git', 'worktrees', 'ticket-7').replaceAll('\\', '/')}\n`);
   writeFileSync(join(main, '.claude', 'factory.json'), JSON.stringify({ version: 1, project: { repo, mainBranch: 'main', checks: [] } }));
-  mkdirSync(join(main, '.claude', 'worktrees', 'logs', '7'), { recursive: true });
-  writeFileSync(join(main, '.claude', 'worktrees', 'logs', '7', 'steps.jsonl'), `${JSON.stringify({ at: 't', round: 1, step: 'column', column: 'Build' })}\n`);
+  mkdirSync(join(main, '.claude', 'worktrees', 'logs', '7', 'attempt-1'), { recursive: true });
+  writeFileSync(join(main, '.claude', 'worktrees', 'logs', '7', 'attempt-1', 'steps.jsonl'), `${JSON.stringify({ at: 't', round: 1, step: 'column', column: 'Build' })}\n`);
   return { main, copy, inner };
 }
 

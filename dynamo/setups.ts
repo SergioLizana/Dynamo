@@ -10,7 +10,7 @@ import type { Factory } from './factory.ts';
 // The values the setup reads from the project; every other value comes from the template.
 export type Values = { repo: string; boardOwner: string; mainBranch: string };
 
-const USAGE = 'usage: setup --check <command> [--check <command>]...';
+const USAGE = 'usage: setup --check <command> [--check <command>]... [--language <name>]';
 
 // The board every project's board is a copy of: the human's template (public, empty, English), whose owner and number are a
 // constant of the code.
@@ -19,19 +19,27 @@ export const TEMPLATE_BOARD = { owner: 'SergioLizana', number: 3 } as const;
 // The block `board` of factory.json: the ids of the GitHub project, read from GitHub, keyed by the names of Dynamo's columns.
 export type Board = { boardNumber: number; boardId: string; boardName: string; statusFieldId: string; options: Record<string, string> };
 
-// The commands of the `--check` arguments, in order, trimmed. None is allowed (a project that already has a factory.json keeps
-// its checks; the subcommand asks for them when it has none), and nothing but `--check` is accepted.
-export function checksOf(args: string[]): string[] {
+// The commands of the `--check` arguments, in order, trimmed, and the language of `--language`, trimmed (null when not given;
+// the last one wins). None of them is required here (a project that already has a factory.json keeps its checks and its
+// language; the subcommand asks for the checks when it has none), and nothing but these two is accepted.
+export function setupArgsOf(args: string[]): { checks: string[]; language: string | null } {
   const checks: string[] = [];
+  let language: string | null = null;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    const inline = arg.startsWith('--check=');
-    if (!inline && arg !== '--check') usage(`${arg} is not an argument of setup; ${USAGE}`);
-    const command = (inline ? arg.slice('--check='.length) : args[++i] ?? '').trim();
-    if (command === '') usage(`--check needs a command; ${USAGE}`);
-    checks.push(command);
+    const flag = ['--check', '--language'].find((f) => arg === f || arg.startsWith(`${f}=`));
+    if (flag === undefined) usage(`${arg} is not an argument of setup; ${USAGE}`);
+    const value = (arg.startsWith(`${flag}=`) ? arg.slice(flag.length + 1) : args[++i] ?? '').trim();
+    if (value === '') usage(`${flag} needs a value; ${USAGE}`);
+    if (flag === '--check') checks.push(value);
+    else language = value;
   }
-  return checks;
+  return { checks, language };
+}
+
+// The commands of the `--check` arguments, in order.
+export function checksOf(args: string[]): string[] {
+  return setupArgsOf(args).checks;
 }
 
 // `gh repo view --json nameWithOwner,owner`: the repository's name and the login that owns the board. null if either is missing.
@@ -53,8 +61,9 @@ export function mainBranchOf(originHead: string, current: string): string | null
 }
 
 // The template with the values read and the checks given. The template itself is not changed.
-export function withValues(template: Factory, values: Values, checks: string[]): Factory {
-  return { ...template, project: { ...template.project, ...values, checks } };
+// `language` is `project.documentsLanguage`; null keeps the template's (English).
+export function withValues(template: Factory, values: Values, checks: string[], language: string | null = null): Factory {
+  return { ...template, project: { ...template.project, ...values, checks, ...(language === null ? {} : { documentsLanguage: language }) } };
 }
 
 // What to suggest when a check gives 127 (its program could not start). An npm script is named by its own script; any other

@@ -9,8 +9,8 @@ import { DYNAMO, fakeGhEnv, scratch } from './helpers.ts';
 function logs(): string {
   const dir = join(scratch(), 'logs');
   const put = (ticket: number, name: string, text: string) => {
-    mkdirSync(join(dir, String(ticket)), { recursive: true });
-    writeFileSync(join(dir, String(ticket), name), text);
+    mkdirSync(join(dir, String(ticket), 'attempt-1'), { recursive: true });
+    writeFileSync(join(dir, String(ticket), 'attempt-1', name), text);
   };
   const note = (x: Record<string, unknown>) => `${JSON.stringify({ at: 't', round: 1, ...x })}\n`;
   put(7, 'steps.jsonl', note({ step: 'column', column: 'Build' }));
@@ -39,6 +39,19 @@ test('dynamo status reads only the log folder: no gh call, no git, one JSON line
   assert.deepEqual(r.out.blocked, [{ ticket: 8, reason: 'the check failed twice' }]);
   assert.deepEqual(r.out.skipped, [{ ticket: 9, why: 'blocker #8 stopped in this run' }]);
   assert.equal(r.out.table, undefined);
+});
+
+test('dynamo status reads the latest attempt of a ticket, also past nine, and skips names that are not attempts', () => {
+  const dir = join(scratch(), 'logs');
+  const put = (attempt: string, text: string) => {
+    mkdirSync(join(dir, '7', attempt), { recursive: true });
+    writeFileSync(join(dir, '7', attempt, 'steps.jsonl'), `${JSON.stringify({ at: 't', round: 1, step: 'stopped', text })}
+`);
+  };
+  put('attempt-9', 'nine'); put('attempt-10', 'ten'); put('attempt-1d', 'junk');
+  const r = status('--json', '--logs', dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.out.blocked, [{ ticket: 7, reason: 'ten' }]);
 });
 
 test('without --json the line carries the table too', () => {

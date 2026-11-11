@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Put the factory in the current project - propose the project's checks from its scripts, have the human confirm them, run `dynamo setup` with them and report what it printed. Use when the human runs /dynamo:setup in a project that has no board or no .claude/factory.json yet (or to set up again).
+description: Put the factory in the current project - propose the project's checks from its scripts, have the human confirm them and choose the language of the documents, run `dynamo setup` with them and report what it printed. Use when the human runs /dynamo:setup in a project that has no board or no .claude/factory.json yet (or to set up again).
 argument-hint: (none)
 allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/dynamo/dynamo.ts" *), Bash(git rev-parse --show-toplevel)
 disable-model-invocation: true
@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # /dynamo:setup
 
-A thin skill over `node "${CLAUDE_PLUGIN_ROOT}/dynamo/dynamo.ts" setup --check <command>...`. The path of the engine changes
+A thin skill over `node "${CLAUDE_PLUGIN_ROOT}/dynamo/dynamo.ts" setup --check <command>... --language <name>`. The path of the engine changes
 with each version of the plugin, so a person cannot type it; this skill is the one command. It proposes the checks, the
 human decides them, and `setup` does the rest (board, `factory.json`, settings, labels, CI, commit). Talk to the human in
 the language their `CLAUDE.md` asks for. `setup` prints one JSON line and exits 0 (done), 1 (failed) or 2 (called wrong).
@@ -20,8 +20,8 @@ something appended, such as `; echo "exit=$?"`, is no longer covered by `allowed
 
 1. Run it from the project's folder. If `git rev-parse --show-toplevel` (exactly so, nothing appended) fails,
    **stop**: say this is not a git repository and run nothing.
-2. If `.claude/factory.json` exists, read its `project.checks`: they are the current checks (the second question of
-   step 3 asks whether to keep them).
+2. If `.claude/factory.json` exists, read its `project.checks` and `project.documentsLanguage`: they are the current
+   checks (the second question of step 3 asks whether to keep them) and the current language (the third question).
 3. Read the scripts of the project: the `scripts` of `package.json` if there is one (also `pyproject.toml`, `Makefile`
    or `Cargo.toml` if that is what the project has). Do not run any of them.
 
@@ -49,6 +49,10 @@ checks as a numbered list, each with the script it comes from, and ask the human
 1. Are these the checks, or which to add, remove or change?
 2. Only when `.claude/factory.json` already has checks: keep them (no `--check`, none run) or replace them with these?
 
+3. Which language the documents are written in (commits, GitHub comments, verdicts, tickets), as the name of the
+   language, such as `English` or `Español`. When `factory.json` already has one, say it and offer to keep it. If the
+   human gives none, the language is `English` for a new `factory.json`, and the one it has for an existing one.
+
 Wait for the answer. If the human cancels, or gives no check and the project has no `factory.json`, **stop**: run
 nothing and say that `setup` needs at least one check in a project with no `factory.json`. Never run `setup` with a
 check the human has not confirmed.
@@ -56,8 +60,9 @@ check the human has not confirmed.
 ## 4. Run the setup
 
 Run `node "${CLAUDE_PLUGIN_ROOT}/dynamo/dynamo.ts" setup` followed by one `--check "<command>"` per confirmed check, in
-order, for example `node "${CLAUDE_PLUGIN_ROOT}/dynamo/dynamo.ts" setup --check "node --run verify" --check "git diff --check <base>"`.
-With the human's answer to keep the existing checks, pass no `--check`. Use the Bash tool with `run_in_background: true`
+order, for example `node "${CLAUDE_PLUGIN_ROOT}/dynamo/dynamo.ts" setup --check "node --run verify" --check "git diff --check <base>" --language "Español"`.
+With the human's answer to keep the existing checks, pass no `--check`. Pass `--language "<name>"` with the language the
+human chose; if they chose none, or to keep the one the file has, pass no `--language`. Use the Bash tool with `run_in_background: true`
 and `timeout: 7200000` (the maximum, two hours): the checks run one after another before anything is written, each up to
 `project.checkTimeoutMinutes`, and a background command is stopped at its `timeout` too (10 minutes by default, so the
 default is not enough), not only a foreground one. The `timeout` covers all the checks together, not one.
@@ -73,7 +78,7 @@ asking again: if it fails, step 5 says what to do.
 When the notification says the command ended, read its output and its exit code. Show the human the JSON line `setup`
 printed, word for word, with the exit code, and then say in plain words, from that line only:
 
-1. Exit 0: the board (`board`, `boardCopied`), the files written (`path`, `settings`, `gitignore`), the labels, the
+1. Exit 0: the board (`board`, `boardCopied`), the files written (`path`, `settings`, `gitignore`; the language of the documents is the `documentsLanguage` of that file), the labels, the
    Dependabot file, `ci` and `ciMissing` (the checks no workflow of the project runs: say them, they are the human's to
    fix), `codeScanning`, and whether the setup committed (`commit`, `clean`). Give the `push` command exactly as printed:
    the push and the pull request are the human's, never run it.
@@ -88,5 +93,5 @@ asking.
 
 ## End
 
-Finish with a short summary: the checks confirmed, the exit code, and the push command if there is one. Never run
+Finish with a short summary: the checks confirmed, the language, the exit code, and the push command if there is one. Never run
 `dynamo run`, push, or open a pull request.
