@@ -20,11 +20,11 @@ test('releaseBranchOf is the greatest release branch above the last tag, compari
 test('releaseBranchOf counts a branch of origin, and a branch below or at the last tag is not the working branch', () => {
   assert.equal(releaseBranchOf('release/0.4.0\norigin/release/0.5.0\norigin/HEAD', 'v0.4.0'), 'release/0.5.0');
   assert.equal(releaseBranchOf('release/0.5.0\norigin/release/0.5.0', 'v0.4.0'), 'release/0.5.0');
-  assert.throws(() => releaseBranchOf('release/0.4.0\norigin/release/0.3.0', 'v0.4.0'), /above the last tag v0\.4\.0.*create release\/0\.5\.0/);
+  assert.throws(() => releaseBranchOf('release/0.4.0\norigin/release/0.3.0', 'v0.4.0'), /above the last tag v0\.4\.0.*run \/dynamo:new-release <patch\|minor\|major>/);
 });
 
 test('releaseBranchOf with no branch above the last tag says which branch to create: the next minor, or release/0.1.0 with no tag', () => {
-  assert.throws(() => releaseBranchOf('main\nticket/1-x', 'v0.4.2'), /create release\/0\.5\.0/);
+  assert.throws(() => releaseBranchOf('main\nticket/1-x', 'v0.4.2'), /run \/dynamo:new-release <patch\|minor\|major>/);
   assert.throws(() => releaseBranchOf('', ''), /above no tag.*create release\/0\.1\.0/);
 });
 
@@ -61,7 +61,7 @@ test('with several release branches and tags, the greatest branch above the last
   run(dir, 'branch', '-D', 'release/0.11.0');
   assert.equal(releaseBranch(depsOf(dir)), 'release/0.10.0');
   run(dir, 'tag', 'v0.10.0');
-  assert.throws(() => releaseBranch(depsOf(dir)), /above the last tag v0\.10\.0.*create release\/0\.11\.0/);
+  assert.throws(() => releaseBranch(depsOf(dir)), /above the last tag v0\.10\.0.*run \/dynamo:new-release <patch\|minor\|major>/);
 });
 
 test('a release branch that exists only on origin counts as the working branch', () => {
@@ -70,7 +70,7 @@ test('a release branch that exists only on origin counts as the working branch',
   run(origin, 'branch', 'release/0.4.0');
   const dir = scratch();
   run(dir, 'clone', '-q', origin, '.');
-  assert.throws(() => releaseBranch(depsOf(dir)), /create release\/0\.5\.0/);
+  assert.throws(() => releaseBranch(depsOf(dir)), /run \/dynamo:new-release <patch\|minor\|major>/);
   run(origin, 'branch', 'release/0.5.0');
   run(dir, 'fetch', '-q', 'origin');
   assert.equal(run(dir, 'branch', '--list', 'release/0.5.0'), '', 'there is no local branch');
@@ -82,5 +82,5 @@ test('with no release branch above the last tag the error names the branch to cr
   assert.throws(() => releaseBranch(depsOf(dir)), /create release\/0\.1\.0/);
   run(dir, 'tag', 'v0.4.0');
   run(dir, 'branch', 'release/0.4.0');
-  assert.throws(() => releaseBranch(depsOf(dir)), /above the last tag v0\.4\.0.*create release\/0\.5\.0/);
+  assert.throws(() => releaseBranch(depsOf(dir)), /above the last tag v0\.4\.0.*run \/dynamo:new-release <patch\|minor\|major>/);
 });

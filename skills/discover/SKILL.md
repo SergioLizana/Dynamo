@@ -24,6 +24,10 @@ and no commits; the result lives in this conversation.
     about is open: its item in «Notes» says what is left to decide and what it depends on.
   - If the issue is closed, does not carry `project.epicLabel`, or has no pending block, say what it is and ask
     whether to go on.
+  - **An idea** (the issue carries `project.ideaLabel`): it is the start, not an epic. Take it as the idea without
+    asking whether to go on (if it is closed, say so and ask); its title and body are the idea to restate. Keep its
+    number: step 4's summary names it as «Idea: #<n> <two or three lines>», so `/dynamo:to-spec` and
+    `/dynamo:to-tickets` can close it.
 - Read `CLAUDE.md` and the documents it points at that the idea touches. Ideas that those documents put out of
   scope, or that `CLAUDE.md` says belong in the backlog, go there: say so and stop unless the human insists.
 - Restate the idea in two or three lines: the problem, for whom, and what changes for them. Ask if that is right.
@@ -76,7 +80,7 @@ The tree is done when the frontier is empty: every branch visited, nothing assum
 Show, in the language you talk to the human in:
 
 ```text
-Idea: <two or three lines>
+Idea: [#<n> if it started from an idea issue] <two or three lines>
 Facts checked: <fact → source>
 Decisions: <one per line, with its reason>
 Pending: <doubt> | none

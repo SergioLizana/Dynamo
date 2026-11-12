@@ -1,0 +1,618 @@
+/* components.css — the pieces every page reuses: skip link, header, toggles, buttons, code block, cards,
+   the strokes and fills of the inline SVG previews, footer. Class names go by component (BEM-like).
+   Built only on the tokens of tokens.css; motion only inside `prefers-reduced-motion: no-preference`. */
+
+/* Skip link */
+.skip-link {
+  position: absolute;
+  left: var(--space-3);
+  top: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-bg);
+  border: var(--border-width) solid var(--color-accent);
+  border-radius: var(--radius);
+  transform: translateY(-300%);
+}
+
+.skip-link:focus {
+  transform: none;
+  z-index: 1;
+}
+
+/* Header */
+/* A flat bar on the page colour with one border below; the current page is marked by a line under its link, as in
+   technical documentation. It stays in view on a wide screen (on a phone it wraps, so it scrolls away). */
+.site-header {
+  position: relative;
+  z-index: 2;
+  border-bottom: var(--border-width) solid var(--color-border);
+  background: var(--color-bg);
+}
+
+@media (min-width: 60rem) {
+  .site-header {
+    position: sticky;
+    top: 0;
+  }
+}
+
+.site-header__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-6);
+  min-height: var(--header-height);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  color: var(--color-fg);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  text-decoration: none;
+}
+
+.site-nav {
+  flex: 1 1 auto;
+}
+
+.site-nav__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-5);
+}
+
+.site-nav__link {
+  display: inline-block;
+  padding-block: var(--space-3);
+  border-bottom: var(--stroke-width) solid transparent;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.site-nav__link:hover {
+  color: var(--color-fg);
+}
+
+.site-nav__link[aria-current="page"] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-fg);
+  font-weight: var(--weight-bold);
+}
+
+.site-header__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Toggles: the language selector is a group of them, the theme switch is one */
+.toggle-group {
+  display: inline-flex;
+}
+
+.toggle {
+  min-height: var(--target-size);
+  min-width: var(--target-size);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-bg);
+  color: var(--color-fg);
+  border: var(--border-width) solid var(--color-border);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: var(--color-bg-inset);
+}
+
+.toggle[aria-pressed="true"] {
+  background: var(--color-accent-emphasis);
+  border-color: var(--color-accent-emphasis);
+  color: var(--color-on-accent);
+}
+
+.toggle-group .toggle {
+  border-radius: 0;
+}
+
+.toggle-group .toggle:first-child {
+  border-start-start-radius: var(--radius);
+  border-end-start-radius: var(--radius);
+}
+
+.toggle-group .toggle:last-child {
+  border-start-end-radius: var(--radius);
+  border-end-end-radius: var(--radius);
+}
+
+.toggle-group .toggle + .toggle {
+  border-inline-start-width: 0;
+}
+
+.toggle--single {
+  border-radius: var(--radius);
+}
+
+/* Buttons */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-size);
+  padding: var(--space-1) var(--space-4);
+  background: var(--color-accent-emphasis);
+  color: var(--color-on-accent);
+  border: var(--border-width) solid var(--color-accent-emphasis);
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: var(--weight-bold);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.button--secondary {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  border-color: var(--color-border);
+}
+
+.button--secondary:hover {
+  background: var(--color-bg-inset);
+  border-color: var(--color-border-strong);
+}
+
+/* Surfaces and controls of the pages: one look for every panel (a subtle fill, a border, one radius) and one for every
+   choice button (tabs, steps, nodes), so no page keeps a variant of its own. The page stylesheets only lay them out.
+   The picked control is marked the same way everywhere: an accent border, a subtle fill and bold text. */
+.chain__step,
+.truth__item,
+.origin,
+.detail,
+.map-detail {
+  background: var(--color-bg-subtle);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.step-list__button,
+.map-node,
+.map-link,
+.sim__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--target-size);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-bg);
+  color: var(--color-fg);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: start;
+  cursor: pointer;
+}
+
+.step-list__button:hover,
+.map-node:hover,
+.map-link:hover,
+.sim__tab:hover {
+  background: var(--color-bg-inset);
+  border-color: var(--color-border-strong);
+}
+
+.step-list__button[aria-current="step"],
+.map-node[aria-pressed="true"],
+.sim__tab[aria-selected="true"] {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-accent);
+  color: var(--color-fg);
+  font-weight: var(--weight-bold);
+}
+
+/* Code block with a copy button */
+.code-block {
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg-inset);
+}
+
+.code-block__pre {
+  padding: var(--space-4);
+}
+
+.code-block__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.code-block__status {
+  color: var(--color-success);
+  font-size: var(--text-sm);
+}
+
+/* Cards: one per subpage, rendered from the list in assets/pages.js */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min)), 1fr));
+  gap: var(--space-5);
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg-subtle);
+  overflow: hidden;
+}
+
+.card:hover,
+.card:focus-within {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow);
+}
+
+/* The side index of a subpage (assets/toc.js). Below the breakpoint it is a <details> above the content, closed by
+   default; from it, <main> becomes two columns and the index stays in view beside the sections. */
+.toc {
+  margin: var(--space-5) var(--space-5) 0;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg-subtle);
+}
+
+.toc__title {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.toc__list {
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+.toc__link {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-inline-start: var(--stroke-width) solid transparent;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.toc__link:hover {
+  color: var(--color-fg);
+}
+
+.toc__link[aria-current="true"] {
+  border-inline-start-color: var(--color-accent);
+  color: var(--color-fg);
+  font-weight: var(--weight-bold);
+}
+
+@media (min-width: 60rem) {
+  main.has-toc {
+    display: grid;
+    grid-template-columns: var(--toc-width) minmax(0, 1fr);
+    column-gap: var(--space-6);
+    max-width: var(--content-width);
+    margin-inline: auto;
+    padding-inline: var(--space-5);
+  }
+
+  main.has-toc > * {
+    grid-column: 2;
+  }
+
+  main.has-toc > .toc {
+    grid-column: 1;
+    grid-row: 1 / span 20;
+    align-self: start;
+    position: sticky;
+    top: calc(var(--header-height) + var(--space-4));
+    margin: var(--space-6) 0 0;
+    border: 0;
+    background: none;
+  }
+
+  main.has-toc .container {
+    max-width: none;
+    padding-inline: 0;
+  }
+
+  .toc__title {
+    padding-inline: var(--space-3);
+    cursor: default;
+    pointer-events: none;
+    list-style: none;
+  }
+
+  .toc__title::-webkit-details-marker {
+    display: none;
+  }
+
+  .toc__list {
+    padding-inline: 0;
+  }
+}
+
+/* The logo in the header: two images of the same file set, the one of the theme in force is shown */
+.logo {
+  display: block;
+  width: calc(var(--space-8) * 2);
+  height: auto;
+}
+
+.logo--light {
+  display: none;
+}
+
+:root[data-theme="dark"] .logo--dark {
+  display: block;
+}
+
+:root[data-theme="dark"] .logo--light {
+  display: none;
+}
+
+:root:not([data-theme="dark"]) .logo--dark {
+  display: none;
+}
+
+:root:not([data-theme="dark"]) .logo--light {
+  display: block;
+}
+
+/* The logo in the hero, drawn inline so its cells can be filled; its colours come from the tokens */
+.hero-logo {
+  display: block;
+  width: min(100%, calc(var(--space-8) * 6));
+  height: auto;
+}
+
+.hero-logo__cell {
+  fill: none;
+  stroke: var(--color-accent);
+}
+
+.hero-logo__work {
+  fill: var(--color-accent);
+  fill-opacity: 0.28;
+  stroke: var(--color-accent);
+}
+
+.hero-logo__done {
+  fill: var(--color-accent);
+  stroke: var(--color-accent);
+}
+
+.hero-logo__check {
+  fill: none;
+  stroke: var(--logo-check);
+}
+
+.hero-logo__ink {
+  fill: none;
+  stroke: var(--logo-ink);
+}
+
+.hero-logo__accent {
+  fill: none;
+  stroke: var(--color-accent);
+}
+
+/* Motion: only here, and only when the person has not asked for less */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal {
+    opacity: 0;
+    transform: translateY(var(--reveal-distance));
+    transition: opacity var(--duration-slow) var(--easing), transform var(--duration-slow) var(--easing);
+  }
+
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  .card {
+    transition: transform var(--duration) var(--easing), box-shadow var(--duration) var(--easing),
+      border-color var(--duration) var(--easing);
+  }
+
+  .card:hover,
+  .card:focus-within {
+    transform: translateY(var(--lift));
+  }
+
+  /* The cells of the hero's logo fill once, in order, like tickets going to done */
+  .hero-logo__cell,
+  .hero-logo__work,
+  .hero-logo__done,
+  .hero-logo__check {
+    animation: logo-fill var(--duration-slow) var(--easing) both;
+  }
+
+  .hero-logo__cell { animation-delay: 0s; }
+  .hero-logo__work { animation-delay: var(--logo-step); }
+  .hero-logo__done { animation-delay: calc(var(--logo-step) * 2); }
+  .hero-logo__check { animation-delay: calc(var(--logo-step) * 3); }
+
+  @keyframes logo-fill {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
+.card__preview {
+  padding: var(--space-4);
+  background: var(--color-bg-inset);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.card__preview svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.card__body {
+  padding: var(--space-4);
+}
+
+.card__title {
+  font-size: var(--text-lg);
+}
+
+.card__link {
+  color: var(--color-fg);
+  text-decoration: none;
+}
+
+/* The whole card is the link: its box stretches over the card, the focus ring stays on the link */
+.card__link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.card__link:hover {
+  color: var(--color-accent);
+}
+
+.card__text {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+/* Inline SVG previews: they carry no colour of their own, only these classes */
+.pv-surface {
+  fill: var(--color-bg);
+  stroke: var(--color-border);
+  stroke-width: var(--border-width);
+}
+
+.pv-line {
+  fill: none;
+  stroke: var(--color-border-strong);
+  stroke-width: var(--stroke-width);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pv-muted {
+  fill: var(--color-border-strong);
+}
+
+.pv-accent {
+  fill: var(--color-accent);
+}
+
+.pv-accent-line {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: var(--stroke-width);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* One fill per column of the board, wherever a column appears */
+.lane-fill-backlog { fill: var(--lane-backlog); }
+.lane-fill-todo { fill: var(--lane-todo); }
+.lane-fill-build { fill: var(--lane-build); }
+.lane-fill-verify { fill: var(--lane-verify); }
+.lane-fill-review { fill: var(--lane-review); }
+.lane-fill-merge { fill: var(--lane-merge); }
+.lane-fill-needs-human { fill: var(--lane-needs-human); }
+.lane-fill-done { fill: var(--lane-done); }
+
+/* Footer */
+.site-footer {
+  padding-block: var(--space-6);
+  border-top: var(--border-width) solid var(--color-border);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.site-footer p {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toggle,
+  .button,
+  .card,
+  .card__link {
+    transition: background-color var(--duration) var(--easing), border-color var(--duration) var(--easing),
+      box-shadow var(--duration) var(--easing), color var(--duration) var(--easing);
+  }
+}
+
+/* The diagram drawn with archify, in the page; `diagram--full` (the button) puts it over the whole screen */
+.diagram {
+  margin: 0;
+}
+
+.diagram__toggle {
+  margin-bottom: var(--space-3);
+}
+
+.diagram__frame {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1180 / 980; /* only until the diagram loads: diagram.js then sets the ratio from its viewBox */
+  height: auto;
+  overflow: hidden;
+  background: var(--color-bg-subtle);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.diagram__off,
+.diagram--full .diagram__on {
+  display: none;
+}
+
+.diagram--full .diagram__off {
+  display: inline;
+}
+
+.diagram--full {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3);
+  background: var(--color-bg);
+}
+
+.diagram--full .diagram__toggle {
+  align-self: flex-end;
+}
+
+.diagram--full .diagram__frame {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  aspect-ratio: auto !important;
+}

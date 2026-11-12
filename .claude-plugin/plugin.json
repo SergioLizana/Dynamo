@@ -1,6 +1,6 @@
 {
   "name": "dynamo",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "A personal agent factory for Claude Code: skills, agents, hooks and an engine that turn ideas into tickets and let agents build, test and review them until a PR is ready for a person to approve.",
   "author": { "name": "Sergio Lizana" }
 }

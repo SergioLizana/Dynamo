@@ -1,0 +1,114 @@
+/* tokens.css — the only place where colours, sizes, fonts and motion are written down.
+   Every other stylesheet reads these custom properties and holds no colour or size of its own.
+   Colours follow the manner of GitHub Primer; the lane colours are Dynamo's own, one per column of the board
+   (dynamo/columns.ts). The dark theme is set by `data-theme="dark"` on <html> (assets/theme.js). */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces, text and borders */
+  --color-bg: #ffffff;
+  --color-bg-subtle: #f6f8fa;
+  --color-bg-inset: #eff2f5;
+  --color-border: #d1d9e0;
+  --color-border-strong: #818b98;
+  --color-fg: #1f2328;
+  --color-muted: #59636e;
+  --color-accent: #0E9F8E; /* the logo's teal */
+  --color-accent-emphasis: #0E9F8E;
+  --color-on-accent: #ffffff;
+  --logo-ink: #16161D;
+  --logo-check: #ffffff;
+  --color-success: #1a7f37;
+  --color-shadow: rgba(31, 35, 40, 0.12);
+
+  /* One lane colour per column of the board */
+  --lane-backlog: #6e7781;
+  --lane-todo: #0969da;
+  --lane-build: #8250df;
+  --lane-verify: #9a6700;
+  --lane-review: #bf3989;
+  --lane-merge: #0a7c86;
+  --lane-needs-human: #cf222e;
+  --lane-done: #1a7f37;
+
+  /* Fonts */
+  --font-sans: system-ui, -apple-system, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Type scale (one, for every page and component): a sober documentation scale on a 1.25 ratio from a 1rem body,
+     with tight headings and a relaxed body line */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-hero: clamp(1.75rem, 1.25rem + 2vw, 2.5rem);
+  --weight-normal: 400;
+  --weight-bold: 600;
+  --leading-tight: 1.25;
+  --leading-normal: 1.6;
+
+  /* Spacing (one, for every page and component): steps of a 4px base */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4.5rem;
+
+  /* Shape and layout: small radii and flat surfaces, a border rather than a shadow */
+  --radius: 0.25rem;
+  --radius-lg: 0.5rem;
+  --border-width: 1px;
+  --stroke-width: 2px;
+  --focus-width: 2px;
+  --focus-offset: 2px;
+  --content-width: 84rem;
+  --measure: 42rem;
+  --card-min: 16rem;
+  --board-col-min: 8rem;
+  --target-size: 2.5rem;
+  --header-height: 3.5rem;
+  --toc-width: 14rem;
+  --toc-breakpoint: 60rem;
+  --shadow: 0 var(--border-width) var(--space-2) var(--color-shadow);
+
+  /* Motion: only used inside `prefers-reduced-motion: no-preference` */
+  --duration: 150ms;
+  --easing: ease-out;
+  --duration-slow: 600ms;
+  --reveal-distance: var(--space-4);
+  --lift: calc(var(--border-width) * -1);
+  --logo-step: 350ms;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #0d1117;
+  --color-bg-subtle: #151b23;
+  --color-bg-inset: #010409;
+  --color-border: #3d444d;
+  --color-border-strong: #9198a1;
+  --color-fg: #f0f6fc;
+  --color-muted: #9198a1;
+  --color-accent: #2DD4BF; /* the logo's teal */
+  --color-accent-emphasis: #2DD4BF;
+  --color-on-accent: #0B1F1D;
+  --logo-ink: #EDEDF2;
+  --logo-check: #0B1F1D;
+  --color-success: #3fb950;
+  --color-shadow: rgba(1, 4, 9, 0.6);
+
+  --lane-backlog: #8b949e;
+  --lane-todo: #4493f8;
+  --lane-build: #ab7df8;
+  --lane-verify: #d29922;
+  --lane-review: #db61a2;
+  --lane-merge: #39c5cf;
+  --lane-needs-human: #f85149;
+  --lane-done: #3fb950;
+}

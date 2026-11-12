@@ -1,0 +1,81 @@
+/* journey.css — what only the journey page needs: one prose section per column under the board, the table of the levels, and the
+   note under the diagram. The board itself, and the lane colour of a column (`--lane`), are in assets/board.css. Built only on
+   the tokens. */
+
+/* The prose keeps to the width of a line of text */
+.columns {
+  max-width: var(--measure);
+}
+
+/* One column: a title with its dot in the lane colour, and four short paragraphs */
+.column {
+  margin: 0 0 var(--space-6);
+  padding-left: var(--space-4);
+  border-left: var(--space-1) solid var(--lane);
+}
+
+.column__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.column__dot {
+  flex: none;
+  width: var(--space-3);
+  height: var(--space-3);
+  border-radius: 50%;
+  background: var(--lane);
+}
+
+.column__text {
+  margin: 0 0 var(--space-3);
+}
+
+.column__term {
+  display: block;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+}
+
+.column__runs {
+  margin: 0 0 var(--space-3);
+}
+
+.column__runs .column__text {
+  margin: 0;
+}
+
+/* The table of the levels, shown in the columns where an agent runs */
+.level-table {
+  width: 100%;
+  margin-top: var(--space-2);
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.level-table__caption {
+  margin-bottom: var(--space-2);
+  color: var(--color-muted);
+  text-align: start;
+}
+
+.level-table th,
+.level-table td {
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  text-align: start;
+}
+
+/* The note under the diagram */
+.diagram__note {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+}
+
+/* The journey diagram's viewBox: kept when diagram.js cannot read the frame (file://), else it sets the ratio itself */
+.diagram__frame {
+  aspect-ratio: 1312 / 392;
+}

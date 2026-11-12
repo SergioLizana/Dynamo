@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 656 200" width="656" height="200" role="img" aria-label="DYNAMO">
+  <title>DYNAMO — logo for a light background</title>
+  <style>
+    .cell  { fill: none; stroke: #0E9F8E; }
+    .work  { fill: #0E9F8E; fill-opacity: .28; stroke: #0E9F8E; }
+    .done  { fill: #0E9F8E; stroke: #0E9F8E; }
+    .check { fill: none; stroke: #FFFFFF; }
+    .txt   { fill: #16161D; }
+    .txs   { fill: none; stroke: #16161D; }
+    .txa   { fill: none; stroke: #0E9F8E; }
+  </style>
+  <g stroke-width="8" stroke-linejoin="round">
+    <polygon class="cell" points="67,127 93,142 93,172 67,187 41,172 41,142"/>
+    <polygon class="work" points="100,70 126,85 126,115 100,130 74,115 74,85"/>
+    <polygon class="done" points="133,13 159,28 159,58 133,73 107,58 107,28"/>
+  </g>
+  <path class="check" d="M120 43 L129 52 L146 34" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <clipPath id="band"><rect x="0" y="68" width="2000" height="64"/></clipPath>
+  <path class="txs" clip-path="url(#band)" stroke-width="13" stroke-linejoin="miter" stroke-miterlimit="10"
+        d="M220.5,74.5 H250.5 L264.5,88.5 V111.5 L250.5,125.5 H220.5 Z M360.5,140 V60 M360.5,66 L404.5,134 M404.5,60 V140 M429.5,140 V88.5 L443.5,74.5 H459.5 L473.5,88.5 V140 M429.5,106 H473.5 M498.5,140 V74.5 L524.5,102 L550.5,74.5 V140"/>
+  <path class="txa" clip-path="url(#band)" stroke-width="13" stroke-linejoin="miter" stroke-miterlimit="10"
+        d="M285.5,66.5 L312.5,100 L339.5,66.5 M312.5,100 V140 M589.5,74.5 H605.5 L619.5,88.5 V111.5 L605.5,125.5 H589.5 L575.5,111.5 V88.5 Z"/>
+</svg>

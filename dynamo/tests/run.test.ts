@@ -17,6 +17,7 @@ import { git } from '../git.ts';
 import { writeHold } from '../holds.ts';
 import { notify } from '../notify.ts';
 import { LOCK } from '../merging.ts';
+import { checkRepo } from '../repocheck.ts';
 import { run } from '../run.ts';
 import { fakeClaudeEnv, fakeGhEnv, scratch } from './helpers.ts';
 
@@ -200,41 +201,6 @@ test('with no numbers the list is the open tickets that are ready or wait on it;
   assert.equal(Math.max(...f.claudeCalls().map((c) => c.running)), 1);
 });
 
-test('with no numbers an open issue with no card is not taken', async () => {
-  const f = setup({ 1: [], 5: [] }, builds(1), 2, [5]);
-  const out = await run([], f.deps);
-
-  assert.equal(out.ok, true, JSON.stringify(out));
-  assert.deepEqual((out.tickets as { ticket: number }[]).map((t) => t.ticket), [1]);
-  assert.ok(!f.claudeCalls().some((c) => c.ticket === 5));
-});
-
-test('a number given of an issue with no card is not built: it is skipped with «no card on the board»', async () => {
-  const f = setup({ 1: [], 5: [] }, builds(1), 2, [5]);
-  const out = await run(['1', '5'], f.deps);
-
-  const [one, five] = out.tickets as Record<string, unknown>[];
-  assert.equal(one.merged, true);
-  assert.deepEqual(five, { ok: false, ticket: 5, skipped: 'no card on the board' });
-  assert.ok(!f.claudeCalls().some((c) => c.ticket === 5));
-  assert.deepEqual(moves(f.ghCalls(), 5), []);
-  assert.deepEqual(f.issue(5).comments, []);
-});
-
-test('dynamo run with no numbers skips a ticket in Backlog; a number given of one is skipped with �in Backlog�', async () => {
-  const f = setup({ 1: [], 5: [] }, builds(1), 2, [], { 5: 'Backlog' });
-  const out = await run([], f.deps);
-  assert.equal(out.ok, true, JSON.stringify(out));
-  assert.deepEqual((out.tickets as { ticket: number }[]).map((t) => t.ticket), [1]);
-  assert.ok(!f.claudeCalls().some((c) => c.ticket === 5));
-  assert.deepEqual(moves(f.ghCalls(), 5), []);
-
-  const g = setup({ 1: [], 5: [] }, builds(1), 2, [], { 5: 'Backlog' });
-  const named = await run(['1', '5'], g.deps);
-  assert.deepEqual((named.tickets as Record<string, unknown>[])[1], { ok: false, ticket: 5, skipped: 'in Backlog' });
-  assert.ok(!g.claudeCalls().some((c) => c.ticket === 5));
-});
-
 // What claude printed when the agent met the usage limit: a result whose api_error is usage_limit_reached, with when it resets.
 const limit = [
   JSON.stringify({ type: 'system', subtype: 'init', session_id: 's' }),
@@ -322,14 +288,14 @@ test('an uncommitted file in the main folder stops the run before any agent or c
   assert.equal(existsSync(join(f.dir, '.claude', 'worktrees', 'run.json')), false, 'the lock is not left');
 });
 
-test('a project.repo that is the current name (whatever its case) goes on as before', async () => {
-  const f = setup({ 1: [] }, builds(1));
-  f.rename('O/R');
-  const out = await run(['1'], f.deps);
-
-  assert.equal(out.ok, true, JSON.stringify(out));
-  assert.ok(f.ghCalls().some((c) => c[0] === 'repo' && c[1] === 'view' && c[2] === 'o/r'));
-  assert.deepEqual(moves(f.ghCalls(), 1), ['Build', 'Verify', 'Review', 'Merge', 'Done']);
+test('a project.repo that is the current name (whatever its case) goes on as before', () => {
+  const asked: string[][] = [];
+  const deps = {
+    factory: () => factory(1),
+    gh: (args: string[]) => { asked.push(args); return { code: 0, stdout: JSON.stringify({ nameWithOwner: 'O/R' }), stderr: '' }; },
+  } as unknown as Deps;
+  assert.equal(checkRepo(deps), null);
+  assert.deepEqual(asked[0].slice(0, 3), ['repo', 'view', 'o/r']);
 });
 
 test('wrong arguments are a usage error', async () => {
@@ -438,23 +404,13 @@ test('a run with nothing to do writes no report and sends no notice', async () =
   assert.equal((await run([], setup({}, []).deps)).report, null, 'an empty list too');
 });
 
-test('with no notify edge, or no variable behind it, a list ends the same: no error', async () => {
-  const f = setup({ 1: [] }, builds(1));
-  assert.equal(f.deps.notify, undefined);
-  assert.equal((await run([], f.deps)).ok, true);
-  const g = setup({ 1: [] }, builds(1));
-  g.deps.notify = (line) => notify(line, {});
-  const out = await run([], g.deps);
-  assert.equal(out.ok, true);
-  assert.equal(out.notice, undefined);
-});
-
-test('a notice that cannot be sent is shown in the line of the list and does not stop it', async () => {
+test('a notice that cannot be sent is shown in the line of the list and does not stop it; with no variable behind the edge there is no notice and no error', async () => {
   const f = setup({ 1: [] }, builds(1));
   f.deps.notify = async () => 'the notice could not be sent: down';
   const out = await run([], f.deps);
   assert.equal(out.ok, true);
   assert.equal(out.notice, 'the notice could not be sent: down');
+  assert.equal(await notify('a line', {}), null);
 });
 
 // --- A ticket half done by a run that died (resumes.ts, holds.ts).
@@ -463,19 +419,32 @@ const deadHold = (dir: string, n: number, phase: 'build' | 'check' | 'review' | 
   failed: null, spent: [], builder: null, review: null, checks: null, resetsAt: null,
 });
 
-test('a card in a phase column with no file is skipped with its reason, by number and in a list with none; Backlog stays out of the second', async () => {
-  const f = setup({ 1: [], 5: [], 6: [] }, builds(1), 2, [], { 5: 'Review', 6: 'Backlog' });
-  const all = await run([], f.deps);
-  const skipped = (all.tickets as Record<string, unknown>[]).filter((t) => t.skipped !== undefined);
-  assert.deepEqual(skipped.map((t) => t.ticket), [5]);
-  assert.match(String(skipped[0].skipped), /^in Review, with no file of a run to go on from \(\.claude\/worktrees\/runs\/5\.json\)/);
+test('a ticket with no card, one in Backlog and one in a phase column with no file are skipped, by number and in a list with none', async () => {
+  const issues = { 1: [], 5: [], 6: [], 7: [] };
+  const columns = { 6: 'Backlog', 7: 'Review' };
+  // By number: each is skipped with its reason and nothing starts.
+  const g = setup(issues, [], 2, [5], columns);
+  const named = await run(['5', '6', '7'], g.deps);
+  const [five, six, seven] = named.tickets as Record<string, unknown>[];
+  assert.deepEqual(five, { ok: false, ticket: 5, skipped: 'no card on the board' });
+  assert.deepEqual(six, { ok: false, ticket: 6, skipped: 'in Backlog' });
+  assert.match(String(seven.skipped), /^in Review, with no file of a run to go on from \(\.claude\/worktrees\/runs\/7\.json\)/);
+  assert.equal(g.claudeCalls().length, 0);
 
-  const g = setup({ 1: [], 5: [] }, builds(1), 2, [], { 5: 'Verify' });
-  const named = await run(['1', '5'], g.deps);
-  assert.match(String((named.tickets as Record<string, unknown>[])[1].skipped), /^in Verify, with no file of a run/);
-  for (const x of [f, g]) assert.ok(!x.claudeCalls().some((c) => c.ticket === 5));
-  assert.deepEqual(moves(f.ghCalls(), 5), []);
-  assert.equal(f.issue(5).column, 'Review', 'its card stays');
+  // With no numbers: only the one in a phase column with no file is reported as skipped; the other two stay out.
+  const f = setup(issues, builds(1), 2, [5], columns);
+  const all = await run([], f.deps);
+  const tickets = all.tickets as Record<string, unknown>[];
+  assert.deepEqual(tickets.filter((t) => t.skipped === undefined).map((t) => t.ticket), [1]);
+  assert.deepEqual(tickets.filter((t) => t.skipped !== undefined).map((t) => t.ticket), [7]);
+  assert.ok(!f.claudeCalls().some((c) => c.ticket !== 1));
+
+  for (const x of [f, g]) {
+    for (const n of [5, 6, 7]) assert.deepEqual(moves(x.ghCalls(), n), []);
+    assert.deepEqual([5, 6, 7].map((n) => x.issue(n).comments), [[], [], []]);
+  }
+  assert.equal(f.issue(7).column, 'Review', 'its card stays');
+  assert.equal(f.issue(6).column, 'Backlog');
 });
 
 test('a list with no numbers takes a card in a phase column that has its file, and goes on from it with the others', async () => {

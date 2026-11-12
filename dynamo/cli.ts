@@ -51,7 +51,7 @@ export async function exit(call: () => Output | Promise<Output>): Promise<Exit> 
 export function setting(block: unknown, blockName: string, key: string): string {
   const value = typeof block === 'object' && block !== null ? (block as Record<string, unknown>)[key] : undefined;
   const text = typeof value === 'number' && Number.isInteger(value) ? String(value) : value;
-  if (typeof text !== 'string' || text === '') throw new Error(`factory.json has no ${blockName}.${key}`);
+  if (typeof text !== 'string' || text === '') throw new Error(`factory.json has no ${blockName}.${key}; run /dynamo:setup to bring factory.json up to date`);
   return text;
 }
 

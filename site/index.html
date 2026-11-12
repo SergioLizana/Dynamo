@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en" data-page="home" data-root="">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-i18n="page.title"></title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/base.css">
+  <link rel="stylesheet" href="assets/components.css">
+  <link rel="stylesheet" href="assets/board.css">
+  <link rel="stylesheet" href="home.css">
+  <script src="assets/theme.js"></script>
+  <script src="assets/i18n.js" defer></script>
+  <script src="assets/shared.i18n.js" defer></script>
+  <script src="assets/pages.js" defer></script>
+  <script src="assets/hero-logo.js" defer></script>
+  <script src="assets/layout.js" defer></script>
+  <script src="assets/motion.js" defer></script>
+  <script src="assets/cards.js" defer></script>
+  <script src="assets/copy.js" defer></script>
+  <script src="assets/board.data.js" defer></script>
+  <script src="assets/board.player.js" defer></script>
+  <script src="assets/board.js" defer></script>
+  <script src="story.data.js" defer></script>
+  <script src="story.js" defer></script>
+  <script src="assets/board.i18n.js" defer></script>
+  <script src="home.i18n.js" defer></script>
+  <script src="story.i18n.js" defer></script>
+</head>
+<body>
+  <header data-site-header></header>
+
+  <main id="main">
+    <section class="section hero" aria-labelledby="hero-title">
+      <div class="container">
+        <div class="hero__logo" data-hero-logo></div>
+        <h1 id="hero-title" class="hero__title" data-i18n="hero.title"></h1>
+        <p class="hero__lead measure" data-i18n="hero.promise"></p>
+        <p><a class="button" href="#explore" data-i18n="hero.cta"></a></p>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="chain-title">
+      <div class="container">
+        <h2 id="chain-title" data-i18n="chain.title"></h2>
+        <p class="section__intro measure" data-i18n="chain.intro"></p>
+        <div data-slot="chain"></div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="board-title">
+      <div class="container">
+        <h2 id="board-title" data-i18n="board.title"></h2>
+        <p class="section__intro measure" data-i18n="board.intro"></p>
+        <div data-board></div>
+        <p class="board-more"><a href="journey/index.html" data-i18n="board.more"></a></p>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="truth-title">
+      <div class="container">
+        <h2 id="truth-title" data-i18n="truth.title"></h2>
+        <p class="section__intro measure" data-i18n="truth.intro"></p>
+        <div data-slot="truth"></div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="origin-title">
+      <div class="container">
+        <h2 id="origin-title" data-i18n="origin.title"></h2>
+        <p class="section__intro measure" data-i18n="origin.intro"></p>
+        <div data-slot="origin"></div>
+      </div>
+    </section>
+
+    <section id="explore" class="section" aria-labelledby="explore-title">
+      <div class="container">
+        <h2 id="explore-title" data-i18n="explore.title"></h2>
+        <p class="section__intro measure" data-i18n="explore.intro"></p>
+        <ul class="cards" data-cards></ul>
+      </div>
+    </section>
+
+    <section id="install" class="section" aria-labelledby="install-title">
+      <div class="container">
+        <h2 id="install-title" data-i18n="install.title"></h2>
+        <p class="section__intro measure" data-i18n="install.requirements"></p>
+        <div class="code-block install">
+          <pre class="code-block__pre" role="group" tabindex="0" data-i18n-attr="aria-label:install.commands"><code id="install-commands">claude plugin marketplace add SergioLizana/Dynamo
+claude plugin install dynamo@dynamo --scope project</code></pre>
+          <div class="code-block__bar">
+            <button type="button" class="button" data-copy-target="install-commands" data-copy-status="install-status"
+              data-i18n="install.copy.label" data-i18n-attr="aria-label:install.copy"></button>
+            <span id="install-status" class="code-block__status" role="status"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer data-site-footer></footer>
+</body>
+</html>

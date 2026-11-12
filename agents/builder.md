@@ -28,7 +28,16 @@ These apply to all your work.
 2. **Tests first.** If the project has tests, write the failing test first for each checkbox about behaviour (what the
    code does), then make it pass. A checkbox about a document or a skill gets no test: the reviewer proves it by
    reading it. Write no test of the wording of a document or a skill, of a value of `factory.json` or of a rule of
-   style; follow the «Tests» section of the project's `CLAUDE.md`.
+   style; follow the «Tests» section of the project's `CLAUDE.md`. Tests first stays: the failing assertion is written
+   before the code, in the scenario or in the pure test. How a behaviour checkbox is proven, in this order:
+   1. a test of the pure function, for decision logic;
+   2. an assertion in an existing scenario or shared fixture that already reaches the state;
+   3. a new scenario only for a path no existing scenario runs.
+
+   Cases that differ only in their input and expected output are one test over a table of cases, each case named in
+   its failure (as `test.each`/`it.each`, `pytest.mark.parametrize` or `@ParameterizedTest` do). Write a test only if a
+   plausible bug in the change would make it fail: none of what the language or the framework guarantees, of a getter,
+   or of a mock returning what it was given.
 3. **No trace.** For a checkbox that leaves no trace in git or GitHub, keep `command → output`.
 4. **Outside the code.** If a checkbox asks for something written outside the code (a comment on the ticket, a note),
    publish it now, during the build, so the reviewer can find it, and keep what you published.

@@ -1,0 +1,155 @@
+/* home.css — what only the home page needs: the hero, the chain, the source of truth, where it comes from and the install
+   block. Built only on the tokens. */
+
+.hero {
+  padding-block: var(--space-8);
+}
+
+.hero__logo {
+  margin-bottom: var(--space-5);
+}
+
+.hero__title {
+  max-width: var(--measure);
+}
+
+.hero__lead {
+  font-size: var(--text-lg);
+}
+
+.section__intro {
+  color: var(--color-muted);
+  margin-bottom: var(--space-5);
+}
+
+/* The link under the compact board, to the journey page */
+.board-more {
+  margin: var(--space-4) 0 0;
+}
+
+/* The chain: one numbered step per skill, drawn from the list in story.data.js */
+.chain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min)), 1fr));
+  counter-reset: chain;
+}
+
+.chain__step {
+  position: relative;
+  padding: var(--space-4);
+  counter-increment: chain;
+}
+
+.chain__step::before {
+  content: counter(chain);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  margin-bottom: var(--space-3);
+  background: var(--color-accent-emphasis);
+  color: var(--color-on-accent);
+  border-radius: var(--radius);
+  font-weight: var(--weight-bold);
+}
+
+.chain__command {
+  margin-bottom: var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.chain__title {
+  font-size: var(--text-lg);
+  margin-top: 0;
+}
+
+.chain__gains {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+/* The issues as the source of truth: three parts side by side */
+.truth {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min)), 1fr));
+}
+
+.truth__item {
+  padding: var(--space-4);
+}
+
+.truth__title {
+  font-size: var(--text-lg);
+  margin-top: 0;
+}
+
+.truth__text {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+/* Where it comes from: one block per person, with the ideas taken from them and what Dynamo adds */
+.origins {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--measure)), 1fr));
+}
+
+.origin {
+  padding: var(--space-4);
+}
+
+.origin__who {
+  margin-top: 0;
+}
+
+.origin__repo {
+  overflow-wrap: anywhere;
+}
+
+.origin__repo-label {
+  color: var(--color-muted);
+}
+
+.origin__ideas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.origin__idea {
+  padding-top: var(--space-4);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.origin__taken {
+  margin-bottom: var(--space-2);
+}
+
+.origin__adds {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.origin__adds-label {
+  color: var(--color-fg);
+}
+
+/* Install: the two commands with their copy button */
+.install {
+  max-width: var(--measure);
+}

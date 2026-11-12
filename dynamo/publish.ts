@@ -34,7 +34,7 @@ export async function publish(args: string[], deps: Deps): Promise<Output> {
   const files = publishedFiles(listing.stdout);
   if (!files.includes('.claude-plugin/plugin.json')) throw new Error(`${tag} has no .claude-plugin/plugin.json to publish`);
   const lacking = missingPublicFiles(listing.stdout);
-  if (lacking.length > 0) throw new Error(`${tag} has no ${lacking.join(', ')}: the public CI and Dependabot come from there; nothing was committed`);
+  if (lacking.length > 0) throw new Error(`${tag} has no ${lacking.join(', ')}: the public CI, Pages workflow and Dependabot come from there; nothing was committed`);
   // The public CI and Dependabot are read now, before the clone is touched.
   const placed = Object.entries(PUBLIC_FILES).map(([source, place]) => {
     const blob = deps.git(['cat-file', 'blob', `${tag}:${source}`], { cwd: top });

@@ -3,13 +3,13 @@
 // the two, then Verify, Review and the merge again), and one result comment with the cost and turns of its agents. A ticket that stops goes to Needs Human with its
 // reason (an agent past its time limit with no result among them: no round spent); one whose agent hit the usage limit is paused: no round is spent, its card stays
 // where it is and its one comment shows when the limit resets, the cost so far and the raw end of the agent; any other end dynamo does not know is a stop. Each
-// agent's stream goes to its own log as it arrives, `.claude/worktrees/logs/<n>/attempt-<k>/<agent>-<round>.jsonl` of the main folder (ignored by git with the copies): each new run of the ticket is a new attempt `k`, so the earlier ones stay, and one that goes on keeps its attempt. Several tickets run this at once: only the agents wait, and `dynamo merge` takes its lock; while it runs the ticket has its file `runs/<n>.json` (holds.ts), which keeps the reset time of the usage limit: a ticket launched again before it is not started (no agent, no card); a ticket stopped at merge keeps its copy, branch and file too, and its relaunch runs only the merge (no agent), unless the human removed its copy and branch: then the file is ignored and the ticket starts anew; a ticket whose file is there and whose run is dead goes on from the phase of its file, on the same copy (resumes.ts), its Builder with `claude -p --resume <id>` and «go on where you left it», or a new Builder on the same copy if that fails. A Builder stopped by an outage of the permission check goes on the same way after a wait: no round is spent (rounds.ts).
+// agent's stream goes to its own log as it arrives, `.claude/worktrees/logs/<n>/attempt-<k>/<agent>-<round>.jsonl` of the main folder (ignored by git with the copies): each new run of the ticket is a new attempt `k`, so the earlier ones stay, and one that goes on keeps its attempt. Several tickets run this at once: only the agents wait, and `dynamo merge` takes its lock; while it runs the ticket has its file `runs/<n>.json` (holds.ts), which keeps the reset time of the usage limit: a ticket launched again before it is not started (no agent, no card); a ticket stopped at merge keeps its copy, branch and file too, and its relaunch runs only the merge (no agent), unless the human removed its copy and branch: then the file is ignored and the ticket starts anew; a ticket whose file is there and whose run is dead goes on from the phase of its file, on the same copy (resumes.ts), its Builder with `claude -p --resume <id>` and «go on where you left it», or a new Builder on the same copy if that fails. A Builder stopped by a time limit, a spent budget or an unknown end is a kept stop too (keeps.ts): its copy, branch, file and session stay, and its relaunch resumes it in the same round, told why it stopped. A Builder stopped by an outage of the permission check goes on the same way after a wait: no round is spent (rounds.ts).
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { AgentResult } from './agents.ts';
-import { BUILDER_SCHEMA, OUTAGE_PROMPT, REVIEWER_SCHEMA, RESUME_PROMPT, answerPrompt, builderPrompt, failurePrompt, readBuilder, readReviewer, reviewerPrompt } from './briefs.ts';
+import { BUILDER_SCHEMA, OUTAGE_PROMPT, REVIEWER_SCHEMA, RESUME_PROMPT, answerPrompt, builderPrompt, causePrompt, failurePrompt, readBuilder, readReviewer, reviewerPrompt } from './briefs.ts';
 import { card } from './card.ts';
 import { cleanCopy } from './cleaning.ts';
 import { checkTimeoutOf } from './checks.ts';
@@ -19,6 +19,7 @@ import { exit } from './cli.ts';
 import { COLUMNS } from './columns.ts';
 import { comment } from './comment.ts';
 import { limitUntil, mainFolder, readHold, removeHold } from './holds.ts';
+import { KEPT, builderStopKind, causeOf, checkStopKind, reviewerStopKind } from './keeps.ts';
 import type { Level } from './levels.ts';
 import { levelsOf } from './levels.ts';
 import type { JoinedAgent } from './reinforce.ts';
@@ -59,7 +60,7 @@ export async function runTicket(n: number, deps: Deps): Promise<Output> {
   const live = hold === null ? null : heldBy(hold, readLock(join(loop.main, '.claude', 'worktrees', 'run.json')), Date.now(), process.pid);
   if (live !== null) return { ok: false, ticket: n, started: false, why: `#${n} is held by the run of pid ${live.pid} since ${live.since}` };
   // A kept stop whose copy and branch were removed is ignored: removing them is how the human starts a ticket from zero.
-  if ((hold?.stopped === true || hold?.asked === true) && removedTicket(deps, n)) { removeHold(loop.main, n); hold = null; }
+  if ((hold?.stopped === true || hold?.asked === true || hold?.resume != null) && removedTicket(deps, n)) { removeHold(loop.main, n); hold = null; }
   // A ticket whose file says the usage limit has not reset yet is not touched: no agent, no card, no copy.
   const until = hold === null ? null : limitUntil(hold.resetsAt, Date.now());
   if (until !== null) return { ok: false, ticket: n, started: false, why: `#${n} paused by the usage limit, which resets at ${until}`, resetsAt: until };
@@ -83,14 +84,18 @@ export async function runTicket(n: number, deps: Deps): Promise<Output> {
   const st: State = {
     round: hold?.round ?? 1, stage: hold?.phase ?? 'build', merged: false, head: null, copy: null, branch: null, failed: hold?.failed ?? null,
     verified: null, mergeSkipped: null, checks: hold?.checks ?? null, builder: hold?.builder ?? null, review: hold?.review ?? null, spent: hold?.spent ?? [], resetsAt: null,
-    sessions: hold?.sessions ?? { builder: null, reviewer: null }, asked: false,
+    sessions: hold?.sessions ?? { builder: null, reviewer: null }, asked: false, cause: null, failedCheck: null, resume: null,
   };
   mark(loop, st);
   let stop: Facts['stop'] = null, paused: Pause | null = null;
   try {
     // A kept stop resumes the Builder, whatever phase it stopped in: after the Reviewer's last failure (phase review) too.
     const kept = hold?.asked === true;
-    await steps(loop, s.repo, s.base, st, hold === null ? null : kept ? 'build' : stepOf(hold.phase), kept, kept && hold?.phase === 'review' ? hold.review?.report ?? 'VERDICT: FAIL' : null);
+    const cause = kept ? hold?.cause ?? null : null;
+    // The Reviewer's last verdict (phase review) or the output of the check (phase check) is what the resumed Builder is told failed.
+    const byCheck = kept && hold?.phase === 'check';
+    const failure = kept && hold?.phase === 'review' ? hold.review?.report ?? 'VERDICT: FAIL' : byCheck ? hold?.failedCheck ?? 'the automatic check failed' : null;
+    await steps(loop, s.repo, s.base, st, hold === null ? null : kept ? 'build' : hold.resume ?? stepOf(hold.phase), kept, failure, cause, byCheck ? 'check' : 'Reviewer');
   } catch (e) {
     if (e instanceof Pause) {
       paused = e;
@@ -98,16 +103,18 @@ export async function runTicket(n: number, deps: Deps): Promise<Output> {
     } else {
       stop = await stopped(loop, st, e);
       // A Builder that asked, or that the Reviewer failed in the last round, keeps its conversation: its file is written again with the mark that says so (a stop of any other kind removes it).
-      if (stop.asked === true) { st.asked = true; mark(loop, st); }
+      if (stop.asked === true) { st.asked = true; st.cause = stop.cause ?? null; st.failedCheck = stop.failedCheck ?? null; mark(loop, st); }
+      // A Reviewer with no result, or a check that did not run, keeps the copy and goes on from its own step.
+      if (stop.resume != null) { st.resume = stop.resume; mark(loop, st); }
     }
   }
   // The file of a ticket that ended is removed; a pause keeps it, and so do a stop at merge (its relaunch runs only the merge) and the
   // Builder's question (its relaunch resumes the Builder).
-  const goesOn = paused !== null || stop?.stoppedAt === 'merge' || st.asked;
+  const goesOn = paused !== null || stop?.stoppedAt === 'merge' || st.asked || st.resume !== null;
   if (!goesOn) removeHold(loop.main, n);
   else if (stop?.stoppedAt === 'merge') mark(loop, st, 'merge', true);
   // The ticket ended (merged or stopped): its copy is left with nothing git does not track. One that goes on, paused or asked, keeps it as it is.
-  const removed = paused === null && !st.asked && st.copy !== null ? cleanCopy(deps, st.copy) : [];
+  const removed = paused === null && !st.asked && st.resume === null && st.copy !== null ? cleanCopy(deps, st.copy) : [];
   const file = join(loop.logs, 'comment.md');
   writeFileSync(file, paused === null ? resultComment({
     base: s.base, merged: st.merged, rounds: st.round, checks: st.checks, mergeSkipped: st.mergeSkipped, verdict: st.review?.verdict ?? null, report: st.review?.report ?? null,
@@ -145,7 +152,7 @@ function shown(loop: Loop): string {
 // on starts at (resumes.ts), on the branch and copy its dead run left; null for a new ticket. `asked`: the file is a stop that keeps the Builder's
 // conversation (it asked the human, or the Reviewer failed it in the last round), so the first Builder resumes it with what the human wrote after
 // the notice; `failure`: the Reviewer's last verdict in the second case, null in the first.
-async function steps(loop: Loop, repo: string, base: string, st: State, from: Step | null, asked: boolean, failure: string | null): Promise<void> {
+async function steps(loop: Loop, repo: string, base: string, st: State, from: Step | null, asked: boolean, failure: string | null, cause: string | null, by: 'Reviewer' | 'check' = 'Reviewer'): Promise<void> {
   const { n, deps } = loop;
   const move = async (column: string) => {
     const r = await exit(() => card([String(n), column], deps));
@@ -159,9 +166,14 @@ async function steps(loop: Loop, repo: string, base: string, st: State, from: St
   if (from !== null) {
     const found = findTicket(deps, n);
     st.copy = found.copy; st.branch = found.branch;
-    if (found.copy === null && from === 'verify') throw new Stop(st.stage, `the copy of #${n} is gone, so the ticket cannot go on from ${st.stage}`);
+    if (found.copy === null && (from === 'verify' || from === 'review')) throw new Stop(st.stage, `the copy of #${n} is gone, so the ticket cannot go on from ${st.stage}`);
     inBase = from === 'merge' && found.branch !== null && isMerged(deps, found.branch, base);
-    if (asked && from === 'build') answers = readAnswers(deps, repo, n);
+    // A Reviewer alone goes on after a check that passed: the commit the merge compares is the copy's, which no Builder changes.
+    if (from === 'review' && st.checks !== null && found.copy !== null) {
+      const tip = deps.git(['rev-parse', 'HEAD'], { cwd: found.copy });
+      st.verified = tip.code === 0 ? tip.stdout.trim() : null;
+    }
+    if (asked && from === 'build') answers = readAnswers(deps, repo, n, cause);
   }
   for (;;) {
     let o: Outcome;
@@ -178,12 +190,12 @@ async function steps(loop: Loop, repo: string, base: string, st: State, from: St
         const r = await agent(loop, 'builder', prompt, t.copy, st, session);
         if (r.ending !== 'unknown' || r.outage === true) return r;
         note(loop.logs, { step: 'resume-failed', round: st.round, text: r.detail ?? '' });
-        return agent(loop, 'builder', builderPrompt(t, st.round, st.failed, true, told, fails), t.copy, st);
+        return agent(loop, 'builder', builderPrompt(t, st.round, st.failed, true, told, fails, cause, by), t.copy, st);
       };
       const before = newBuilder ? st.sessions.builder : null;
       let r = before === null
         ? await agent(loop, 'builder', builderPrompt(t, st.round, st.failed, newBuilder, told), t.copy, st)
-        : await goOn(before, told === null ? RESUME_PROMPT : fails === null ? answerPrompt(told) : failurePrompt(fails, told));
+        : await goOn(before, told === null ? RESUME_PROMPT : fails !== null ? failurePrompt(fails, told, by) : cause !== null ? causePrompt(cause, told) : answerPrompt(told));
       newBuilder = false;
       answers = null; failed = null; // the human's answer, and the failure it answers, are for this Builder only
       let b = readBuilder(r);
@@ -205,7 +217,8 @@ async function steps(loop: Loop, repo: string, base: string, st: State, from: St
       // uncommitted (what is merged is the branch, not the folder), so the tree Verify checked is the tree of this commit.
       const tip = v.code === 0 ? deps.git(['rev-parse', 'HEAD'], { cwd: String(st.copy) }) : null;
       st.verified = tip !== null && tip.code === 0 ? tip.stdout.trim() : null;
-      o = { step: 'verify', code: v.code, output: failedChecks(v.out) };
+      // A check that threw (no checks, no copy: `error`, exit code 1 by `exit`) did not run, as a wrong call (2) did; a command that failed is exit 1.
+      o = { step: 'verify', code: v.code === 1 && typeof v.out.error === 'string' ? 2 : v.code, output: failedChecks(v.out) };
       note(loop.logs, { step: 'check', round: st.round, text: v.code === 0 ? 'passed' : 'failed' });
     } else if (go === 'merge') {
       mark(loop, st, 'merge');
@@ -226,7 +239,17 @@ async function steps(loop: Loop, repo: string, base: string, st: State, from: St
     }
     const step = next(st.round, o);
     // The Reviewer's failure in the last round keeps the Builder's conversation too: the human's comment goes on from it.
-    if (step.go === 'needsHuman') throw new Stop(step.stoppedAt, step.reason, asks || (o.step === 'review' && o.verdict === 'FAIL'));
+    if (step.go === 'needsHuman') {
+      // A Builder cut off by a time limit, a budget or an unknown end is a kept stop too (keeps.ts), with the reason it is told on resuming.
+      const kind = builderStopKind(o);
+      const cut = kind !== null && KEPT[kind].kept ? causeOf(kind, loop.minutes.builder, loop.budget.builder) : null;
+      // A check failed in the last round (exit 1; exit 2 is a check that did not run) is kept too, with its output.
+      const checkFailed = o.step === 'verify' && o.code === 1;
+      // A Reviewer with no result and a check that did not run go on from their own step, with no Builder (keeps.ts).
+      const resume = KEPT[reviewerStopKind(o) ?? checkStopKind(o) ?? 'infrastructure'].from;
+      const own = resume === 'review' || resume === 'verify' ? resume : null;
+      throw new Stop(step.stoppedAt, step.reason, asks || cut !== null || checkFailed || (o.step === 'review' && o.verdict === 'FAIL'), cut, checkFailed ? o.output : null, own);
+    }
     if (step.go === 'paused') throw new Pause(step.stoppedAt, step.reason, join(loop.logs, `${step.stoppedAt === 'build' ? 'builder' : 'reviewer'}-${st.round}.jsonl`), st.resetsAt);
     if (step.go === 'done') break;
     if (step.go === 'build') {

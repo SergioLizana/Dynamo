@@ -36,6 +36,14 @@ export type Hold = {
   // The Builder stopped to ask the human: the ticket is in Needs Human with its copy, branch and this file, and the run that
   // goes on resumes the Builder's conversation with what the human wrote after the notice.
   asked: boolean;
+  // With `asked`: why a Builder was cut off (a time limit, a budget, an unknown end; keeps.ts), null when it stopped to ask or
+  // the Reviewer failed it.
+  cause?: string | null;
+  // With `asked`: the output of the check that failed in the last round (stopped at `check`), as the resumed Builder is told it;
+  // null otherwise.
+  failedCheck?: string | null;
+  // The step a relaunch goes on from with no Builder: only a new Reviewer ('review') or only Verify ('verify'); null otherwise.
+  resume?: 'review' | 'verify' | null;
 };
 
 const PHASES: Stage[] = ['start', 'build', 'check', 'review', 'merge'];
@@ -68,7 +76,8 @@ export function readHold(main: string, n: number): Hold | null {
   return {
     pid, startedAt, round, phase: phase as Stage, sessions: { builder: id(sessions.builder), reviewer: id(sessions.reviewer) },
     failed: id(raw.failed), spent, builder: asBuilder(raw.builder), review: asReviewer(raw.review), checks: checksOf({ ok: true, checks: raw.checks }),
-    resetsAt: id(raw.resetsAt), stopped: raw.stopped === true, asked: raw.asked === true,
+    resetsAt: id(raw.resetsAt), stopped: raw.stopped === true, asked: raw.asked === true, cause: id(raw.cause), failedCheck: id(raw.failedCheck),
+    resume: raw.resume === 'review' || raw.resume === 'verify' ? raw.resume : null,
   };
 }
 

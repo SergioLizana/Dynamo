@@ -1,0 +1,138 @@
+/* map.css — what only the map page needs: the frame of the diagram, the list of nodes and the detail of the one picked.
+   Built only on the tokens; the layout wraps by itself, so it holds at phone width with no horizontal scroll. */
+
+/* The map diagram's viewBox: kept when diagram.js cannot read the frame (file://), else it sets the ratio itself */
+.diagram__frame {
+  aspect-ratio: 1180 / 1080;
+}
+
+.map-explorer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  align-items: flex-start;
+}
+
+.map-list {
+  flex: 1 1 var(--card-min);
+  min-width: 0;
+}
+
+.map-group + .map-group {
+  margin-top: var(--space-5);
+}
+
+.map-group__title {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-lg);
+}
+
+.map-group__intro {
+  margin-bottom: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.map-group__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The look of a node is the shared control of components.css; the map writes names, so it sets them in the mono font */
+.map-node,
+.map-link {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.map-detail {
+  flex: 2 1 var(--card-min);
+  min-width: 0;
+  padding: var(--space-5);
+}
+
+.map-detail__empty {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.map-detail__name {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.map-detail__kind {
+  color: var(--color-muted);
+}
+
+.map-field {
+  margin-bottom: var(--space-4);
+}
+
+.map-field__label {
+  font-weight: var(--weight-bold);
+}
+
+.map-field__text {
+  margin: 0;
+}
+
+.map-detail__source {
+  overflow-wrap: anywhere;
+}
+
+.map-runner,
+.map-levels__default {
+  margin: 0 0 var(--space-2);
+}
+
+.map-levels {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.map-levels th,
+.map-levels td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.map-levels__caption {
+  text-align: left;
+  color: var(--color-muted);
+}
+
+.map-links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.map-links__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.map-links__phrase {
+  color: var(--color-muted);
+}
+
+.map-detail__close {
+  float: right;
+  margin: 0 0 var(--space-2) var(--space-2);
+}
+
+.map-example {
+  margin: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
