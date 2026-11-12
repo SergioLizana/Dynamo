@@ -29,6 +29,10 @@
 </p>
 
 <p align="center">
+  🌐 <a href="https://sergiolizana.github.io/Dynamo/?lang=es">Ver el sitio</a>
+</p>
+
+<p align="center">
   <a href="#por-qué-dynamo">Por qué Dynamo</a> ·
   <a href="#cómo-funciona">Cómo funciona</a> ·
   <a href="#inicio-rápido">Inicio rápido</a> ·
@@ -106,9 +110,10 @@ porque así aparecen en GitHub:
 | **De la idea a los tickets** | Definición guiada, una especificación escrita y tickets pequeños, con sus bloqueos y criterios comprobables |
 | **Listas sin supervisión** | Lanza un ticket, varios o todos los que estén listos, y olvídate |
 | **Tickets en paralelo** | Cada uno en su propio git worktree, en el orden que permiten los bloqueos, y fusionados de uno en uno |
-| **Una segunda oportunidad** | Un ticket que falla tiene otra ronda con el fallo exacto; después se detiene y te avisa |
+| **Una segunda oportunidad** | Un ticket que falla tiene otra ronda con el fallo exacto; después se detiene y te avisa. Un ticket detenido por un tiempo máximo, un presupuesto o un resultado que falta sigue donde estaba al relanzarlo |
 | **Aguanta el límite de uso** | Una lista en pausa no gasta rondas y continúa desde la fase en la que estaba |
-| **Presupuestos y tiempos máximos** | Por agente, para que un ticket perdido se detenga en vez de gastar sin fin |
+| **Tests pequeños** | El Builder escribe solo tests que pueden fallar: un test de la función pura, una aserción en un escenario existente o un test sobre una tabla de casos |
+| **Presupuestos y tiempos máximos** | Por agente, para que un ticket perdido se detenga en vez de gastar sin fin; al relanzarlo sigue donde estaba |
 | **Informe de la release** | Tickets fusionados, detenidos y omitidos, el coste de cada uno y lo que los agentes dejaron pendiente |
 | **Avisos** | Un mensaje opcional de una línea a un tema tipo [ntfy](https://ntfy.sh) cuando una lista termina o se pausa |
 | **Preparación con un solo comando** | Tablero, etiquetas, permisos, CI y Dependabot, probando tus comprobaciones antes de escribir nada |
@@ -182,6 +187,9 @@ todas pasan, el setup:
 > `"verify": "npm ci && node --run build"`; como comprobación, `node --run verify`. Usa `node --run` en lugar de
 > `npm run`, que en Windows no puede arrancar sin shell.
 
+Después de `claude plugin update`, vuelve a ejecutar `/dynamo:setup`: pone `.claude/factory.json` al día con la plantilla de la
+versión nueva (añade las claves que le faltan, quita las que nada lee y dice qué ha cambiado) y lo confirma en la rama de release.
+
 ### 4. Escribe los tickets
 
 ```text
@@ -237,24 +245,29 @@ comandos para subir la rama de release y abrir la pull request. Dynamo no los ej
 la pull request:
 
 ```text
-/dynamo:close-release patch
+/dynamo:close-release
 ```
 
-Crea el milestone, la etiqueta, la GitHub Release y la siguiente rama de release. Usa `patch`, `minor` o `major` para indicar
-la versión que viene después.
+Crea el milestone, la etiqueta y la GitHub Release. No lleva argumento. Cuando decidas empezar la siguiente release:
+
+```text
+/dynamo:new-release patch
+```
+
+Abre la siguiente rama de release. Usa `patch`, `minor` o `major` para indicar la versión que viene después.
 
 ### Si algo se detiene
 
 | Qué ves | Qué significa | Qué hacer |
 |---|---|---|
 | La lista se ha pausado | Un agente llegó al límite de uso. No se ha gastado ninguna ronda | Lanza el mismo `/dynamo:autopilot` cuando se restablezca el límite; seguirá desde la fase en la que estaba |
-| Una tarjeta en *Needs Human* | El ticket agotó sus rondas, su presupuesto o su tiempo máximo | Lee su comentario y resuelve lo que indica, pasa la tarjeta a *Todo*, borra la rama `ticket/<n>-*` y su copia, y lanza `/dynamo:autopilot <n>` |
+| Una tarjeta en *Needs Human* | El ticket agotó sus rondas, su presupuesto o su tiempo máximo | Lee su comentario y resuelve lo que indica, pasa la tarjeta a *Todo* y lanza `/dynamo:autopilot <n>`: el relanzamiento sigue donde el ticket se detuvo. Borra la copia y la rama `ticket/<n>-*` solo para empezar de nuevo |
 | Se omitió un ticket | Uno de sus bloqueos se detuvo en esta ejecución | Relánzalo cuando el bloqueo esté fusionado |
 | «held by the run of pid N» | Hay otra ejecución en marcha | Espera a que termine. Solo trabaja una a la vez |
 
 ## Comandos
 
-Todos los comandos los lanzas tú; los agentes nunca los inician por su cuenta.
+Todos los comandos los lanzas tú, salvo `/dynamo:backlog`, que también puede lanzar un modelo y que solo deja una idea en *Backlog*.
 
 | Comando | Qué hace |
 |---|---|
@@ -265,7 +278,8 @@ Todos los comandos los lanzas tú; los agentes nunca los inician por su cuenta.
 | `/dynamo:autopilot [n ...]` | Construye los tickets indicados o todos los que estén listos |
 | `/dynamo:park <n ...>` | Pasa tickets ya escritos a *Backlog* para que no se construyan todavía |
 | `/dynamo:backlog «idea»` | Pone una idea en el tablero como una issue corta con la etiqueta de idea, su tarjeta en *Backlog* |
-| `/dynamo:close-release <patch\|minor\|major>` | Cierra la versión cuando su pull request está fusionada |
+| `/dynamo:close-release` | Cierra la versión cuando su pull request está fusionada |
+| `/dynamo:new-release <patch\|minor\|major>` | Abre la siguiente rama de release |
 
 ## Configuración
 
@@ -282,6 +296,10 @@ El setup escribe `.claude/factory.json`. Estos son los valores que más probable
 
 Para recibir un aviso cuando una lista termine o se pause, define la variable de entorno `DYNAMO_NOTIFY_URL` con un tema
 propio y mantenla fuera de git. Todos los valores se explican en [`guides/factory.md`](guides/factory.md) (en inglés).
+
+Un proyecto también puede personalizar los agentes: puede añadir herramientas y reglas al Builder y al Reviewer en
+`.claude/dynamo/builder.md` y `.claude/dynamo/reviewer.md`. Cómo se hace está en [`guides/factory.md`](guides/factory.md)
+(en inglés).
 
 ## Seguridad
 

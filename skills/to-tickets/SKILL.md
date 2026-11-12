@@ -120,4 +120,9 @@ Read back from GitHub, not from memory. For each created issue: number, title, l
 issue alone (`${CLAUDE_PLUGIN_ROOT}/guides/board-guide.md`: never list the board). Show it as a table and flag any mismatch with the
 approved list.
 
-Do not close, edit or relabel existing issues, the epic among them.
+If the list came from the conversation, `/dynamo:discover` said «one ticket» and its summary names an idea issue
+(«Idea: #<n>»), close that idea once the ticket is created and read back, if it carries `project.ideaLabel` (otherwise
+close nothing and say so): `gh issue close <n> -R <repo> --reason completed --comment "Turned into work: #<ticket>"`.
+Read it back (`gh issue view <n> -R <repo> --json state,stateReason`).
+
+Do not close, edit or relabel existing issues, the epic among them. The one exception is that idea.

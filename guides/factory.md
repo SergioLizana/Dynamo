@@ -213,7 +213,7 @@ asks in a plain session, and `auto` decides it under `dynamo run`.
 | `dynamo run`, Review | `reviewer`: Read, Grep, Glob, Bash and StructuredOutput, its answer (no Edit or Write) | `git diff`, `log`, `show`, `status`, `gh issue view`, `ls`, `wc`, and what a checkbox needs to be proven |
 | `dynamo` itself (`run`, `verify`, `merge`, `board`, `report`, …) | not an agent: it starts its own git, `gh` and check processes (`dynamo/exec.ts`) | no rule applies to them |
 | `/dynamo:to-tickets`, `/dynamo:to-spec`, `/dynamo:discover` | the session's | the same git and `gh` forms; `gh issue create`, `gh api repos/<repo>/issues/…` (the blocker relation) |
-| `/dynamo:close-release` | the session's | `git status`, `git checkout release/<next>` (both in `allow`), `git fetch` (no rule: it asks in the session) and `git push` (`ask`) |
+| `/dynamo:close-release`, `/dynamo:new-release` | the session's | `git status`, `git checkout release/<next>` (both in `allow`), `git fetch` (no rule: it asks in the session) and `git push` (`ask`) |
 
 `dynamo run` starts its agents with `--permission-mode auto` and no prompts (`dynamo/agents.ts`): a command that no rule
 allows is decided by `auto`, and one that `auto` would still ask about is denied. When the check of `auto` itself is down

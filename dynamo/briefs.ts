@@ -48,9 +48,21 @@ export function answerPrompt(answers: string[]): string {
   return `You stopped to ask the human and your run ended there. ${answersText(answers)}\nGo on with their answer: finish the work and answer again. If it still does not settle what you asked, stop again with \`needsHuman\` and say what is missing.`;
 }
 
+// What a Builder cut off by a time limit, a budget or an unknown end is told when its conversation is resumed (keeps.ts): why it
+// stopped and what the human wrote after the notice. It already has the ticket, the rules and what it did.
+export function causePrompt(cause: string, answers: string[]): string {
+  return `Your run was stopped: ${cause}. Your conversation, the copy and the branch were kept. ${answersText(answers)}\nGo on where you left it, without exploring again: finish the work and answer again.`;
+}
+
 // What a Builder is told when its conversation is resumed after the Reviewer failed it in the last round: the failure, and what the human
 // wrote after the notice. It already has the ticket, the rules and what it did.
-export function failurePrompt(report: string, answers: string[]): string {
+export function failurePrompt(report: string, answers: string[], by: 'Reviewer' | 'check' = 'Reviewer'): string {
+  if (by === 'check') {
+    return `The automatic check failed your work in the last round and your run ended there. Its output, word for word:
+${report}
+${answersText(answers)}
+Go on: fix what the check found, with the human's comments in mind, commit, bring the base in and answer again.`;
+  }
   return `The Reviewer failed your work in the last round and your run ended there. Its verdict, word for word:
 ${report}
 ${answersText(answers)}
@@ -62,8 +74,9 @@ export const OUTAGE_PROMPT = 'The permission check is back: it failed for a whil
 
 // `resumed`: a run of this ticket was cut off, so its copy may already hold work (a new Builder goes on from it). `answers`: a
 // Builder had stopped to ask the human and its conversation could not be resumed, so this one is told what the human wrote;
-// `failure`: that stop was the Reviewer's verdict in the last round, which this one is told too.
-export function builderPrompt(t: Ticket, round: number, failed: string | null, resumed = false, answers: string[] | null = null, failure: string | null = null): string {
+// `failure`: that stop was the Reviewer's verdict in the last round, which this one is told too; `cause`: it was a limit or an unknown
+// end instead (causePrompt), which this one is told with the same comments.
+export function builderPrompt(t: Ticket, round: number, failed: string | null, resumed = false, answers: string[] | null = null, failure: string | null = null, cause: string | null = null, by: 'Reviewer' | 'check' = 'Reviewer'): string {
   return [
     `Ticket #${t.n} «${t.title}» of ${t.repo}. Base: ${t.base}. Round ${round} of ${ROUNDS}.`,
     `You run under \`dynamo run\` in your copy ${t.copy}, on the branch ${t.branch}: follow «In a copy under \`dynamo run\`» `
@@ -72,8 +85,12 @@ export function builderPrompt(t: Ticket, round: number, failed: string | null, r
     // had its «No trace» and «Out of the ticket» in English under a Spanish project. The code says it, in every prompt.
     `Write the text of your answer (\`needsHumanReason\`, \`published\`, \`noTrace\`, \`outOfTicket\`), your commit subjects and your GitHub comments in ${t.language} (\`project.documentsLanguage\`); change no number, \`#n\`, command or path.`,
     ...(resumed ? ['A run of this ticket was cut off before it ended: the copy may already hold the work of an earlier Builder (git log and git status show it). Go on from it; do not start over.'] : []),
-    ...(answers === null ? [] : failure === null
+    ...(answers === null ? [] : cause !== null
+      ? [`An earlier Builder of this ticket was stopped (${cause}), and its conversation could not be resumed; the copy holds its work: go on from it, do not start over. ` + answersText(answers)]
+      : failure === null
       ? ['An earlier Builder of this ticket stopped to ask the human, and its conversation could not be resumed; the copy holds its work. ' + answersText(answers)]
+      : by === 'check'
+      ? ['The automatic check failed an earlier Builder of this ticket in the last round, and its conversation could not be resumed; the copy holds its work. The output of the check, word for word:', failure, answersText(answers)]
       : ['The Reviewer failed an earlier Builder of this ticket in the last round, and its conversation could not be resumed; the copy holds its work. The verdict of the Reviewer, word for word:', failure, answersText(answers)]),
     ...(failed === null ? [] : ['', `What failed in round ${round - 1}, word for word:`, failed]),
   ].join('\n');

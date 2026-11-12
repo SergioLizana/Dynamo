@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Put the factory in the current project - propose the project's checks from its scripts, have the human confirm them and choose the language of the documents, run `dynamo setup` with them and report what it printed. Use when the human runs /dynamo:setup in a project that has no board or no .claude/factory.json yet (or to set up again).
+description: Put the factory in the current project - propose the project's checks from its scripts, have the human confirm them and choose the language of the documents, run `dynamo setup` with them and report what it printed. Use when the human runs /dynamo:setup in a project that has no board or no .claude/factory.json yet (or to set up again, which also brings an installed factory.json up to date with the template after `claude plugin update`).
 argument-hint: (none)
 allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/dynamo/dynamo.ts" *), Bash(git rev-parse --show-toplevel)
 disable-model-invocation: true
@@ -20,7 +20,10 @@ something appended, such as `; echo "exit=$?"`, is no longer covered by `allowed
 
 1. Run it from the project's folder. If `git rev-parse --show-toplevel` (exactly so, nothing appended) fails,
    **stop**: say this is not a git repository and run nothing.
-2. If `.claude/factory.json` exists, read its `project.checks` and `project.documentsLanguage`: they are the current
+2. If `.claude/factory.json` exists, `setup` brings it up to date with the template by itself: it adds the keys it lacks,
+   removes the ones nothing reads and says both. A key with no value in the template is asked as on a first install: if
+   the file has no `project.checks`, they must be asked in step 3 and given with `--check`. Read its `project.checks` and
+   `project.documentsLanguage`: they are the current
    checks (the second question of step 3 asks whether to keep them) and the current language (the third question).
 3. Read the scripts of the project: the `scripts` of `package.json` if there is one (also `pyproject.toml`, `Makefile`
    or `Cargo.toml` if that is what the project has). Do not run any of them.
@@ -78,7 +81,8 @@ asking again: if it fails, step 5 says what to do.
 When the notification says the command ended, read its output and its exit code. Show the human the JSON line `setup`
 printed, word for word, with the exit code, and then say in plain words, from that line only:
 
-1. Exit 0: the board (`board`, `boardCopied`), the files written (`path`, `settings`, `gitignore`; the language of the documents is the `documentsLanguage` of that file), the labels, the
+1. Exit 0: the keys of `factory.json` it brought up to date (`keysAdded`: added with the template's value; `keysFilled`:
+   asked or read as on a first install; `keysRemoved`: removed because nothing reads them; each only when not empty), the board (`board`, `boardCopied`), the files written (`path`, `settings`, `gitignore`; the language of the documents is the `documentsLanguage` of that file), the labels, the
    Dependabot file, `ci` and `ciMissing` (the checks no workflow of the project runs: say them, they are the human's to
    fix), `codeScanning`, and whether the setup committed (`commit`, `clean`). Give the `push` command exactly as printed:
    the push and the pull request are the human's, never run it.

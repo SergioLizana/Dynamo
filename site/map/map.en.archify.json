@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Everything Dynamo offers",
+    "locale": "en",
+    "output": "site/map/map.diagram.en.html",
+    "quality_profile": "standard",
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "frontend": { "label": "Skill" },
+        "backend": { "label": "Subcommand" },
+        "cloud": { "label": "Agent" },
+        "security": { "label": "Hook" },
+        "messagebus": { "label": "Engine feature" }
+      }
+    }
+  },
+  "components": [
+    { "id": "skill-discover", "type": "frontend", "label": "/discover", "pos": [40, 40], "size": [140, 52] },
+    { "id": "skill-to-spec", "type": "frontend", "label": "/to-spec", "pos": [40, 150], "size": [140, 52] },
+    { "id": "skill-to-tickets", "type": "frontend", "label": "/to-tickets", "pos": [40, 260], "size": [140, 52] },
+    { "id": "skill-autopilot", "type": "frontend", "label": "/autopilot", "pos": [40, 430], "size": [140, 52] },
+    { "id": "skill-backlog", "type": "frontend", "label": "/backlog", "pos": [40, 560], "size": [140, 52] },
+    { "id": "skill-park", "type": "frontend", "label": "/park", "pos": [40, 660], "size": [140, 52] },
+    { "id": "skill-setup", "type": "frontend", "label": "/setup", "pos": [40, 760], "size": [140, 52] },
+    { "id": "skill-close-release", "type": "frontend", "label": "/close-release", "pos": [40, 860], "size": [140, 52] },
+    { "id": "skill-new-release", "type": "frontend", "label": "/new-release", "pos": [40, 960], "size": [140, 52] },
+
+    { "id": "command-run", "type": "backend", "label": "run", "pos": [560, 396], "size": [240, 120] },
+    { "id": "command-card", "type": "backend", "label": "card", "pos": [300, 610], "size": [140, 52] },
+    { "id": "command-setup", "type": "backend", "label": "setup", "pos": [300, 760], "size": [140, 52] },
+    { "id": "command-release", "type": "backend", "label": "release", "pos": [300, 860], "size": [140, 52] },
+    { "id": "command-copy", "type": "backend", "label": "copy", "pos": [1000, 230], "size": [140, 52] },
+    { "id": "command-verify", "type": "backend", "label": "verify", "pos": [1000, 310], "size": [140, 52] },
+    { "id": "command-merge", "type": "backend", "label": "merge", "pos": [1000, 390], "size": [140, 52] },
+    { "id": "command-comment", "type": "backend", "label": "comment", "pos": [1000, 470], "size": [140, 52] },
+    { "id": "command-report", "type": "backend", "label": "report", "pos": [1000, 550], "size": [140, 52] },
+    { "id": "command-board", "type": "backend", "label": "board", "pos": [1000, 630], "size": [140, 52] },
+    { "id": "command-status", "type": "backend", "label": "status", "pos": [480, 600], "size": [140, 52] },
+    { "id": "command-publish", "type": "backend", "label": "publish", "pos": [1000, 860], "size": [140, 52] },
+
+    { "id": "agent-builder", "type": "cloud", "label": "builder", "pos": [540, 240], "size": [140, 52] },
+    { "id": "agent-reviewer", "type": "cloud", "label": "reviewer", "pos": [720, 240], "size": [140, 52] },
+
+    { "id": "hook-outside-writes", "type": "security", "label": "outside-writes", "pos": [300, 240], "size": [150, 52] },
+    { "id": "hook-main-folder-lock", "type": "security", "label": "main-folder-lock", "pos": [830, 600], "size": [160, 52] },
+
+    { "id": "feature-levels", "type": "messagebus", "label": "levels", "pos": [540, 100], "size": [140, 52] },
+    { "id": "feature-reinforcement", "type": "messagebus", "label": "reinforcement", "pos": [720, 100], "size": [140, 52] },
+    { "id": "feature-resume", "type": "messagebus", "label": "resume", "pos": [660, 600], "size": [140, 52] }
+  ],
+  "connections": [
+    { "id": "discover-to-spec", "from": "skill-discover", "to": "skill-to-spec", "variant": "dashed" },
+    { "id": "spec-to-tickets", "from": "skill-to-spec", "to": "skill-to-tickets", "variant": "dashed" },
+    { "id": "discover-to-tickets", "from": "skill-discover", "to": "skill-to-tickets", "variant": "dashed", "fromSide": "left", "toSide": "left", "via": [[15, 66], [15, 286]] },
+
+    { "id": "autopilot-run", "from": "skill-autopilot", "to": "command-run", "toSide": "left" },
+    { "id": "backlog-card", "from": "skill-backlog", "to": "command-card" },
+    { "id": "park-card", "from": "skill-park", "to": "command-card" },
+    { "id": "setup-setup", "from": "skill-setup", "to": "command-setup" },
+    { "id": "close-release-release", "from": "skill-close-release", "to": "command-release" },
+    { "id": "new-release-release", "from": "skill-new-release", "to": "command-release" },
+
+    { "id": "run-card", "from": "command-run", "to": "command-card", "fromSide": "left", "toSide": "top" },
+    { "id": "run-copy", "from": "command-run", "to": "command-copy" },
+    { "id": "run-verify", "from": "command-run", "to": "command-verify" },
+    { "id": "run-merge", "from": "command-run", "to": "command-merge" },
+    { "id": "run-comment", "from": "command-run", "to": "command-comment" },
+    { "id": "run-report", "from": "command-run", "to": "command-report" },
+    { "id": "run-board", "from": "command-run", "to": "command-board" },
+    { "id": "run-builder", "from": "command-run", "to": "agent-builder", "fromSide": "top", "toSide": "bottom" },
+    { "id": "run-reviewer", "from": "command-run", "to": "agent-reviewer", "fromSide": "top", "toSide": "bottom" },
+
+    { "id": "status-run", "from": "command-status", "to": "command-run", "label": "reads logs", "variant": "dashed", "fromSide": "top", "toSide": "bottom" },
+    { "id": "lock-run", "from": "hook-main-folder-lock", "to": "command-run", "label": "guards", "variant": "security", "fromSide": "top", "toSide": "bottom" },
+    { "id": "outside-writes-builder", "from": "hook-outside-writes", "to": "agent-builder", "label": "guards", "variant": "security" },
+
+    { "id": "levels-builder", "from": "feature-levels", "to": "agent-builder", "variant": "emphasis" },
+    { "id": "levels-reviewer", "from": "feature-levels", "to": "agent-reviewer", "variant": "emphasis" },
+    { "id": "reinforcement-builder", "from": "feature-reinforcement", "to": "agent-builder", "variant": "emphasis" },
+    { "id": "reinforcement-reviewer", "from": "feature-reinforcement", "to": "agent-reviewer", "variant": "emphasis" },
+    { "id": "resume-run", "from": "feature-resume", "to": "command-run", "variant": "emphasis", "fromSide": "top", "toSide": "bottom" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "How to read it",
+      "items": [
+        "A plain arrow: the source launches the target",
+        "Dashed: what comes next, or what a command reads",
+        "Labelled guards: a hook that protects an agent or the run",
+        "Emphasised: an engine feature that shapes an agent or the run"
+      ]
+    }
+  ]
+}

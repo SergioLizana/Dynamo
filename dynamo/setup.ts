@@ -9,6 +9,8 @@
 // `--language <name>` is `project.documentsLanguage`, written in the same file and commit; with none a new factory.json gets English and one that exists keeps its own.
 // Run again, it changes nothing it has made: with a `board` block it copies no second board and reads the ids again, with no
 // `--check` it keeps the checks the file has, the settings and .gitignore get nothing twice, and the labels, the Dependabot file and the code scanning that exist are left alone, and with nothing new to commit it makes no commit.
+// Run again after `claude plugin update`, it also brings the `project` block up to date with the template (setupupdate.ts): keys it lacks are added
+// (`keysAdded`), those with no value in the template are asked as on a first install (`keysFilled`), and those nothing reads are removed (`keysRemoved`).
 // What it wrote is committed on `release/x.y.z` (made if there is none; setupcommit.ts) and nothing is pushed: the push is in the output, for the human.
 // The CI: a project with no workflow gets a seed (`.github/workflows/ci.yml`: pull requests to the main branch, Node 24, one step per check);
 // one that has workflows keeps them untouched, and the checks none of their `run:` lines runs are named in `ciMissing`.
@@ -17,7 +19,9 @@ import { read, setting, usage } from './cli.ts';
 import { checkTimeoutOf, endOf, runChecks } from './checks.ts';
 import type { Check } from './checks.ts';
 import type { Factory } from './factory.ts';
-import type { Board } from './setups.ts';
+import type { Board, Values } from './setups.ts';
+import { updateOf } from './setupupdate.ts';
+import type { Update } from './setupupdate.ts';
 import { SEED_PATH, missingChecks, runLinesOf, seedOf } from './setupci.ts';
 import { copyBoard, ensureLabels, readBoard } from './setupboard.ts';
 import { gapsOf, fillSettings, keptSettings, mergeSettings, neededSettings, withIgnore } from './setupsettings.ts';
@@ -39,7 +43,8 @@ export async function setup(args: string[], deps: Deps): Promise<Output> {
 
   const view = deps.gh(['repo', 'view', '--json', 'nameWithOwner,owner,isPrivate'], { cwd: root });
   if (view.code !== 0) throw new Error(`the repository could not be read with gh: ${endOf(view)}; nothing was written`);
-  const factory = had === null ? fresh(view.stdout, commands, language, root, deps) : { ...had, project: { ...had.project, ...(commands.length > 0 ? { checks: commands } : {}), ...(language === null ? {} : { documentsLanguage: language }) } };
+  const update = had === null ? null : brought(had, view.stdout, commands, root, deps);
+  const factory = had === null || update === null ? fresh(view.stdout, commands, language, root, deps) : { ...had, project: { ...update.project, ...(commands.length > 0 ? { checks: commands } : {}), ...(language === null ? {} : { documentsLanguage: language }) } };
   const settingsHad = files.readSettings(root);
   const checks = commands.length === 0 ? [] : await rehearse(commands, checkTimeoutOf(factory.project), root, deps, files);
   const failed = failedCheck(checks);
@@ -62,6 +67,7 @@ export async function setup(args: string[], deps: Deps): Promise<Output> {
   const committed = commitSetup(deps, root, written);
   return {
     ok: true, path, repo, boardOwner: owner, mainBranch: factory.project.mainBranch, board: board.boardNumber, boardCopied: copied !== null,
+    keysAdded: update?.added ?? [], keysFilled: update?.asked ?? [], keysRemoved: update?.removed ?? [],
     settings, settingsKept, gitignore, labelsCreated: labels, dependabot, ci, ciMissing, codeScanning, ...committed, checksKept: commands.length === 0, checks: checks.map(describe),
   };
 }
@@ -69,13 +75,35 @@ export async function setup(args: string[], deps: Deps): Promise<Output> {
 // The factory of a project that has none: the template with the values read from gh and git and the language given (English if none).
 function fresh(viewed: string, commands: string[], language: string | null, root: string, deps: Deps): Factory {
   const files = deps.files as NonNullable<Deps['files']>;
+  return withValues(files.template(), valuesOf(viewed, root, deps), commands, language);
+}
+
+// The keys whose value setup reads from gh and git.
+const READ_KEYS = ['repo', 'boardOwner', 'mainBranch'];
+
+// The factory.json of a project that has one, brought up to date with the template (setupupdate.ts): the keys it lacks are added
+// (`added`) or, when they have no value in the template, asked as on a first install (`asked`: the three values read from gh and
+// git are filled here, the checks must come from `--check`, any other is an error naming it); the keys nothing reads are removed.
+function brought(had: Factory, viewed: string, commands: string[], root: string, deps: Deps): Update {
+  const template = (deps.files as NonNullable<Deps['files']>).template();
+  const update = updateOf(template.project, had.project, READ_KEYS);
+  const read = update.asked.filter((k) => READ_KEYS.includes(k));
+  const others = update.asked.filter((k) => !read.includes(k) && k !== 'checks');
+  if (others.length > 0) throw new Error(`factory.json lacks ${others.join(', ')}, which have no value in the template: add ${others.length === 1 ? 'it' : 'them'} by hand; nothing was written`);
+  if (update.asked.includes('checks') && commands.length === 0) usage('factory.json has no project.checks: run setup with --check <command> to give them');
+  if (read.length > 0) Object.assign(update.project, valuesOf(viewed, root, deps));
+  return update;
+}
+
+// The repository, the owner of the board and the main branch, read from gh and git.
+function valuesOf(viewed: string, root: string, deps: Deps): Values {
   const found = repoOf(viewed);
   if (found === null) throw new Error('gh gave no repository name or owner; nothing was written');
   const head = deps.git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { cwd: root });
   const branch = deps.git(['branch', '--show-current'], { cwd: root });
   const mainBranch = mainBranchOf(head.code === 0 ? head.stdout : '', branch.code === 0 ? branch.stdout : '');
   if (mainBranch === null) throw new Error('the main branch could not be read from git (no origin/HEAD, and no branch is checked out); nothing was written');
-  return withValues(files.template(), { ...found, mainBranch }, commands, language);
+  return { ...found, mainBranch };
 }
 
 // The permission rules, `attribution`, `worktree` and the plugin, from templates/settings.json with its gaps filled and one rule

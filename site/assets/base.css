@@ -1,0 +1,135 @@
+/* base.css — reset, page defaults and the small helpers every page shares (container, sections, hidden text).
+   Built only on the tokens of tokens.css. Components live in components.css. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-padding-top: calc(var(--header-height) + var(--space-4));
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 var(--space-3);
+  line-height: var(--leading-tight);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: var(--text-hero);
+}
+
+h2 {
+  font-size: var(--text-xl);
+}
+
+h3 {
+  font-size: var(--text-lg);
+}
+
+h4 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+}
+
+p {
+  margin: 0 0 var(--space-4);
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+a {
+  color: var(--color-accent);
+}
+
+pre,
+code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+/* Code wraps instead of scrolling inside its box: a long command or path breaks where it must (#260). */
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+code {
+  overflow-wrap: anywhere;
+}
+
+svg {
+  max-width: 100%;
+}
+
+:focus-visible {
+  outline: var(--focus-width) solid var(--color-accent);
+  outline-offset: var(--focus-offset);
+}
+
+.container {
+  width: 100%;
+  max-width: var(--content-width);
+  margin-inline: auto;
+  padding-inline: var(--space-5);
+}
+
+.section {
+  padding-block: var(--space-7);
+}
+
+.section + .section {
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.measure {
+  max-width: var(--measure);
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: var(--border-width);
+  height: var(--border-width);
+  margin: calc(var(--border-width) * -1);
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* No motion for people who ask for none: the components only animate inside `no-preference`,
+   and this rule switches off anything a later stylesheet adds by mistake. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

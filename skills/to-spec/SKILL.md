@@ -75,6 +75,11 @@ For each epic, in order:
 With a parent, edit its body last (`gh issue edit <parent> -R <repo> --body-file <file>`): each pending block written
 now becomes `Block <name>: #<its epic>`, and nothing else in the body changes. Read it back.
 
+If the summary of `/dynamo:discover` names an idea issue («Idea: #<n>»), once the last epic is created and read back,
+close that idea. Check first that it carries `project.ideaLabel`; if it does not, close nothing and say so. Then:
+`gh issue close <n> -R <repo> --reason completed --comment "Turned into work: #<epic>, #<epic>…"`, naming every epic
+made. Read it back (`gh issue view <n> -R <repo> --json state,stateReason`). This is the only issue you close.
+
 Do not commit, write files in the repository or create tickets.
 
 ## 6. Hand over

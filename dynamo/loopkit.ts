@@ -29,6 +29,12 @@ export type State = {
   checks: Check[] | null; builder: BuilderAnswer | null; review: ReviewerAnswer | null; spent: Spent[]; resetsAt: string | null; sessions: Hold['sessions'];
   // The Builder stopped to ask the human; only the file written at that stop says it (a run that goes on starts with it off).
   asked: boolean;
+  // With `asked`: why the Builder was cut off (keeps.ts), null when it asked or the Reviewer failed it; kept in the file with `asked`.
+  cause: string | null;
+  // With `asked`: the output of the check that failed in the last round, null otherwise; kept in the file with `asked`.
+  failedCheck: string | null;
+  // The step a kept stop of the Reviewer or of the check goes on from, with no Builder (stops.ts); kept in the file.
+  resume: 'review' | 'verify' | null;
 };
 
 export type Loop = {
@@ -51,13 +57,13 @@ export function readLevel(deps: Deps, repo: string, n: number): Level {
 
 // What the human wrote on ticket n after the notice of the run, for the Builder that asked: their comments, oldest first. A read
 // that fails stops the ticket as asked again, so that its conversation is kept for the next launch.
-export function readAnswers(deps: Deps, repo: string, n: number): string[] {
+export function readAnswers(deps: Deps, repo: string, n: number, cause: string | null = null): string[] {
   const view = deps.gh(readArgs(repo, n));
   try {
     if (view.code !== 0) throw new Error(view.stderr.trim() || view.stdout.trim() || `gh exited ${view.code}`);
     return afterNotice(view.stdout);
   } catch (e) {
-    throw new Stop('build', `the comments of #${n} could not be read: ${e instanceof Error ? e.message : String(e)}`, true);
+    throw new Stop('build', `the comments of #${n} could not be read: ${e instanceof Error ? e.message : String(e)}`, true, cause);
   }
 }
 
@@ -66,7 +72,7 @@ export function mark(loop: Loop, st: State, to: Stage = st.stage, stopped = fals
   st.stage = to;
   writeHold(loop.main, loop.n, {
     pid: process.pid, startedAt: loop.startedAt, round: st.round, phase: st.stage, sessions: st.sessions,
-    failed: st.failed, spent: st.spent, builder: st.builder, review: st.review, checks: st.checks, resetsAt: st.resetsAt, stopped, asked: st.asked,
+    failed: st.failed, spent: st.spent, builder: st.builder, review: st.review, checks: st.checks, resetsAt: st.resetsAt, stopped, asked: st.asked, cause: st.cause, failedCheck: st.failedCheck, resume: st.resume,
   });
 }
 
@@ -80,7 +86,8 @@ export async function stopped(loop: Loop, st: State, e: unknown): Promise<NonNul
   note(loop.logs, { step: 'stopped', round: st.round, text: reason });
   return {
     stoppedAt: e instanceof Stop ? e.stoppedAt : st.stage, reason, left: st.copy === null ? null : `the copy ${st.copy} and the branch ${st.branch}`,
-    asked: e instanceof Stop && e.asked,
+    asked: e instanceof Stop && e.asked, cause: e instanceof Stop ? e.cause : null,
+    failedCheck: e instanceof Stop ? e.failedCheck : null, resume: e instanceof Stop ? e.resume : null,
   };
 }
 

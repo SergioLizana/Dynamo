@@ -35,6 +35,6 @@ export function readFactory(root: string = projectRoot()): Factory {
     const found = factory?.version === undefined ? 'has no version' : `is version ${JSON.stringify(factory.version)}`;
     throw new Error(`factory.json ${found}: this dynamo reads version ${FORMAT_VERSION}. Start from the template of the format (see guides/factory.md of the plugin); there is no migration`);
   }
-  if (typeof factory?.project !== 'object' || factory.project === null) throw new Error('factory.json has no project block');
+  if (typeof factory?.project !== 'object' || factory.project === null) throw new Error('factory.json has no project block; run /dynamo:setup to bring factory.json up to date');
   return factory;
 }

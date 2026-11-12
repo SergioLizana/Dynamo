@@ -116,7 +116,7 @@ const tags = (dir: string) => run(dir, 'tag', '--list').split('\n').filter((t) =
 test('close puts the tag on the merge commit and makes a Release whose text is the merged PR body', () => {
   const { dir, merge } = repo();
   const fake = fakeGh([merged(merge)]);
-  const out = releaseClose(['--bump', 'minor'], deps(dir, fake));
+  const out = releaseClose([],deps(dir, fake));
   assert.equal(out.ok, true);
   assert.deepEqual([out.tag, out.dryRun, out.pr], ['v1.0.0', false, 21]);
   assert.equal(run(dir, 'rev-parse', 'v1.0.0^{commit}'), merge);
@@ -131,7 +131,7 @@ test('close puts the tag on the merge commit and makes a Release whose text is t
 test('close makes the milestone of the version and puts in it every ticket merged in the release', () => {
   const { dir, merge } = repo();
   const fake = fakeGh([merged(merge)]);
-  const out = releaseClose(['--bump', 'minor'], deps(dir, fake));
+  const out = releaseClose([],deps(dir, fake));
   assert.deepEqual([out.ok, out.milestone, out.tickets], [true, 'v1.0.0', 2]);
   assert.match(String(out.message), /milestone v1\.0\.0 with 2 tickets/);
   const writes = fake.writes().map((c) => c.args);
@@ -153,7 +153,7 @@ test('milestoneOf reads the number of the milestone and refuses a shape it does 
 test('if a ticket cannot be put in the milestone, the milestone is taken back and neither the tag nor the Release is made', () => {
   const { dir, merge } = repo();
   const fake = fakeGh([merged(merge), { args: ['issue', 'edit', '9'], code: 1, stderr: 'nope' }]);
-  assert.throws(() => releaseClose(['--bump', 'minor'], deps(dir, fake)), /ticket #9 could not be put in the milestone v1\.0\.0: nope; the milestone was taken back/);
+  assert.throws(() => releaseClose([],deps(dir, fake)), /ticket #9 could not be put in the milestone v1\.0\.0: nope; the milestone was taken back/);
   const writes = fake.writes().map((c) => c.args);
   assert.deepEqual(writes.at(-1), ['api', 'repos/o/r/milestones/5', '--method', 'DELETE']);
   assert.ok(!writes.some((a) => a[0] === 'release'));
@@ -163,7 +163,7 @@ test('if a ticket cannot be put in the milestone, the milestone is taken back an
 test('if the milestone cannot be made, nothing else is written', () => {
   const { dir, merge } = repo();
   const fake = fakeGh([merged(merge), { args: ['api', 'repos/o/r/milestones'], code: 1, stderr: 'exists' }]);
-  assert.throws(() => releaseClose(['--bump', 'minor'], deps(dir, fake)), /milestone v1\.0\.0 could not be made: exists/);
+  assert.throws(() => releaseClose([],deps(dir, fake)), /milestone v1\.0\.0 could not be made: exists/);
   assert.equal(fake.writes().length, 1);
   assert.deepEqual(tags(dir), ['v0.9.0']);
 });
@@ -172,7 +172,7 @@ test('close with a difference between the Closes lines and what was merged write
   const { dir, merge } = repo();
   for (const body of ['Closes #7', 'Closes #7\nCloses #9\nCloses #20']) {
     const fake = fakeGh([merged(merge, body)]);
-    const out = releaseClose(['--bump', 'minor'], deps(dir, fake));
+    const out = releaseClose([],deps(dir, fake));
     assert.equal(out.ok, false);
     assert.match(String(out.message), /missing from the PR|extra in the PR/);
     assert.deepEqual(fake.writes(), []);
@@ -184,7 +184,7 @@ test('close stops when no release branch is above the last tag, names the branch
   for (const [tag, create] of [['v1.0.0', 'release/1.1.0'], ['v1.2.0', 'release/1.3.0']]) {
     const { dir, merge } = repo(tag);
     const fake = fakeGh([merged(merge)]);
-    assert.throws(() => releaseClose(['--bump', 'minor'], deps(dir, fake)), new RegExp(`above the last tag ${tag}.*create ${create.replace('.', '\.')}`));
+    assert.throws(() => releaseClose([],deps(dir, fake)), /above the last tag v1\.[02]\.0.*run \/dynamo:new-release <patch\|minor\|major>/);
     assert.deepEqual(fake.writes(), []);
     assert.deepEqual(tags(dir), [tag]);
   }
@@ -192,7 +192,7 @@ test('close stops when no release branch is above the last tag, names the branch
 
 test('close with no tag yet tags the first version', () => {
   const { dir, merge } = repo(null);
-  const out = releaseClose(['--bump', 'minor'], deps(dir, fakeGh([merged(merge)])));
+  const out = releaseClose([],deps(dir, fakeGh([merged(merge)])));
   assert.equal(out.ok, true);
   assert.deepEqual(tags(dir), ['v1.0.0']);
 });
@@ -200,10 +200,10 @@ test('close with no tag yet tags the first version', () => {
 test('close stops when the release PR is not merged, and when its merge commit is not in the clone', () => {
   const { dir } = repo();
   const none = fakeGh([{ args: ['pr', 'list'], stdout: '[]' }]);
-  assert.throws(() => releaseClose(['--bump', 'minor'], deps(dir, none)), /not merged/);
-  assert.throws(() => releaseClose(['--bump', 'minor'], deps(dir, fakeGh([{ args: ['pr', 'list'], code: 1, stderr: 'no prs' }]))), /pull requests of release\/1\.0\.0 failed: no prs/);
+  assert.throws(() => releaseClose([],deps(dir, none)), /not merged/);
+  assert.throws(() => releaseClose([],deps(dir, fakeGh([{ args: ['pr', 'list'], code: 1, stderr: 'no prs' }]))), /pull requests of release\/1\.0\.0 failed: no prs/);
   const away = fakeGh([merged('c'.repeat(40))]);
-  assert.throws(() => releaseClose(['--bump', 'minor'], deps(dir, away)), /merge commit c{40} of PR #21 is not in the local repository: run `git fetch origin` and try again; nothing was written/);
+  assert.throws(() => releaseClose([],deps(dir, away)), /merge commit c{40} of PR #21 is not in the local repository: run `git fetch origin` and try again; nothing was written/);
   for (const f of [none, away]) assert.deepEqual(f.writes(), []);
   assert.deepEqual(tags(dir), ['v0.9.0']);
 });
@@ -216,44 +216,41 @@ test('close --dry-run on a merged PR whose epic that merge closed finds no diffe
     epic(state), merged(merge, body),
   ];
   for (const state of ['CLOSED', 'OPEN']) {
-    const out = releaseClose(['--bump', 'minor', '--dry-run'], deps(dir, fakeGh(answers(state, `${BODY}Closes #50\n`))));
+    const out = releaseClose(['--dry-run'],deps(dir, fakeGh(answers(state, `${BODY}Closes #50\n`))));
     assert.deepEqual([out.ok, out.epics], [true, [50]], state);
   }
-  const without = releaseClose(['--bump', 'minor', '--dry-run'], deps(dir, fakeGh(answers('CLOSED', BODY))));
+  const without = releaseClose(['--dry-run'],deps(dir, fakeGh(answers('CLOSED', BODY))));
   assert.deepEqual([without.ok, without.missing, without.extra], [false, [50], []]);
 });
 
 test('close --dry-run says what it would do and writes nothing, not even the tag', () => {
   const { dir, merge } = repo();
   const fake = fakeGh([merged(merge)]);
-  const out = releaseClose(['--bump', 'minor', '--dry-run'], deps(dir, fake));
+  const out = releaseClose(['--dry-run'],deps(dir, fake));
   assert.equal(out.ok, true);
   assert.equal(out.dryRun, true);
   assert.match(String(out.message), new RegExp(`milestone v1\\.0\\.0 with 2 tickets.*tag v1\\.0\\.0 on ${merge.slice(0, 7)}.*GitHub Release v1\\.0\\.0`));
   assert.equal(out.milestone, 'v1.0.0');
-  assert.match(String(out.message), new RegExp(`branch release/1\.1\.0 on ${merge.slice(0, 7)}`));
   assert.match(String(out.message), /and close the milestone v1\.0\.0; nothing was written$/);
-  assert.deepEqual([out.next, out.nextBranch, out.bump], ['1.1.0', 'release/1.1.0', 'minor']);
+  assert.doesNotMatch(String(out.message), /branch/);
   assert.deepEqual(fake.writes(), []);
   assert.deepEqual(tags(dir), ['v0.9.0']);
-  assert.equal(branches(dir).includes('release/1.1.0'), false);
 });
 
 test('if the Release cannot be made, the tag and the milestone made a moment before are taken back, no next branch is left and the error says so', () => {
   const { dir, merge } = repo();
   const fake = fakeGh([merged(merge), { args: ['release', 'create'], code: 1, stderr: 'boom' }]);
-  assert.throws(() => releaseClose(['--bump', 'minor'], deps(dir, fake)), /Release v1\.0\.0 failed: boom.*tag was taken back.*milestone was taken back/);
+  assert.throws(() => releaseClose([],deps(dir, fake)), /Release v1\.0\.0 failed: boom.*tag was taken back.*milestone was taken back/);
   assert.deepEqual(tags(dir), ['v0.9.0']);
   assert.deepEqual(fake.writes().at(-1)?.args, ['api', 'repos/o/r/milestones/5', '--method', 'DELETE']);
-  assert.equal(branches(dir).includes('release/1.1.0'), false);
 });
 
-test('close takes --bump and --dry-run and nothing else; release names it as an action', () => {
+test('close takes --dry-run and nothing else (no --bump); release names it as an action', () => {
   const { dir, merge } = repo();
   const d = deps(dir, fakeGh([merged(merge)]));
-  const bad = [[], ['--dry-run'], ['--bump'], ['--bump', 'huge'], ['--bump', 'minor', 'x'], ['--bump', 'minor', '--bump', 'major'], ['--bump', 'minor', '--dry-run', '--dry-run'], ['minor'], ['--dry', '--bump', 'minor']];
+  const bad = [['--bump', 'minor'], ['--bump'], ['minor'], ['--dry-run', '--dry-run'], ['--dry']];
   for (const args of bad) assert.throws(() => releaseClose(args, d), UsageError, args.join(' '));
-  assert.equal((release(['close', '--dry-run', '--bump', 'patch'], d) as { ok: boolean }).ok, true);
+  assert.equal((release(['close', '--dry-run'], d) as { ok: boolean }).ok, true);
   assert.throws(() => release(['nope'], d), /check\|close/);
 });
 
@@ -272,25 +269,18 @@ test('nextVersion for patch, minor and major from the tag just made, and a tag t
 
 const branches = (dir: string) => run(dir, 'branch', '--format=%(refname:short)').split('\n').filter((b) => b);
 
-for (const [bump, next] of [['patch', '1.0.1'], ['minor', '1.1.0'], ['major', '2.0.0']] as const) {
-  test(`close with ${bump} makes release/${next} on the merge commit and does not change factory.json`, () => {
-    const { dir, merge } = repo();
-    const fake = fakeGh([merged(merge)]);
-    const out = releaseClose(['--bump', bump], deps(dir, fake));
-    assert.equal(out.ok, true);
-    assert.deepEqual([out.next, out.nextBranch], [next, `release/${next}`]);
-    assert.match(String(out.message), new RegExp(`branch release/${next.replace(/\./g, '\.')} on ${merge.slice(0, 7)}`));
-    const branch = `release/${next}`;
-    assert.equal(run(dir, 'rev-parse', branch), merge);
-    assert.equal(run(dir, 'diff', '--name-only', merge, branch), '');
-    assert.equal(run(dir, 'show', `${branch}:.claude/factory.json`), FACTORY.trim());
-    assert.equal(run(dir, 'rev-parse', `v1.0.0^{commit}`), merge);
-  });
-}
+test('close makes no branch: the branches are the same before and after, and the tag is on the merge commit', () => {
+  const { dir, merge } = repo();
+  const before = branches(dir);
+  const out = releaseClose([], deps(dir, fakeGh([merged(merge)])));
+  assert.equal(out.ok, true);
+  assert.deepEqual(branches(dir), before);
+  assert.equal(run(dir, 'rev-parse', `v1.0.0^{commit}`), merge);
+});
 
 test('close leaves the folder as it was: same branch, same files, same index, no stray file', () => {
   const { dir, merge } = repo();
-  releaseClose(['--bump', 'minor'], deps(dir, fakeGh([merged(merge)])));
+  releaseClose([],deps(dir, fakeGh([merged(merge)])));
   assert.equal(run(dir, 'branch', '--show-current'), 'main');
   assert.equal(run(dir, 'status', '--porcelain'), '');
   assert.equal(readFileSync(join(dir, '.claude', 'factory.json'), 'utf8'), FACTORY);

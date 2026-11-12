@@ -210,7 +210,7 @@ test('add reports a ticket without a readable title, and no working branch to st
   const dir = repo();
   assert.throws(() => copy(['add', '7'], deps(dir, '')), /title/);
   run(dir, 'tag', 'v1.0.0');
-  assert.throws(() => copy(['add', '7'], deps(dir, 'T')), /above the last tag v1\.0\.0.*create release\/1\.1\.0/);
+  assert.throws(() => copy(['add', '7'], deps(dir, 'T')), /above the last tag v1\.0\.0.*run \/dynamo:new-release <patch\|minor\|major>/);
   assert.equal(ticketBranchesOf(dir), '');
   assert.equal(run(dir, 'worktree', 'list').split('\n').length, 1);
 });

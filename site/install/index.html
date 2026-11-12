@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" data-page="install" data-root="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-i18n="install.page.title"></title>
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/base.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <link rel="stylesheet" href="install.css">
+  <script src="../assets/theme.js"></script>
+  <script src="../assets/i18n.js" defer></script>
+  <script src="../assets/shared.i18n.js" defer></script>
+  <script src="../assets/pages.js" defer></script>
+  <script src="../assets/layout.js" defer></script>
+  <script src="../assets/toc.js" defer></script>
+  <script src="../assets/motion.js" defer></script>
+  <script src="install.data.js" defer></script>
+  <script src="install.i18n.js" defer></script>
+  <script src="install.js" defer></script>
+</head>
+<body>
+  <header data-site-header></header>
+
+  <main id="main">
+    <section class="section" aria-labelledby="install-title">
+      <div class="container">
+        <h1 id="install-title" data-i18n="install.sim.title"></h1>
+        <p class="measure" data-i18n="install.sim.lead"></p>
+        <p class="measure">
+          <a href="https://github.com/SergioLizana/Dynamo" target="_blank" rel="noopener" data-i18n="install.sim.repo"></a>
+        </p>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="sim-title">
+      <div class="container">
+        <h2 id="sim-title" data-i18n="install.sim.heading"></h2>
+        <div class="sim">
+          <div class="sim__tabs" role="tablist" data-sim-tabs data-i18n-attr="aria-label:install.sim.tabs"></div>
+          <div class="sim__panel" role="tabpanel" data-sim-panel>
+            <h3 class="sim__step-title" data-sim-title></h3>
+            <p class="sim__step-text" data-sim-text></p>
+            <div class="sim__terminal" data-sim-terminal></div>
+          </div>
+          <div class="sim__nav">
+            <button type="button" class="button button--secondary" data-sim-back data-i18n="install.sim.back"></button>
+            <span class="sim__count" data-sim-count role="status"></span>
+            <button type="button" class="button" data-sim-next data-i18n="install.sim.next"></button>
+          </div>
+          <p class="sim__hint" data-i18n="install.sim.hint"></p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer data-site-footer></footer>
+</body>
+</html>

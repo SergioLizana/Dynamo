@@ -17,7 +17,7 @@ export function where(project: Record<string, unknown>, board: unknown): Where {
 // The option id of a column, or null when board.options does not know it. Own keys only: «toString» is not a column.
 export function optionOf(board: unknown, column: string): string | null {
   const options = optionsOf(board);
-  if (options === null) throw new Error('factory.json has no board.options');
+  if (options === null) throw new Error('factory.json has no board.options; run /dynamo:setup to bring factory.json up to date');
   const id = Object.hasOwn(options, column) ? options[column] : undefined;
   return typeof id === 'string' && id !== '' ? id : null;
 }

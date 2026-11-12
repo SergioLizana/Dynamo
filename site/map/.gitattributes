@@ -1,0 +1,3 @@
+# The diagrams are drawn by Archify and kept as it wrote them (its own whitespace, its own line endings): `git diff --check`
+# does not look at them. Everything else of the folder is checked as usual.
+map.diagram.*.html -whitespace

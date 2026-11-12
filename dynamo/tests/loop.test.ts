@@ -44,6 +44,8 @@ function repo(): string {
   writeFileSync(join(dir, 'pass.js'), '');
   // A check that only fails where the merge is checked (its copy is `merge-<n>`), as a flaky test would after Verify passed.
   writeFileSync(join(dir, 'only-at-merge.js'), "process.stdout.write('flaky'); process.exit(require('node:path').basename(process.cwd()).startsWith('merge-') ? 5 : 0);");
+  // A check that fails while two.txt is there and three.txt is not: the second round's Builder fails it, a Builder that goes on fixes it.
+  writeFileSync(join(dir, 'two-no-three.js'), "const fs = require('node:fs'); if (fs.existsSync('two.txt') && !fs.existsSync('three.txt')) { process.stdout.write('two without three'); process.exit(1); }");
   sh(dir, 'add', '.');
   sh(dir, 'commit', '-q', '-m', 'A');
   sh(dir, 'checkout', '-q', '-b', BASE);
@@ -153,6 +155,8 @@ test('a ready ticket is built, checked, reviewed and merged: cards in order, one
   assert.equal(comments.length, 1);
   const lines = comments[0].split('\n');
   assert.equal(lines[0], `run · PASS and merged into ${BASE}`);
+  // A copy with nothing untracked is not named.
+  assert.ok(!/remov/i.test(comments[0]), comments[0]);
   assert.ok(lines.some((l) => l.startsWith('Cost: 1.7500 USD')));
   assert.ok(lines.includes('Turns: 15 (the sum of num_turns)'));
   assert.ok(lines.includes('Checks: node pass.js → 0; git diff --check <base> → 0'));
@@ -177,19 +181,9 @@ test('a merged ticket\'s copy is left with nothing git does not track, and the c
   assert.ok(lines.includes('Removed from the copy (git did not track it): .tmp-measure/'), lines.join('\n'));
 });
 
-test('a copy with nothing untracked is not named in the comment', async () => {
-  const f = setup([
-    { agent: 'builder', ...built('built.txt'), stdout: stream(builder, 1, 2) },
-    { agent: 'reviewer', stdout: stream({ verdict: 'PASS', report: 'VERDICT: PASS' }, 0.25, 3) },
-  ]);
-  const out = await runTicket(7, f.deps);
-  assert.equal(out.ok, true, JSON.stringify(out));
-  assert.ok(!/remov/i.test(f.issue().comments[0]), f.issue().comments[0]);
-});
-
 test('a ticket that stops is cleaned too: the untracked file is gone and named, the tracked and committed work stays', async () => {
   const f = setup([
-    { agent: 'builder', ...built('built.txt'), touch: 'scratch.txt', ...spentBudget(1) },
+    { agent: 'builder', ...built('built.txt'), touch: 'scratch.txt', stdout: stream({}, 1, 5) }, // an answer that is not the one of its schema: an error, not a kept stop
   ]);
   const out = await runTicket(7, f.deps);
   assert.equal(out.ok, false);
@@ -311,6 +305,7 @@ test('a ticket dynamo board does not give as ready is not started: the JSON line
   assert.deepEqual(f.ghCalls().map((c) => c.slice(0, 2)), [['api', 'graphql']]);
   assert.deepEqual(f.claudeCalls(), []);
   assert.equal(existsSync(logs(f.dir)), false);
+  assert.equal(readHold(f.dir), null, 'a ticket that is not ready writes no file');
 });
 
 test('a Builder that spends its budget sends the ticket to Needs Human, stopped at build, without a check or a reviewer', async () => {
@@ -321,6 +316,7 @@ test('a Builder that spends its budget sends the ticket to Needs Human, stopped 
   assert.equal(out.stoppedAt, 'build');
   assert.match(String(out.reason), /the Builder spent its budget \(Reached maximum budget \(\$3\)\)/);
   assert.deepEqual(moves(f.ghCalls()), ['Build', 'Needs Human']);
+  assert.equal(readHold(f.dir)?.asked, true, 'a spent budget is a kept stop (keeps.ts): its file stays');
   assert.deepEqual(f.claudeCalls().map((c) => c.agent), ['builder']);
   assert.match(f.issue().comments[0], /^run · not merged\n[\s\S]*Checks: not run\n[\s\S]*Stopped at: build\n/);
 });
@@ -356,33 +352,18 @@ test('an agent past its time limit with no result ends as timeout: Needs Human w
   }
 });
 
-test('a factory.json with no timeoutMinutes for an agent is an error before anything is read or moved, as a missing budgetUsd is', async () => {
-  for (const missing of [undefined, { builder: 5 }, { reviewer: 5 }]) {
+// What counts as missing or invalid is a pure table (runs.test.ts: budgetOf, timeoutOf; checks.test.ts: checkTimeoutOf); here, one full run each.
+test('a factory.json with no timeoutMinutes, checkTimeoutMinutes or budgetUsd is an error before anything is read or moved; the old place of budgetUsd outside project is not read', async () => {
+  for (const [name, make] of [
+    ['timeoutMinutes', withProject('timeoutMinutes', { builder: 5 })],
+    ['checkTimeoutMinutes', withProject('checkTimeoutMinutes', undefined)],
+    ['budgetUsd', () => ({ ...withProject('budgetUsd', undefined)(), budgetUsd: { builder: 3, reviewer: 1 } }) as unknown as Factory],
+  ] as const) {
     const f = setup([]);
-    const deps: Deps = { ...f.deps, factory: withProject('timeoutMinutes', missing) };
-    await assert.rejects(() => runTicket(7, deps), /factory\.json has no project\.timeoutMinutes\.(builder|reviewer)/);
-    assert.deepEqual(f.ghCalls(), []);
-    assert.deepEqual(f.claudeCalls(), []);
-  }
-});
-
-test('a factory.json with a missing or invalid checkTimeoutMinutes is an error before anything is read or moved, as a missing budgetUsd is', async () => {
-  for (const bad of [undefined, 0, -1, '15', null, Number.NaN]) {
-    const f = setup([]);
-    const deps: Deps = { ...f.deps, factory: withProject('checkTimeoutMinutes', bad) };
-    await assert.rejects(() => runTicket(7, deps), /project\.checkTimeoutMinutes/, String(bad));
-    assert.deepEqual(f.ghCalls(), []);
-    assert.deepEqual(f.claudeCalls(), []);
-  }
-});
-
-test('a factory.json with no budgetUsd for an agent in project is an error before anything is read or moved, and the old place outside project is not read', async () => {
-  for (const missing of [undefined, { builder: 5 }, { reviewer: 5 }]) {
-    const f = setup([]);
-    const deps: Deps = { ...f.deps, factory: () => ({ ...withProject('budgetUsd', missing)(), budgetUsd: { builder: 3, reviewer: 1 } }) as unknown as Factory };
-    await assert.rejects(() => runTicket(7, deps), /factory\.json has no project\.budgetUsd\.(builder|reviewer)/);
-    assert.deepEqual(f.ghCalls(), []);
-    assert.deepEqual(f.claudeCalls(), []);
+    const deps: Deps = { ...f.deps, factory: make };
+    await assert.rejects(() => runTicket(7, deps), new RegExp(`factory\\.json has no project\\.${name}`), name);
+    assert.deepEqual(f.ghCalls(), [], name);
+    assert.deepEqual(f.claudeCalls(), [], name);
   }
 });
 
@@ -425,6 +406,8 @@ test('an agent that hits the usage limit in round 1 pauses the ticket: its card 
   assert.deepEqual([out.ok, out.merged, out.paused, out.rounds, out.stoppedAt], [false, false, true, 1, 'build']);
   assert.deepEqual(moves(f.ghCalls()), ['Build']);
   assert.equal(f.claudeCalls().length, 1);
+  // A pause keeps the file, with the reset time, for the run that goes on.
+  assert.deepEqual([readHold(f.dir).round, readHold(f.dir).phase, readHold(f.dir).pid, readHold(f.dir).resetsAt], [1, 'build', process.pid, RESET]);
   const comments: string[] = f.issue().comments;
   assert.equal(comments.length, 1);
   assert.ok(comments[0].split('\n').includes(`Resets at: ${RESET}`));
@@ -563,27 +546,6 @@ test('while a ticket runs its file has the pid, start time, round, phase and con
   }
   assert.equal(new Set(seen.map((s) => s.hold.startedAt)).size, 1);
   assert.deepEqual(seen[1].hold.sessions, { builder: seen[0].session, reviewer: seen[1].session });
-  assert.equal(readHold(f.dir), null);
-});
-
-test('a ticket that stops in Needs Human leaves no file; one that pauses keeps it, for the run that goes on', async () => {
-  const stopped = setup([{ agent: 'builder', stdout: stream(builder, 3.5, 5).replace('"success"', '"error_max_budget_usd"') }]);
-  const a = await runTicket(7, stopped.deps);
-  assert.equal(a.paused, undefined, JSON.stringify(a));
-  assert.equal(a.stoppedAt, 'build');
-  assert.ok(moves(stopped.ghCalls()).includes('Needs Human'));
-  assert.equal(readHold(stopped.dir), null);
-
-  const paused = setup([{ agent: 'builder', stdout: limitStream(0.4, 1), code: 1 }]);
-  const b = await runTicket(7, paused.deps);
-  assert.equal(b.paused, true);
-  assert.deepEqual([readHold(paused.dir).round, readHold(paused.dir).phase, readHold(paused.dir).pid], [1, 'build', process.pid]);
-});
-
-test('a ticket that is not ready writes no file', async () => {
-  const f = setup([], [{ number: 3, state: 'OPEN', labels: conn([]) }]);
-  const out = await runTicket(7, f.deps);
-  assert.equal(out.started, false, JSON.stringify(out));
   assert.equal(readHold(f.dir), null);
 });
 
@@ -901,12 +863,6 @@ test('the merge of a branch already in the base does only what is missing: the l
 // --- The file keeps the reset time of the usage limit, and a run launched before it launches no agent (holds.ts, `limitUntil`).
 const diesAt = (dir: string, resetsAt: string | null): void => writeFileSync(held(dir), `${JSON.stringify({ ...readHold(dir), pid: deadPid(), resetsAt })}\n`);
 
-test('a ticket that pauses at the usage limit keeps the reset time in its file', async () => {
-  const f = setup([{ agent: 'builder', stdout: limitStream(0.4, 1), code: 1 }]);
-  assert.equal((await runTicket(7, f.deps)).paused, true);
-  assert.equal(readHold(f.dir).resetsAt, RESET);
-});
-
 test('a run launched before the reset time launches no agent, moves no card and says when the limit resets', async () => {
   const f = setup([{ agent: 'builder', stdout: limitStream(0.4, 1), code: 1 }]);
   assert.equal((await runTicket(7, f.deps)).paused, true);
@@ -995,45 +951,7 @@ test('a Builder that asks for the human with no outage is not waited for', async
 // The model and effort each call of an agent was launched with, as claude was given them.
 const launched = (calls: Call[]) => calls.map((c) => [c.agent, flag(c, '--model'), flag(c, '--effort')]);
 
-test('a ticket with Level: low, medium or high launches its Builder and its Reviewer with the values of that level', async () => {
-  const want = {
-    low: [['builder', 'sonnet', 'low'], ['reviewer', 'sonnet', 'medium']],
-    medium: [['builder', 'sonnet', 'medium'], ['reviewer', 'sonnet', 'high']],
-    high: [['builder', 'sonnet', 'high'], ['reviewer', 'opus', undefined]],
-  };
-  for (const level of ['low', 'medium', 'high'] as const) {
-    const f = setup([
-      { agent: 'builder', ...built('built.txt'), stdout: stream(builder, 1, 2) },
-      { agent: 'reviewer', stdout: stream({ verdict: 'PASS', report: 'VERDICT: PASS' }, 0.2, 1) },
-    ], [], undefined, { body: `## Problem\nx\n\nLevel: ${level}\n\nSpec: #1` });
-    const out = await runTicket(7, f.deps);
-    assert.equal(out.merged, true, JSON.stringify(out));
-    assert.deepEqual(launched(f.claudeCalls()), want[level], level);
-  }
-});
-
-test('a ticket with no Level: line runs with the values of high', async () => {
-  for (const body of [undefined, 'Spec: #1\nno level here']) {
-    const f = setup([
-      { agent: 'builder', ...built('built.txt'), stdout: stream(builder, 1, 2) },
-      { agent: 'reviewer', stdout: stream({ verdict: 'PASS', report: 'VERDICT: PASS' }, 0.2, 1) },
-    ], [], undefined, { body });
-    const out = await runTicket(7, f.deps);
-    assert.equal(out.merged, true, JSON.stringify(out));
-    assert.deepEqual(launched(f.claudeCalls()), [['builder', 'sonnet', 'high'], ['reviewer', 'opus', undefined]]);
-  }
-});
-
-test('a project that changes the values of a level: the launch uses them, and the rest stay the starting ones', async () => {
-  const f = setup([
-    { agent: 'builder', ...built('built.txt'), stdout: stream(builder, 1, 2) },
-    { agent: 'reviewer', stdout: stream({ verdict: 'PASS', report: 'VERDICT: PASS' }, 0.2, 1) },
-  ], [], undefined, { body: 'Level: low', levels: { low: { builder: { model: 'opus', effort: 'max' } } } });
-  const out = await runTicket(7, f.deps);
-  assert.equal(out.merged, true, JSON.stringify(out));
-  assert.deepEqual(launched(f.claudeCalls()), [['builder', 'opus', 'max'], ['reviewer', 'sonnet', 'medium']]);
-});
-
+// The table of levels (low, medium, high, no Level: line, a project's own values) is proven in levels.test.ts.
 test('a ticket that fails review keeps its level in its next round: both rounds launch with the values of that level', async () => {
   const fail = { verdict: 'FAIL', report: 'VERDICT: FAIL\nFor the Builder: fix 1' };
   const f = setup([
@@ -1063,20 +981,16 @@ const passing = [
   { agent: 'reviewer', stdout: stream({ verdict: 'PASS', report: 'VERDICT: PASS' }, 0.2, 1) },
 ];
 
-test('with no reinforcement file the Builder and the Reviewer are launched with no --agents, as today', async () => {
-  const f = setup(passing);
-  const out = await runTicket(7, f.deps);
-  assert.equal(out.merged, true, JSON.stringify(out));
-  assert.deepEqual(f.claudeCalls().map((c) => [c.agent, flag(c, '--agent'), flag(c, '--agents'), flag(c, '--mcp-config')]),
-    [['builder', 'dynamo:builder', undefined, undefined], ['reviewer', 'dynamo:reviewer', undefined, undefined]]);
-});
-
-test("with a reinforcement file the Builder gets Dynamo's tools plus the file's, and Dynamo's text, the heading and the file's rules", async () => {
-  const f = setup(passing);
-  reinforce(f.dir, '---\ntools: mcp__browser__open, Agent(page-checker)\n---\nCheck the page in the browser.\n');
+// With a file for one agent, the other is launched with no --agents (also the case of no file at all); the merge of the file is in reinforce.test.ts.
+test("with a reinforcement file the Builder gets Dynamo's tools plus the file's, and Dynamo's text, the heading and the file's rules; its model, effort and removed tools change nothing", async () => {
+  const f = setup(passing, [], undefined, { body: 'Level: low' });
+  reinforce(f.dir, '---\nmodel: opus\neffort: max\ndisallowedTools: Bash, Edit\ntools: mcp__browser__open, Agent(page-checker)\n---\nCheck the page in the browser.\n');
   const out = await runTicket(7, f.deps);
   assert.equal(out.merged, true, JSON.stringify(out));
   const [b, r] = f.claudeCalls();
+  assert.deepEqual([flag(b, '--model'), flag(b, '--effort')], ['sonnet', 'low']);
+  assert.deepEqual(Object.keys(agentsOf(b)['dynamo:builder']).sort(), ['description', 'prompt', 'tools']);
+  assert.ok(agentsOf(b)['dynamo:builder'].tools.includes('Bash') && agentsOf(b)['dynamo:builder'].tools.includes('Edit'));
   const own = readFileSync(join(import.meta.dirname, '..', '..', 'agents', 'builder.md'), 'utf8').replace(/\r/g, '');
   const [, front, ...rest] = own.split(/^---$/m);
   const tools = /^tools:(.*)$/m.exec(front)?.[1].split(',').map((t) => t.trim());
@@ -1087,18 +1001,6 @@ test("with a reinforcement file the Builder gets Dynamo's tools plus the file's,
   assert.equal(flag(b, '--agent'), 'dynamo:builder');
   assert.equal(flag(b, '--mcp-config'), undefined);
   assert.equal(flag(r, '--agents'), undefined, 'the Reviewer has no file of its own here');
-});
-
-test('a reinforcement that asks for another model or effort or to remove a tool changes none of that: the level still sets them', async () => {
-  const f = setup(passing, [], undefined, { body: 'Level: low' });
-  reinforce(f.dir, '---\nmodel: opus\neffort: max\ndisallowedTools: Bash, Edit\ntools: mcp__browser__open\n---\nRules.\n');
-  const out = await runTicket(7, f.deps);
-  assert.equal(out.merged, true, JSON.stringify(out));
-  const [b] = f.claudeCalls();
-  assert.deepEqual([flag(b, '--model'), flag(b, '--effort')], ['sonnet', 'low']);
-  const agent = agentsOf(b)['dynamo:builder'];
-  assert.deepEqual(Object.keys(agent).sort(), ['description', 'prompt', 'tools']);
-  assert.ok(agent.tools.includes('Bash') && agent.tools.includes('Edit'));
 });
 
 test("with a reinforcement file the Reviewer gets Dynamo's tools plus the file's, and Dynamo's text, the heading and the file's rules", async () => {
@@ -1118,7 +1020,7 @@ test("with a reinforcement file the Reviewer gets Dynamo's tools plus the file's
   assert.equal(flag(r, '--agent'), 'dynamo:reviewer');
 });
 
-test('a Reviewer reinforcement that asks for Edit or Write stops the run with its reason and launches no agent', async () => {
+test('a Reviewer reinforcement that asks for Write stops the run with its reason and launches no agent', async () => {
   const f = setup(passing);
   reinforce(f.dir, '---\ntools: mcp__browser__open, Write\n---\nRules.\n', 'reviewer');
   const out = await runTicket(7, f.deps);
@@ -1194,8 +1096,8 @@ test('a Builder that asked, whose conversation cannot be resumed, gets a new Bui
   assert.match(builders[2].stdin, /Take the second option\./);
 });
 
-test('a Builder stopped by anything but its question does not keep its conversation: the copy is cleaned and the file removed as before', async () => {
-  const f = setup([{ agent: 'builder', ...built('one.txt'), touch: 'scratch.txt', ...spentBudget(1) }]);
+test('a Builder stopped by anything but its question or a kept stop does not keep its conversation: the copy is cleaned and the file removed as before', async () => {
+  const f = setup([{ agent: 'builder', ...built('one.txt'), touch: 'scratch.txt', stdout: stream({}, 1, 5) }]);
   const out = await runTicket(7, f.deps);
   assert.equal(out.stoppedAt, 'build', JSON.stringify(out));
   assert.equal(readHold(f.dir), null);
@@ -1245,16 +1147,96 @@ test('a ticket the Reviewer fails in the last round keeps its Builder\'s convers
   assert.equal(readHold(f.dir), null, 'the ticket ended');
 });
 
-test('a ticket the Reviewer gave no verdict does not keep its conversation: its copy is cleaned and its file removed as before', async () => {
+// --- A Builder goes on after the check's last failure (a stop that keeps its conversation).
+test('a check failed in the last round keeps the Builder\'s conversation; relaunched, the Builder is resumed with the output of the check and the comments written after the notice', async () => {
+  const f = setup([
+    { agent: 'builder', ...built('one.txt'), stdout: stream(builder, 1, 5) },
+    { agent: 'reviewer', stdout: stream({ verdict: 'FAIL', report: 'VERDICT: FAIL\nFor the Builder: fix 1' }, 0.5, 2) },
+    { agent: 'builder', ...built('two.txt'), stdout: stream(builder, 1, 4) },
+    { agent: 'builder', ...built('three.txt'), stdout: stream(builder, 1, 3) },
+    { agent: 'reviewer', stdout: stream(PASSED, 0.5, 2) },
+  ], [], ['node two-no-three.js']);
+  f.setIssue({ ...f.issue(), comments: ['an old comment, before the run'] });
+
+  const first = await runTicket(7, f.deps);
+
+  assert.equal(first.stoppedAt, 'check', JSON.stringify(first));
+  assert.deepEqual(branches(f.dir), ['ticket/7-run-one-ticket'], 'its branch is kept');
+  const copy = copiesOf(f.dir);
+  assert.equal(copy.length, 1, 'its copy is kept');
+  const id = readHold(f.dir).sessions.builder;
+  assert.ok(typeof id === 'string' && id !== '', 'the file of its stop keeps the id of the Builder\'s conversation');
+  assert.equal(f.issue().column, 'Needs Human');
+  const notice: string = f.issue().comments[1];
+  assert.match(notice, /\nTo relaunch, going on with the Builder: /);
+  assert.match(notice, /the output of the check/);
+  assert.match(notice, /To start anew instead: remove what «Left» names/, 'both ways are offered');
+
+  f.setIssue({ ...f.issue(), comments: [...f.issue().comments, 'Mind the second file.'] });
+  dies(f.dir);
+  const out = await runTicket(7, f.deps);
+
+  assert.equal(out.merged, true, JSON.stringify(out));
+  assert.deepEqual(copiesOf(f.dir), copy, 'the same copy');
+  const builders = f.claudeCalls().filter((c) => c.agent === 'builder');
+  assert.equal(builders.length, 3, 'one Builder resumed, no new one');
+  assert.equal(flag(builders[2], '--resume'), id, 'the conversation of the last round');
+  assert.equal(flag(builders[2], '--session-id'), undefined);
+  assert.match(builders[2].stdin, /automatic check failed/i);
+  assert.match(builders[2].stdin, /two without three/);
+  assert.match(builders[2].stdin, /Mind the second file\./);
+  assert.doesNotMatch(builders[2].stdin, /an old comment|fix 1/, 'only the output of the check and what was written after the notice');
+  assert.equal(readHold(f.dir), null, 'the ticket ended');
+});
+
+// --- A Reviewer with no result, or a check that did not run, goes on from its own step with no Builder.
+test('a Reviewer that gave no verdict is kept; relaunched, only a new Reviewer runs, on the same commit and copy', async () => {
   const f = setup([
     { agent: 'builder', ...built('one.txt'), stdout: stream(builder, 1, 5) },
     { agent: 'reviewer', stdout: stream({}, 0.5, 2) },
+    { agent: 'reviewer', stdout: stream(PASSED, 0.5, 2) },
   ]);
+  const first = await runTicket(7, f.deps);
+  assert.equal(first.stoppedAt, 'review', JSON.stringify(first));
+  assert.equal(readHold(f.dir)?.resume, 'review', 'its file stays and names the step');
+  assert.equal(copiesOf(f.dir).length, 1, 'its copy is kept');
+  assert.match(f.issue().comments[0], /\nTo relaunch: .*only a new Reviewer runs, on the same commit \(no Builder\)/s);
+  assert.doesNotMatch(f.issue().comments[0], /git worktree remove|git branch -D/);
+  const head = sh(copiesOf(f.dir)[0].slice('worktree '.length), 'rev-parse', 'HEAD');
+
+  dies(f.dir);
   const out = await runTicket(7, f.deps);
-  assert.equal(out.stoppedAt, 'review', JSON.stringify(out));
-  assert.equal(readHold(f.dir), null);
-  assert.match(f.issue().comments[0], /git worktree remove.*git branch -D/s);
+
+  assert.equal(out.merged, true, JSON.stringify(out));
+  assert.deepEqual(f.claudeCalls().map((c) => c.agent), ['builder', 'reviewer', 'reviewer'], 'no second Builder');
+  assert.equal(f.claudeCalls()[2].cwd, f.claudeCalls()[1].cwd, 'the same copy');
+  assert.equal(flag(f.claudeCalls()[2], '--resume'), undefined, 'a new Reviewer, not the old conversation');
+  assert.equal(sh(f.dir, 'rev-parse', 'ticket/7-run-one-ticket'), head, 'the same commit');
+  assert.equal(readHold(f.dir), null, 'the ticket ended');
 });
+
+test('a check that did not run is kept; relaunched, the ticket goes on from Verify with no Builder', async () => {
+  const f = setup([
+    { agent: 'builder', ...built('one.txt'), stdout: stream(builder, 1, 5) },
+    { agent: 'reviewer', stdout: stream(PASSED, 0.5, 2) },
+  ]);
+  const good = f.deps.factory;
+  f.deps.factory = () => ({ ...good(), project: { ...good().project, checks: [] } }) as Factory;
+  const first = await runTicket(7, f.deps);
+  assert.equal(first.stoppedAt, 'check', JSON.stringify(first));
+  assert.match(String(first.reason), /did not run/);
+  assert.equal(readHold(f.dir)?.resume, 'verify');
+  assert.match(f.issue().comments[0], /\nTo relaunch: .*goes on from Verify \(no Builder\)/s);
+
+  f.deps.factory = good;
+  dies(f.dir);
+  const out = await runTicket(7, f.deps);
+
+  assert.equal(out.merged, true, JSON.stringify(out));
+  assert.deepEqual(f.claudeCalls().map((c) => c.agent), ['builder', 'reviewer'], 'no second Builder');
+  assert.equal(readHold(f.dir), null);
+});
+
 
 test('a Builder the Reviewer failed in the last round, whose conversation cannot be resumed, gets a new Builder on the same copy with the verdict and the comments', async () => {
   const fail = (n: number) => ({ verdict: 'FAIL', report: `VERDICT: FAIL\nFor the Builder: fix ${n}` });
@@ -1281,4 +1263,95 @@ test('a Builder the Reviewer failed in the last round, whose conversation cannot
   assert.equal(builders[2].cwd, builders[3].cwd, 'on the same copy');
   assert.match(builders[3].stdin, /VERDICT: FAIL\nFor the Builder: fix 2/);
   assert.match(builders[3].stdin, /Ignore the second point\./);
+});
+
+// --- A Builder cut off by a time limit, a spent budget or an unknown end is a kept stop (keeps.ts): its relaunch goes on.
+const cutTimeout = { agent: 'builder', stdout: '{"type":"system","subtype":"init"}\n', waitFor: 'never' };
+const cuts = [
+  { name: 'time limit', first: [cutTimeout], cause: /the time limit of 0\.02 min cut you off/, limits: { builder: 0.02, reviewer: 5 }, round: 1 },
+  { name: 'spent budget', first: [spentBudget(3.1)], cause: /you spent your budget of 3 USD/, limits: undefined, round: 1 },
+  { name: 'unknown end', first: [{ agent: 'builder', stdout: 'no stream here\n', code: 1 }], cause: /ended in a way dynamo does not know/, limits: undefined, round: 1 },
+  // In round 2 the Builder is cut off after the Reviewer failed round 1: the relaunch keeps the round.
+  { name: 'time limit in round 2', first: [{ agent: 'builder', ...built('one.txt'), stdout: stream(builder, 1, 5) }, { agent: 'reviewer', stdout: stream({ verdict: 'FAIL', report: 'VERDICT: FAIL\nfix it' }, 0.5, 2) }, cutTimeout], cause: /the time limit of 0\.02 min cut you off/, limits: { builder: 0.02, reviewer: 5 }, round: 2 },
+];
+
+for (const c of cuts) {
+  test(`a Builder stopped by a ${c.name} keeps its copy, branch, file and session; relaunched, it is resumed in the same round, told why and the comments after the notice`, async () => {
+    const f = setup([
+      ...c.first,
+      { agent: 'builder', ...built('two.txt'), stdout: stream(builder, 1, 5) },
+      { agent: 'reviewer', stdout: stream(PASSED, 0.5, 2) },
+    ]);
+    f.setIssue({ ...f.issue(), comments: ['an old comment, before the run'] });
+
+    const first = await runTicket(7, c.limits === undefined ? f.deps : { ...f.deps, factory: withProject('timeoutMinutes', c.limits) });
+
+    assert.equal(first.stoppedAt, 'build', JSON.stringify(first));
+    assert.deepEqual(branches(f.dir), ['ticket/7-run-one-ticket'], 'its branch is kept');
+    const copy = copiesOf(f.dir);
+    assert.equal(copy.length, 1, 'its copy is kept');
+    const hold = readHold(f.dir);
+    assert.equal(hold?.round, c.round, 'its file keeps the round');
+    const id = hold?.sessions.builder;
+    assert.ok(typeof id === 'string' && id !== '', 'its file keeps the Builder\'s session');
+    assert.equal(f.issue().column, 'Needs Human');
+    const notice: string = f.issue().comments.at(-1);
+    assert.match(notice, /\nTo relaunch, going on where the Builder was cut off: .*\/dynamo:autopilot 7/);
+    assert.match(notice, /\nTo start anew instead: remove what «Left» names \(`git worktree remove`, then `git branch -D`\)/);
+
+    f.setIssue({ ...f.issue(), comments: [...f.issue().comments, 'Mind the second file.'] });
+    dies(f.dir);
+    const out = await runTicket(7, f.deps);
+
+    assert.equal(out.merged, true, JSON.stringify(out));
+    assert.equal(out.rounds, c.round, 'going on spent no round');
+    assert.deepEqual(copiesOf(f.dir), copy, 'the same copy');
+    const builders = f.claudeCalls().filter((b) => b.agent === 'builder');
+    const resumed = builders.at(-1) as Call;
+    assert.equal(builders.length, c.round + 1, 'one Builder resumed, no new one');
+    assert.equal(flag(resumed, '--resume'), id, 'the same session id');
+    assert.equal(flag(resumed, '--session-id'), undefined);
+    assert.match(resumed.stdin, c.cause);
+    assert.match(resumed.stdin, /without exploring again/);
+    assert.match(resumed.stdin, /Mind the second file\./);
+    assert.doesNotMatch(resumed.stdin, /an old comment|Reason: /, 'only what was written after the notice');
+    assert.equal(readFileSync(join(f.dir, 'two.txt'), 'utf8'), 'two.txt');
+    assert.equal(readHold(f.dir), null, 'the ticket ended');
+  });
+}
+
+test('a Builder stopped by a time limit whose conversation cannot be resumed gets a new Builder on the same copy, told that it may already hold work', async () => {
+  const f = setup([
+    cutTimeout,
+    { agent: 'builder', stdout: 'no stream here\n', code: 1 },
+    { agent: 'builder', ...built('two.txt'), stdout: stream(builder, 1, 5) },
+    { agent: 'reviewer', stdout: stream(PASSED, 0.5, 2) },
+  ]);
+  await runTicket(7, { ...f.deps, factory: withProject('timeoutMinutes', { builder: 0.02, reviewer: 5 }) });
+  const id = readHold(f.dir).sessions.builder;
+  dies(f.dir);
+
+  const out = await runTicket(7, f.deps);
+
+  assert.equal(out.merged, true, JSON.stringify(out));
+  const builders = f.claudeCalls().filter((b) => b.agent === 'builder');
+  assert.equal(flag(builders[1], '--resume'), id, 'it first tries to resume');
+  assert.equal(flag(builders[2], '--resume'), undefined, 'then a new Builder');
+  assert.equal(builders[1].cwd, builders[2].cwd, 'on the same copy');
+  assert.match(builders[2].stdin, /may already hold the work|the copy holds its work/);
+  assert.match(builders[2].stdin, /time limit of 0\.02 min/);
+});
+
+test('a ticket stopped by a time limit whose copy and branch the human removed starts anew: a new copy and Builder, round 1', async () => {
+  const f = setup([cutTimeout, { agent: 'builder', ...built('two.txt'), stdout: stream(builder, 1, 5) }, { agent: 'reviewer', stdout: stream(PASSED, 0.5, 2) }]);
+  await runTicket(7, { ...f.deps, factory: withProject('timeoutMinutes', { builder: 0.02, reviewer: 5 }) });
+  sh(f.dir, 'worktree', 'remove', '--force', copiesOf(f.dir)[0].slice('worktree '.length));
+  for (const b of branches(f.dir)) sh(f.dir, 'branch', '-D', b);
+
+  const out = await runTicket(7, f.deps);
+
+  assert.equal(out.merged, true, JSON.stringify(out));
+  const builders = f.claudeCalls().filter((b) => b.agent === 'builder');
+  assert.equal(flag(builders[1], '--resume'), undefined, 'the Builder is new');
+  assert.doesNotMatch(builders[1].stdin, /cut you off/);
 });

@@ -9,7 +9,7 @@ export const END = 300;
 
 export function parseChecks(value: unknown): string[] {
   if (!Array.isArray(value) || value.length === 0 || !value.every((c) => typeof c === 'string' && c.trim() !== '')) {
-    throw new Error('factory.json has no checks (project.checks must be a list of commands): nothing is counted as passed');
+    throw new Error('factory.json has no checks (project.checks must be a list of commands): nothing is counted as passed; run /dynamo:setup to bring factory.json up to date');
   }
   return value;
 }
@@ -58,7 +58,7 @@ function outputOf(r: { stdout: string; stderr: string }, code: number): string {
 export function checkTimeoutOf(project: Record<string, unknown>): number {
   const value = project.checkTimeoutMinutes;
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    throw new Error('factory.json has no project.checkTimeoutMinutes (a number of minutes above 0): the check would have no time limit');
+    throw new Error('factory.json has no project.checkTimeoutMinutes (a number of minutes above 0): the check would have no time limit; run /dynamo:setup to bring factory.json up to date');
   }
   return value;
 }

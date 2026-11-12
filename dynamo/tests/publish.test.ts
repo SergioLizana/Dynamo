@@ -9,6 +9,7 @@ import type { Result } from '../exec.ts';
 import { execAsync } from '../exec.ts';
 import { git } from '../git.ts';
 import { publish } from '../publish.ts';
+import { mergedProblems, preparedProblems } from '../publishing.ts';
 import { scanText } from '../reviewing.ts';
 import { scratch } from './helpers.ts';
 
@@ -50,7 +51,7 @@ function develop(): string {
   g(dir, 'init', '-q', '-b', 'dev');
   put(dir, {
     '.claude-plugin/plugin.json': PLUGIN('0.0.1'), 'skills/old/SKILL.md': 'old', 'skills/new/SKILL.md': 'one', 'dynamo/dynamo.ts': 'x',
-    'README.md': 'readme', 'LICENSE': 'mit', '.gitattributes': '* text=auto eol=lf', '.github/workflows/ci.yml': 'private ci', 'public/ci.yml': 'public ci', 'public/dependabot.yml': 'public dependabot', 'guides/g.md': 'g',
+    'README.md': 'readme', 'LICENSE': 'mit', '.gitattributes': '* text=auto eol=lf', '.github/workflows/ci.yml': 'private ci', 'public/ci.yml': 'public ci', 'public/dependabot.yml': 'public dependabot', 'public/pages.yml': 'public pages', 'site/index.html': 'site', 'site/README.md': 'site readme', 'guides/g.md': 'g',
     'documentation/plan.md': 'private', '.claude/CLAUDE.md': 'private', '.claude/factory.json': '{}', 'mods/m.ts': 'mod', 'notes.txt': 'n',
   });
   g(dir, 'add', '-A');
@@ -103,38 +104,52 @@ test('the clone is a required second argument: with one argument or three it is 
   }
 });
 
+// The passing publish, made once and read by every test about what it leaves. The machine has a personal identity in its
+// environment and the clone in its config (with signing on), so the same run proves the noreply identity beats both.
+// Its folders are made here, not inside a test: a scratch folder made in a test is removed when that test ends.
+type Passing = { dev: string; clone: string; tip: string; r: Awaited<ReturnType<typeof run>> };
+const PASSING = { dev: develop(), clone: publicClone() };
+g(PASSING.clone, 'config', 'user.name', 'Mary Private');
+g(PASSING.clone, 'config', 'user.email', MARY_EMAIL);
+g(PASSING.clone, 'config', 'commit.gpgsign', 'true');
+let passing: Promise<Passing> | undefined;
+function passingRun(): Promise<Passing> {
+  passing ??= (async () => {
+    const { dev, clone } = PASSING;
+    const tip = g(clone, 'rev-parse', 'main');
+    Object.assign(process.env, PERSONAL);
+    try {
+      return { dev, clone, tip, r: await run(dev, ['v0.2.0', clone]) };
+    } finally {
+      for (const k of Object.keys(PERSONAL)) delete process.env[k];
+    }
+  })();
+  return passing;
+}
+
 test('only the allowlisted files of the tag are in the commit', async () => {
-  const dev = develop();
-  const clone = publicClone();
-  const r = await run(dev, ['v0.2.0', clone]);
+  const { clone, r } = await passingRun();
   assert.equal(r.code, 0, JSON.stringify(r.out));
   const tracked = g(clone, 'ls-tree', '-r', '--name-only', 'HEAD').split('\n');
-  assert.deepEqual(tracked, ['.claude-plugin/plugin.json', '.gitattributes', '.github/dependabot.yml', '.github/workflows/ci.yml', 'LICENSE', 'README.md', 'dynamo/dynamo.ts', 'guides/g.md', 'skills/new/SKILL.md']);
+  assert.deepEqual(tracked, ['.claude-plugin/plugin.json', '.gitattributes', '.github/dependabot.yml', '.github/workflows/ci.yml', '.github/workflows/pages.yml', 'LICENSE', 'README.md', 'dynamo/dynamo.ts', 'guides/g.md', 'site/README.md', 'site/index.html', 'skills/new/SKILL.md']);
   assert.equal(readFileSync(join(clone, 'skills/new/SKILL.md'), 'utf8'), 'two');
 });
 
 test('.gitattributes is published, so the line endings of the clone are the ones the files were made with', async () => {
-  const dev = develop();
-  const clone = publicClone();
-  await run(dev, ['v0.2.0', clone]);
+  const { clone } = await passingRun();
   assert.equal(readFileSync(join(clone, '.gitattributes'), 'utf8'), '* text=auto eol=lf');
   assert.match(g(clone, 'ls-tree', '-r', '--name-only', 'HEAD'), /^\.gitattributes$/m);
 });
 
 test('a file the tag no longer has is gone from the commit and from the folder', async () => {
-  const dev = develop();
-  const clone = publicClone();
-  await run(dev, ['v0.2.0', clone]);
+  const { clone } = await passingRun();
   assert.equal(existsSync(join(clone, 'skills/old/SKILL.md')), false);
   assert.equal(existsSync(join(clone, 'leftover.txt')), false);
   assert.doesNotMatch(g(clone, 'ls-tree', '-r', '--name-only', 'HEAD'), /old|leftover/);
 });
 
 test('the commit is on publish/x.y.z with one parent, the tip of the public main', async () => {
-  const dev = develop();
-  const clone = publicClone();
-  const tip = g(clone, 'rev-parse', 'main');
-  const r = await run(dev, ['v0.2.0', clone]);
+  const { clone, tip, r } = await passingRun();
   assert.equal(g(clone, 'branch', '--show-current'), 'publish/0.2.0');
   assert.equal(g(clone, 'rev-list', '--parents', '-n1', 'HEAD'), `${g(clone, 'rev-parse', 'HEAD')} ${tip}`);
   assert.equal(g(clone, 'rev-parse', 'main'), tip, 'main is not moved');
@@ -144,26 +159,14 @@ test('the commit is on publish/x.y.z with one parent, the tip of the public main
 });
 
 test('author and committer are the noreply identity, whatever the local git config and environment say', async () => {
-  const dev = develop();
-  const clone = publicClone();
-  g(clone, 'config', 'user.name', 'Mary Private');
-  g(clone, 'config', 'user.email', MARY_EMAIL);
-  g(clone, 'config', 'commit.gpgsign', 'true');
-  Object.assign(process.env, PERSONAL);
-  try {
-    const r = await run(dev, ['v0.2.0', clone]);
-    assert.equal(r.code, 0, JSON.stringify(r.out));
-  } finally {
-    for (const k of Object.keys(PERSONAL)) delete process.env[k];
-  }
+  const { clone, r } = await passingRun();
+  assert.equal(r.code, 0, JSON.stringify(r.out));
   assert.equal(g(clone, 'log', '-1', '--format=%an <%ae>'), NOREPLY);
   assert.equal(g(clone, 'log', '-1', '--format=%cn <%ce>'), NOREPLY);
 });
 
 test('plugin.json of the public copy carries the version of the tag, and keeps its format', async () => {
-  const dev = develop();
-  const clone = publicClone();
-  await run(dev, ['v0.2.0', clone]);
+  const { dev, clone } = await passingRun();
   assert.equal(readFileSync(join(clone, '.claude-plugin/plugin.json'), 'utf8'), PLUGIN('0.2.0'));
   assert.equal(g(dev, 'show', 'v0.2.0:.claude-plugin/plugin.json'), PLUGIN('0.0.1').trim(), 'the tag itself is not changed');
 });
@@ -242,18 +245,31 @@ function rewriteAfterCommit(clone: string, name: string, email: string, only: 'a
   chmodSync(hook, 0o755);
 }
 
+const NOREPLY_EMAIL = '28341710+SergioLizana@users.noreply.github.com';
+const who = (authorName: string, authorEmail: string, committerName: string, committerEmail: string) => ({ authorName, authorEmail, committerName, committerEmail });
+
+test('the identity of the prepared commit: only the noreply identity as author and as committer has no problem', () => {
+  const table: [string, ReturnType<typeof who>, string[]][] = [
+    ['both noreply', who('Sergio Lizana', NOREPLY_EMAIL, 'Sergio Lizana', NOREPLY_EMAIL), []],
+    ['email in another case', who('Sergio Lizana', NOREPLY_EMAIL.toUpperCase(), 'Sergio Lizana', NOREPLY_EMAIL), []],
+    ['another author', who('Mary Private', MARY_EMAIL, 'Sergio Lizana', NOREPLY_EMAIL), [`author is Mary Private <${MARY_EMAIL}>`]],
+    ['another committer', who('Sergio Lizana', NOREPLY_EMAIL, 'Mary Private', MARY_EMAIL), [`committer is Mary Private <${MARY_EMAIL}>`]],
+    ['both another', who('Mary Private', MARY_EMAIL, 'Mary Private', MARY_EMAIL), [`author is Mary Private <${MARY_EMAIL}>`, `committer is Mary Private <${MARY_EMAIL}>`]],
+    ['GitHub as committer is not enough here', who('Sergio Lizana', NOREPLY_EMAIL, 'GitHub', 'noreply@github.com'), ['committer is GitHub <noreply@github.com>']],
+  ];
+  for (const [name, identities, problems] of table) assert.deepEqual(preparedProblems(identities), problems, name);
+});
+
 test('another author or committer on the prepared commit is refused, and the clone is left as it was', async () => {
-  for (const only of ['author', 'committer', 'both'] as const) {
-    const dev = develop();
-    const clone = publicClone();
-    const before = { head: g(clone, 'rev-parse', 'HEAD'), branches: g(clone, 'branch', '--list') };
-    rewriteAfterCommit(clone, 'Mary Private', MARY_EMAIL, only);
-    const r = await run(dev, ['v0.2.0', clone]);
-    assert.equal(r.code, 1, only);
-    assert.match(String(r.out.error), /identity/, only);
-    assert.equal(r.out.push, undefined);
-    assert.deepEqual({ head: g(clone, 'rev-parse', 'HEAD'), branches: g(clone, 'branch', '--list') }, before, only);
-  }
+  const dev = develop();
+  const clone = publicClone();
+  const before = { head: g(clone, 'rev-parse', 'HEAD'), branches: g(clone, 'branch', '--list') };
+  rewriteAfterCommit(clone, 'Mary Private', MARY_EMAIL, 'both');
+  const r = await run(dev, ['v0.2.0', clone]);
+  assert.equal(r.code, 1);
+  assert.match(String(r.out.error), /identity/);
+  assert.equal(r.out.push, undefined);
+  assert.deepEqual({ head: g(clone, 'rev-parse', 'HEAD'), branches: g(clone, 'branch', '--list') }, before);
 });
 
 // A public clone whose origin holds `main` with the release merged on it, as GitHub leaves it: `who` is the commit's
@@ -273,40 +289,57 @@ function mergedClone(author: string, committer: string, version = '0.2.0'): stri
 const ME = 'Sergio Lizana|28341710+SergioLizana@users.noreply.github.com';
 const GITHUB = 'GitHub|noreply@github.com';
 
-test('the commit the merge left on main is checked: the noreply identity passes, and only then are the tag and Release commands printed', async () => {
-  const dev = develop();
-  for (const committer of [ME, GITHUB]) {
-    const clone = mergedClone(ME, committer);
-    const r = await run(dev, ['v0.2.0', clone, '--merged']);
-    assert.equal(r.code, 0, JSON.stringify(r.out));
-    const tip = g(clone, 'rev-parse', 'origin/main');
-    assert.equal(r.out.commit, g(clone, 'rev-parse', '--short', tip));
-    assert.match(String(r.out.release), new RegExp(`gh release create v0\\.2\\.0 .*--target ${tip}`));
+// The merged commit that passes, made once: the tag and Release commands are read from it.
+const MERGED = { dev: develop(), clone: mergedClone(ME, GITHUB) };
+let mergedPassing: Promise<{ clone: string; r: Awaited<ReturnType<typeof run>> }> | undefined;
+function mergedPassingRun() {
+  mergedPassing ??= (async () => {
+    return { clone: MERGED.clone, r: await run(MERGED.dev, ['v0.2.0', MERGED.clone, '--merged']) };
+  })();
+  return mergedPassing;
+}
+
+// `Name|email` as the helper above takes it, as the identities a commit reads back.
+const pair = (who: string) => who.split('|');
+const identitiesOfPair = (author: string, committer: string) => who(pair(author)[0], pair(author)[1], pair(committer)[0], pair(committer)[1]);
+const OTHER = `Mary Private|${MARY_EMAIL}`;
+const MARY_ON_NOREPLY = `Mary Private|${NOREPLY_EMAIL}`;
+const MARY_ON_GITHUB = 'Mary Private|noreply@github.com';
+const GITHUB_ELSEWHERE = `GitHub|${['someone', 'github.com'].join('@')}`;
+
+test('the identity of the commit the merge left: the noreply author with the noreply or the GitHub committer is the only pass', () => {
+  for (const committer of [ME, GITHUB]) assert.deepEqual(mergedProblems(identitiesOfPair(ME, committer)), [], committer);
+  assert.deepEqual(mergedProblems(identitiesOfPair(ME, 'github|NOREPLY@GITHUB.COM')), [`committer is github <NOREPLY@GITHUB.COM>`]);
+  for (const [author, committer] of [
+    [OTHER, ME], [ME, OTHER], [OTHER, OTHER], [ME, GITHUB_ELSEWHERE], [MARY_ON_NOREPLY, ME], [ME, MARY_ON_NOREPLY], [ME, MARY_ON_GITHUB],
+  ]) {
+    assert.notDeepEqual(mergedProblems(identitiesOfPair(author, committer)), [], `${author} / ${committer}`);
   }
+  assert.equal(mergedProblems(identitiesOfPair(OTHER, OTHER)).length, 2);
 });
 
-test('any other author or committer on the commit the merge left fails, and no command is printed', async () => {
-  const dev = develop();
-  const other = `Mary Private|${MARY_EMAIL}`;
-  const maryOnNoreply = 'Mary Private|28341710+SergioLizana@users.noreply.github.com';
-  const maryOnGithub = 'Mary Private|noreply@github.com';
-  for (const [author, committer] of [
-    [other, ME], [ME, other], [other, other], [ME, `GitHub|${['someone', 'github.com'].join('@')}`],
-    [maryOnNoreply, ME], [ME, maryOnNoreply], [ME, maryOnGithub],
-  ]) {
-    const clone = mergedClone(author, committer);
-    const r = await run(dev, ['v0.2.0', clone, '--merged']);
-    assert.equal(r.code, 1, `${author} / ${committer}`);
-    assert.match(String(r.out.error), /identity/);
-    assert.equal(r.out.release, undefined);
-    assert.doesNotMatch(JSON.stringify(r.out), /gh release/);
-  }
+test('the commit the merge left on main is checked: the noreply identity passes, and only then are the tag and Release commands printed', async () => {
+  const { clone, r } = await mergedPassingRun();
+  assert.equal(r.code, 0, JSON.stringify(r.out));
+  const tip = g(clone, 'rev-parse', 'origin/main');
+  assert.equal(r.out.commit, g(clone, 'rev-parse', '--short', tip));
+  assert.match(String(r.out.release), new RegExp(`gh release create v0\\.2\\.0 .*--target ${tip}`));
+  // The check only reads: asked again, it changes nothing in the clone and gives the same answer.
+  const before = stateOf(clone);
+  assert.deepEqual((await run(MERGED.dev, ['v0.2.0', clone, '--merged'])).out, r.out);
+  assert.equal(stateOf(clone), before);
+});
+
+test('another author or committer on the commit the merge left fails, and no command is printed', async () => {
+  const r = await run(develop(), ['v0.2.0', mergedClone(OTHER, ME), '--merged']);
+  assert.equal(r.code, 1);
+  assert.match(String(r.out.error), /identity/);
+  assert.equal(r.out.release, undefined);
+  assert.doesNotMatch(JSON.stringify(r.out), /gh release/);
 });
 
 test('the commands of the tag carry no personal email and make no local tag', async () => {
-  const dev = develop();
-  const clone = mergedClone(ME, GITHUB);
-  const r = await run(dev, ['v0.2.0', clone, '--merged']);
+  const { r } = await mergedPassingRun();
   assert.equal(r.code, 0, JSON.stringify(r.out));
   const printed = JSON.stringify(r.out);
   assert.doesNotMatch(printed, /mary@private|@(?!github\.com)/);
@@ -330,17 +363,15 @@ test('a folder that is not a git repository is refused', async () => {
 });
 
 test('the public ci.yml and dependabot.yml of the tag are placed where GitHub reads them, and the development ci.yml is not', async () => {
-  const dev = develop();
-  const clone = publicClone();
-  const r = await run(dev, ['v0.2.0', clone]);
+  const { clone, r } = await passingRun();
   assert.equal(r.code, 0, JSON.stringify(r.out));
   assert.equal(readFileSync(join(clone, '.github/workflows/ci.yml'), 'utf8'), 'public ci');
   assert.equal(readFileSync(join(clone, '.github/dependabot.yml'), 'utf8'), 'public dependabot');
-  assert.equal(r.out.files, 9);
+  assert.equal(r.out.files, 12);
 });
 
 test('a tag without the public ci.yml or dependabot.yml is refused and nothing is committed', async () => {
-  for (const missing of ['public/ci.yml', 'public/dependabot.yml']) {
+  for (const missing of ['public/ci.yml', 'public/dependabot.yml', 'public/pages.yml']) {
     const dev = develop();
     g(dev, 'rm', '-q', missing);
     g(dev, 'commit', '-q', '-m', 'drop');

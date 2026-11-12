@@ -60,5 +60,6 @@ export function releaseBranchOf(branches: string, tags: string): string {
   const found = findRelease(branches, tags);
   if (found !== null) return found;
   const last = lastTag(tags);
-  throw new Error(`there is no release/x.y.z branch above ${last === null ? 'no tag' : `the last tag v${last}`}, local or on origin: create ${firstRelease(tags)}`);
+  const what = last === null ? `create ${firstRelease(tags)}` : 'run /dynamo:new-release <patch|minor|major>';
+  throw new Error(`there is no release/x.y.z branch above ${last === null ? 'no tag' : `the last tag v${last}`}, local or on origin: ${what}`);
 }

@@ -1,0 +1,22 @@
+/* concepts.css — what only the concepts page needs: the list of sources under each concept. Built only on the tokens; it
+   wraps by itself, so it holds at phone width with no horizontal scroll. */
+
+.concept__sources {
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.concept__files {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.concept__source {
+  margin-bottom: var(--space-1);
+  overflow-wrap: anywhere;
+}

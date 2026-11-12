@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="5 5 190 190" width="190" height="190">
+  <!-- The favicon: only the grid of cells of assets/dynamo-logo.svg (the same polygons and check), square and with no text.
+       Opened alone as the favicon it follows the system theme. -->
+  <style>
+    .cell  { fill: none; stroke: #0E9F8E; }
+    .work  { fill: #0E9F8E; fill-opacity: .28; stroke: #0E9F8E; }
+    .done  { fill: #0E9F8E; stroke: #0E9F8E; }
+    .check { fill: none; stroke: #FFFFFF; }
+    @media (prefers-color-scheme: dark) {
+      .cell  { stroke: #2DD4BF; }
+      .work  { fill: #2DD4BF; stroke: #2DD4BF; }
+      .done  { fill: #2DD4BF; stroke: #2DD4BF; }
+      .check { stroke: #0B1F1D; }
+    }
+  </style>
+  <g stroke-width="8" stroke-linejoin="round">
+    <polygon class="cell" points="67,127 93,142 93,172 67,187 41,172 41,142"/>
+    <polygon class="work" points="100,70 126,85 126,115 100,130 74,115 74,85"/>
+    <polygon class="done" points="133,13 159,28 159,58 133,73 107,58 107,28"/>
+  </g>
+  <path class="check" d="M120 43 L129 52 L146 34" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

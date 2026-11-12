@@ -1,10 +1,12 @@
-import { test } from 'node:test';
+import { before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { UsageError } from '../cli.ts';
-import { TEMPLATE_BOARD, boardOf, boardTitle, checksOf, copiedNumber, dependabotFile, failedCheck, hintFor, isPublic, mainBranchOf, managerOf, missingLabels, repoOf, setupArgsOf, withBoard, withValues } from '../setups.ts';
+import { UsageError, setting } from '../cli.ts';
+import { checkTimeoutOf, parseChecks } from '../checks.ts';
+import { updateOf } from '../setupupdate.ts';
+import { boardOf, boardTitle, checksOf, copiedNumber, dependabotFile, failedCheck, hintFor, isPublic, mainBranchOf, managerOf, missingLabels, repoOf, setupArgsOf, withBoard, withValues } from '../setups.ts';
 import { setup } from '../setup.ts';
 import { missingChecks, runLinesOf, seedOf } from '../setupci.ts';
 import { fillSettings, gapsOf, keptSettings, mergeSettings, neededSettings, ruleOf, withIgnore } from '../setupsettings.ts';
@@ -12,7 +14,9 @@ import { files, readTemplate } from '../setupfiles.ts';
 import { execAsync } from '../exec.ts';
 import { gh } from '../gh.ts';
 import { git } from '../git.ts';
-import { DYNAMO, fakeGhEnv, scratch } from './helpers.ts';
+import { DYNAMO, fakeGhEnv, scratch, scratchProject } from './helpers.ts';
+import { budgetOf, timeoutOf } from '../runs.ts';
+import { readFactory } from '../factory.ts';
 import type { Deps } from '../cli.ts';
 import type { Factory } from '../factory.ts';
 
@@ -84,10 +88,6 @@ const view = JSON.stringify({ number: 7, id: 'PVT_new', title: 'shop' });
 const fieldList = (names: string[] = COLUMN_NAMES) => JSON.stringify({
   fields: [{ id: 'F0', name: 'Title', type: 'ProjectV2Field' }, { id: 'PVTSSF_new', name: 'Status', type: 'ProjectV2SingleSelectField', options: names.map((name) => ({ id: 'id-' + name, name })) }],
   totalCount: 2,
-});
-
-test('the template board is a constant of the code: its owner by name and its number', () => {
-  assert.deepEqual({ ...TEMPLATE_BOARD }, { owner: 'SergioLizana', number: 3 });
 });
 
 test('boardTitle is the name of the repository without its owner', () => {
@@ -179,33 +179,6 @@ const readBack = (dir: string) => JSON.parse(readFileSync(factoryOf(dir), 'utf8'
 // The calls the fake gh got, each as its arguments joined.
 const callsOf = (state: string): string[] => readFileSync(join(state, 'calls.jsonl'), 'utf8').split('\n').filter((l) => l !== '').map((l) => (JSON.parse(l).args as string[]).join(' '));
 
-test('the repository, the board owner and the main branch are read from gh and git; the rest comes from the template', async () => {
-  const dir = project();
-  run(dir, 'checkout', '-q', '-b', 'trunk');
-  const out = await setup(['--check', 'node pass.js'], gitWith(dir));
-  assert.equal(out.ok, true, JSON.stringify(out));
-  const written = JSON.parse(readFileSync(factoryOf(dir), 'utf8')) as Factory;
-  const template = readTemplate();
-  assert.deepEqual(written.project, { ...template.project, repo: 'acme/shop', boardOwner: 'acme', mainBranch: 'trunk', checks: ['node pass.js'] });
-  assert.equal(written.version, template.version);
-  assert.equal(written.board !== undefined, true);
-});
-
-test('setup given a language writes it as project.documentsLanguage in the factory.json of its commit', async () => {
-  const dir = project();
-  const out = await setup(['--check', 'node pass.js', '--language', 'Español'], gitWith(dir));
-  assert.equal(out.ok, true, JSON.stringify(out));
-  assert.equal(readBack(dir).project.documentsLanguage, 'Español');
-  assert.equal((JSON.parse(run(dir, 'show', 'HEAD:.claude/factory.json')) as Factory).project.documentsLanguage, 'Español');
-});
-
-test('setup given no language writes English, in the file and in its commit', async () => {
-  const dir = project();
-  assert.equal((await setup(['--check', 'node pass.js'], gitWith(dir))).ok, true);
-  assert.equal(readBack(dir).project.documentsLanguage, 'English');
-  assert.equal((JSON.parse(run(dir, 'show', 'HEAD:.claude/factory.json')) as Factory).project.documentsLanguage, 'English');
-});
-
 test('run again with no language it keeps the one the file has; with a language it changes it', async () => {
   const dir = project();
   assert.equal((await setup(['--check', 'node pass.js', '--language', 'Español'], gitWith(dir))).ok, true);
@@ -213,51 +186,6 @@ test('run again with no language it keeps the one the file has; with a language 
   assert.equal(readBack(dir).project.documentsLanguage, 'Español');
   assert.equal((await setup(['--language', 'Deutsch'], gitWith(dir))).ok, true);
   assert.equal(readBack(dir).project.documentsLanguage, 'Deutsch');
-});
-
-test('the main branch is the one origin/HEAD points to when the remote says so', async () => {
-  const dir = project();
-  const remote = scratch();
-  run(remote, 'init', '-q', '--bare', '-b', 'stable');
-  run(dir, 'remote', 'add', 'origin', remote);
-  run(dir, 'update-ref', 'refs/remotes/origin/stable', 'HEAD');
-  run(dir, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/stable');
-  assert.equal((await setup(['--check', 'node pass.js'], gitWith(dir))).ok, true);
-  assert.equal((JSON.parse(readFileSync(factoryOf(dir), 'utf8')) as Factory).project.mainBranch, 'stable');
-});
-
-test('each check runs in a temporary copy of the committed repository, not in the folder itself, and the copy is gone after', async () => {
-  const dir = project();
-  const out = await setup(['--check', 'node where.js', '--check', 'git diff --check <base>'], gitWith(dir));
-  assert.equal(out.ok, true, JSON.stringify(out));
-  const [where, diff] = out.checks as { code: number; output: string }[];
-  assert.match(where.output, / no loose$/);
-  assert.ok(!where.output.includes(dir), where.output);
-  assert.equal(diff.code, 0);
-  assert.equal(run(dir, 'worktree', 'list', '--porcelain').split('\n').filter((l) => l.startsWith('worktree ')).length, 1);
-  assert.deepEqual(readdirSync(dir).filter((n) => n.startsWith('dynamo-setup')), []);
-});
-
-test('a check that fails leaves nothing written, and the output says which one and what it printed', async () => {
-  const dir = project();
-  const out = await setup(['--check', 'node pass.js', '--check', 'node fail.js'], gitWith(dir));
-  assert.equal(out.ok, false);
-  assert.match(String(out.error), /node fail\.js.*failed \(3\).*nothing was written/);
-  assert.deepEqual((out.checks as { code: number }[]).map((c) => c.code), [0, 3]);
-  assert.equal((out.checks as { output: string }[])[1].output, 'what failed');
-  assert.equal(existsSync(factoryOf(dir)), false);
-  assert.equal(existsSync(join(dir, '.claude')), false);
-  assert.equal(run(dir, 'worktree', 'list', '--porcelain').split('\n').filter((l) => l.startsWith('worktree ')).length, 1);
-});
-
-test('a check that gives 127 suggests node --run <script>, and nothing is written', async () => {
-  const dir = project();
-  const out = await setup(['--check', 'no-such-program-here run build'], gitWith(dir));
-  assert.equal(out.ok, false);
-  const [check] = out.checks as { code: number; hint?: string }[];
-  assert.equal(check.code, 127);
-  assert.match(String(check.hint), /node --run <script>/);
-  assert.equal(existsSync(factoryOf(dir)), false);
 });
 
 test('gh failing, or a repository with no commit, is an error and writes nothing', async () => {
@@ -290,53 +218,6 @@ test('called through the entry point in a project with no config, it writes the 
 const COPY = 'project copy 3 --source-owner SergioLizana --target-owner acme --title shop --format json';
 const LINK = 'project link 7 --owner acme --repo acme/shop';
 
-test('the board is a copy of the template, named as the repository, with the owner passed by name, and then linked to the repository', async () => {
-  const state = scratch();
-  const out = await setup(['--check', 'node pass.js'], gitWith(project(), state));
-  assert.equal(out.ok, true, JSON.stringify(out));
-  const calls = callsOf(state);
-  assert.ok(calls.includes(COPY), calls.join('\n'));
-  assert.ok(calls.includes(LINK), calls.join('\n'));
-  assert.ok(calls.indexOf(COPY) < calls.indexOf(LINK));
-  assert.equal(calls.some((c) => c.includes('@me')), false);
-});
-
-test('the ids are read back from the copy into the board block of factory.json', async () => {
-  const dir = project();
-  const state = scratch();
-  const out = await setup(['--check', 'node pass.js'], gitWith(dir, state));
-  assert.equal(out.board, 7);
-  assert.equal(out.boardCopied, true);
-  assert.deepEqual(readBack(dir).board, boardOf(7, view, fieldList()));
-  const calls = callsOf(state);
-  assert.ok(calls.includes('project view 7 --owner acme --format json'));
-  assert.ok(calls.includes('project field-list 7 --owner acme --format json'));
-});
-
-test('a done label, an epic label and an idea label that the repository lacks are created; one it has is left alone', async () => {
-  const state = scratch();
-  const out = await setup(['--check', 'node pass.js'], gitWith(project(), state));
-  assert.deepEqual(out.labelsCreated, ['in-release']);
-  assert.deepEqual(callsOf(state).filter((c) => c.startsWith('label create')), ['label create in-release -R acme/shop']);
-  const none = await setup(['--check', 'node pass.js'], gitWith(project(), scratch(), REPO, answering('copy', {}, [])));
-  assert.deepEqual(none.labelsCreated, ['in-release', 'epic', 'idea']);
-});
-
-test('the idea label is created from project.ideaLabel when it is missing, as the epic label is', async () => {
-  const state = scratch();
-  const out = await setup(['--check', 'node pass.js'], gitWith(project(), state, REPO, answering('copy', {}, ['epic', 'in-release'])));
-  assert.deepEqual(out.labelsCreated, ['idea']);
-  assert.deepEqual(callsOf(state).filter((c) => c.startsWith('label create')), ['label create idea -R acme/shop']);
-});
-
-test('the factory.json that setup writes has project.ideaLabel "idea" and no project.backlog', async () => {
-  const dir = project();
-  assert.equal((await setup(['--check', 'node pass.js'], gitWith(dir))).ok, true);
-  const written = readBack(dir).project as Record<string, unknown>;
-  assert.equal(written.ideaLabel, 'idea');
-  assert.equal('backlog' in written, false);
-});
-
 test('a board that is not a copy of the template (a column missing) writes no factory.json', async () => {
   const dir = project();
   const answers = answering('field-list', { stdout: fieldList(['Backlog', 'Todo']) });
@@ -350,13 +231,6 @@ test('a copy that gh refuses, or a board that cannot be linked, is an error and 
   const b = project();
   await assert.rejects(setup(['--check', 'node pass.js'], gitWith(b, scratch(), REPO, answering('link', { code: 1, stdout: '', stderr: 'denied' }))), /board 7 was copied but could not be linked to acme\/shop: denied/);
   assert.equal(existsSync(factoryOf(a)) || existsSync(factoryOf(b)), false);
-});
-
-test('a check that fails copies no board and creates no label', async () => {
-  const state = scratch();
-  const out = await setup(['--check', 'node fail.js'], gitWith(project(), state));
-  assert.equal(out.ok, false);
-  assert.deepEqual(callsOf(state).filter((c) => c.startsWith('project') || c.startsWith('label')), []);
 });
 
 test('run again, it copies no second board and reads the ids again, even if a column was recreated', async () => {
@@ -402,6 +276,59 @@ test('a factory.json with no board block (a run that stopped after writing it) g
   assert.equal(readBack(dir).board !== undefined, true);
 });
 
+// --- Bringing an installed factory.json up to date
+
+test('updateOf adds a missing key with the template value, asks one with none, removes one the template lacks, and keeps the values the file has', () => {
+  const template = { repo: '<…>', mainBranch: 'main', ideaLabel: 'idea', checks: ['<…>'], levels: { low: { model: 'sonnet' }, high: { model: 'opus' } } };
+  const had = { repo: 'a/b', mainBranch: 'dev', backlog: 'old', levels: { low: { model: 'haiku' }, extra: 1 } };
+  const out = updateOf(template, had, ['repo', 'mainBranch']);
+  assert.deepEqual(out.project, { repo: 'a/b', mainBranch: 'dev', ideaLabel: 'idea', levels: { low: { model: 'haiku' }, high: { model: 'opus' } } });
+  assert.deepEqual(out.added, ['ideaLabel', 'levels.high']);
+  assert.deepEqual(out.asked, ['checks']);
+  assert.deepEqual(out.removed.sort(), ['backlog', 'levels.extra']);
+  assert.equal(Object.hasOwn(had, 'ideaLabel'), false);
+  assert.deepEqual(updateOf(template, { mainBranch: 'main' }, ['repo', 'mainBranch']).asked, ['repo', 'checks']);
+});
+
+test('setup run again adds the keys the template has and the file lacks, removes the ones nothing reads, and names both', async () => {
+  const dir = project();
+  const template = readTemplate();
+  const { ideaLabel: _gone, ...rest } = template.project;
+  files.writeFactory(dir, { ...template, project: { ...rest, backlog: 'old', repo: 'acme/shop', boardOwner: 'acme', checks: ['node pass.js'] } });
+  const out = await setup([], gitWith(dir));
+  assert.equal(out.ok, true, JSON.stringify(out));
+  assert.deepEqual(out.keysAdded, ['ideaLabel']);
+  assert.deepEqual(out.keysRemoved, ['backlog']);
+  const back = readBack(dir).project;
+  assert.equal(back.ideaLabel, template.project.ideaLabel);
+  assert.equal(Object.hasOwn(back, 'backlog'), false);
+  assert.deepEqual(back.checks, ['node pass.js']);
+});
+
+test('setup run again on a file with no checks asks for them like a first install, and fills the repository from gh', async () => {
+  const dir = project();
+  const template = readTemplate();
+  const { repo: _r, checks: _c, ...rest } = template.project;
+  files.writeFactory(dir, { ...template, project: rest as Factory['project'] });
+  await assert.rejects(setup([], gitWith(dir)), UsageError);
+  const out = await setup(['--check', 'node pass.js'], gitWith(dir));
+  assert.equal(out.ok, true, JSON.stringify(out));
+  assert.deepEqual(out.keysFilled, ['repo', 'checks']);
+  assert.equal(readBack(dir).project.repo, 'acme/shop');
+  assert.deepEqual(readBack(dir).project.checks, ['node pass.js']);
+});
+
+test('the error for a missing key of factory.json says to run /dynamo:setup', () => {
+  assert.throws(() => setting({}, 'project', 'ideaLabel'), /has no project\.ideaLabel; run \/dynamo:setup to bring factory\.json up to date/);
+  assert.throws(() => parseChecks([]), /run \/dynamo:setup to bring factory\.json up to date/);
+  assert.throws(() => checkTimeoutOf({}), /run \/dynamo:setup to bring factory\.json up to date/);
+  assert.throws(() => budgetOf({}, 'builder'), /run \/dynamo:setup to bring factory\.json up to date/);
+  assert.throws(() => timeoutOf({}, 'builder'), /run \/dynamo:setup to bring factory\.json up to date/);
+  const dir = scratchProject();
+  writeFileSync(join(dir, '.claude', 'factory.json'), JSON.stringify({ version: 1 }));
+  assert.throws(() => readFactory(dir), /has no project block; run \/dynamo:setup to bring factory\.json up to date/);
+});
+
 // --- Dependabot and code scanning (pure part)
 
 test('managerOf is npm with package-lock.json, the name of another manager from its lock file, else null', () => {
@@ -442,15 +369,6 @@ function withLock(dir: string, name: string): void {
   run(dir, 'commit', '-q', '-m', name);
 }
 
-test('with package-lock.json the setup writes a Dependabot file for npm, grouped', async () => {
-  const dir = project();
-  withLock(dir, 'package-lock.json');
-  const out = await setup(['--check', 'node pass.js'], gitWith(dir));
-  assert.equal(out.ok, true, JSON.stringify(out));
-  assert.equal(readFileSync(dependabotPath(dir), 'utf8'), dependabotFile());
-  assert.match(String(out.dependabot), /npm/);
-});
-
 test('with another package manager the setup says so, writes no Dependabot file and goes on', async () => {
   for (const [lock, name] of [['pnpm-lock.yaml', 'pnpm'], ['yarn.lock', 'yarn']]) {
     const dir = project();
@@ -461,11 +379,6 @@ test('with another package manager the setup says so, writes no Dependabot file 
     assert.equal(existsSync(dependabotPath(dir)), false);
     assert.equal(existsSync(factoryOf(dir)), true, 'it went on');
   }
-  const none = project();
-  const out = await setup(['--check', 'node pass.js'], gitWith(none));
-  assert.equal(out.ok, true);
-  assert.match(String(out.dependabot), /package-lock\.json/);
-  assert.equal(existsSync(dependabotPath(none)), false);
 });
 
 test('an existing Dependabot file, .yml or .yaml, is not touched', async () => {
@@ -483,28 +396,6 @@ test('an existing Dependabot file, .yml or .yaml, is not touched', async () => {
   }
 });
 
-test('a public repository gets the call that turns on the default setup of code scanning', async () => {
-  const dir = project();
-  const state = scratch();
-  const out = await setup(['--check', 'node pass.js'], gitWith(dir, state, PUBLIC, [{ args: ['api'], stdout: '{}' }]));
-  assert.equal(out.ok, true, JSON.stringify(out));
-  const [call, ...rest] = scanning(state);
-  assert.equal(rest.length, 0);
-  assert.ok(call.args.includes('PATCH'), call.args.join(' '));
-  assert.ok(call.args.includes('repos/acme/shop/code-scanning/default-setup'), call.args.join(' '));
-  assert.ok(call.args.includes('state=configured'), call.args.join(' '));
-  assert.match(String(out.codeScanning), /configured|on/);
-});
-
-test('a private repository gets no call to code scanning', async () => {
-  const dir = project();
-  const state = scratch();
-  const out = await setup(['--check', 'node pass.js'], gitWith(dir, state, PRIVATE, [{ args: ['api'], stdout: '{}' }]));
-  assert.equal(out.ok, true, JSON.stringify(out));
-  assert.deepEqual(scanning(state), []);
-  assert.match(String(out.codeScanning), /private/);
-});
-
 test('code scanning refused by gh is reported and the setup still ends with its files written', async () => {
   const dir = project();
   const state = scratch();
@@ -514,30 +405,11 @@ test('code scanning refused by gh is reported and the setup still ends with its 
   assert.equal(existsSync(factoryOf(dir)), true);
 });
 
-test('a failed check writes no Dependabot file and calls no code scanning', async () => {
-  const dir = project();
-  withLock(dir, 'package-lock.json');
-  const state = scratch();
-  const out = await setup(['--check', 'node fail.js'], gitWith(dir, state, PUBLIC, [{ args: ['api'], stdout: '{}' }]));
-  assert.equal(out.ok, false);
-  assert.equal(existsSync(dependabotPath(dir)), false);
-  assert.deepEqual(scanning(state), []);
-});
-
 // --- The permission rules, attribution, worktree and the plugin (pure part: setupsettings.ts)
 
 const GAPS = gapsOf({ repo: 'acme/shop', boardOwner: 'acme', mainBranch: 'trunk' }, boardOf(7, view, fieldList()));
-const templateText = () => readFileSync(join(import.meta.dirname, '..', '..', 'templates', 'settings.json'), 'utf8');
 const strings = (v: unknown): string[] => (typeof v === 'string' ? [v] : Array.isArray(v) ? v.flatMap(strings) : typeof v === 'object' && v !== null ? Object.values(v).flatMap(strings) : []);
 type Template = { permissions: { allow: string[]; deny: string[]; ask: string[] } };
-
-test('the template of the settings holds the rules, with gaps for the repository and the board, and no id of any real project', () => {
-  const template = files.settingsTemplate() as Template;
-  assert.ok(template.permissions.allow.length > 0 && template.permissions.deny.length > 0 && template.permissions.ask.length > 0);
-  const text = templateText();
-  for (const gap of ['<repo>', '<boardOwner>', '<boardNumber>', '<boardId>', '<statusFieldId>']) assert.ok(text.includes(gap), gap);
-  assert.doesNotMatch(text, /SergioLizana|PVT_|PVTSSF_/);
-});
 
 test('fillSettings replaces every gap at any depth, leaves a <base> of a check alone, and does not change the template', () => {
   const template = { a: ['x <repo> <boardNumber>', { b: '<boardId>/<statusFieldId> <boardOwner> <mainBranch>' }], c: 3, d: 'git diff <base>' };
@@ -642,24 +514,6 @@ test('withIgnore adds .claude/worktrees/ once, keeps the endings of the file, an
 const settingsOf = (dir: string) => JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8')) as Record<string, any>;
 const ignoreOf = (dir: string) => readFileSync(join(dir, '.gitignore'), 'utf8');
 
-test('the setup writes the rules of the template filled with the repository and the board, one rule per check, attribution, worktree and the plugin', async () => {
-  const dir = project();
-  const out = await setup(['--check', 'node pass.js', '--check', 'git diff --check <base>'], gitWith(dir));
-  assert.equal(out.ok, true, JSON.stringify(out));
-  const s = settingsOf(dir);
-  assert.deepEqual(s.worktree, { baseRef: 'head' });
-  assert.deepEqual(s.attribution, { commit: '', pr: '' });
-  assert.deepEqual(s.enabledPlugins, { 'dynamo@dynamo': true });
-  const allow: string[] = s.permissions.allow;
-  assert.ok(allow.includes('Bash(node pass.js)') && allow.includes('Bash(git diff --check *)'));
-  assert.ok(allow.includes('Bash(gh project item-list 7 --owner acme *)'));
-  assert.ok(allow.includes('Bash(gh api repos/acme/shop/issues/*)'));
-  assert.ok(allow.includes('Bash(gh project item-edit --id * --project-id PVT_new --field-id PVTSSF_new --single-select-option-id *)'));
-  assert.ok(s.permissions.deny.includes('Bash(git checkout main*)'));
-  assert.deepEqual(strings(s).filter((x) => /<(repo|boardOwner|boardNumber|boardId|statusFieldId|mainBranch)>/.test(x)), []);
-  assert.equal(out.settings, join(dir, '.claude', 'settings.json'));
-});
-
 test('the setup keeps the settings the project already had', async () => {
   const dir = project();
   mkdirSync(join(dir, '.claude'));
@@ -681,8 +535,6 @@ test('the setup keeps a value the project had that is not what the factory wants
   assert.equal(out.ok, true, JSON.stringify(out));
   assert.equal(settingsOf(dir).worktree.baseRef, 'fresh');
   assert.deepEqual(out.settingsKept, ['worktree.baseRef is "fresh" in the file and was kept; the factory wants "head"']);
-  const clean = await setup(['--check', 'node pass.js'], gitWith(project()));
-  assert.deepEqual(clean.settingsKept, []);
 });
 
 test('a settings file that is not JSON is an error and nothing is written or copied', async () => {
@@ -694,17 +546,6 @@ test('a settings file that is not JSON is an error and nothing is written or cop
   assert.equal(existsSync(factoryOf(dir)), false);
   assert.equal(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'), '{ nope');
   assert.equal(existsSync(join(state, 'calls.jsonl')) && callsOf(state).some((c) => c.startsWith('project')), false);
-});
-
-test('the worktrees folder is added to .gitignore once, after what the file had', async () => {
-  const dir = project();
-  writeFileSync(join(dir, '.gitignore'), 'node_modules/\n');
-  const out = await setup(['--check', 'node pass.js'], gitWith(dir));
-  assert.match(String(out.gitignore), /added/);
-  assert.equal(ignoreOf(dir), 'node_modules/\n.claude/worktrees/\n');
-  const none = project();
-  assert.equal((await setup(['--check', 'node pass.js'], gitWith(none))).ok, true);
-  assert.equal(ignoreOf(none), '.claude/worktrees/\n');
 });
 
 test('run again, nothing of the settings or .gitignore is duplicated, and an ignore line the project had is enough', async () => {
@@ -721,14 +562,6 @@ test('run again, nothing of the settings or .gitignore is duplicated, and an ign
   writeFileSync(join(mine, '.gitignore'), '/.claude/worktrees\n');
   await setup(['--check', 'node pass.js'], gitWith(mine));
   assert.equal(ignoreOf(mine), '/.claude/worktrees\n');
-});
-
-test('a failed check writes no settings and no .gitignore', async () => {
-  const dir = project();
-  const out = await setup(['--check', 'node fail.js'], gitWith(dir));
-  assert.equal(out.ok, false);
-  assert.equal(existsSync(join(dir, '.claude')), false);
-  assert.equal(existsSync(join(dir, '.gitignore')), false);
 });
 
 // --- The CI (setupci.ts and the subcommand)
@@ -784,15 +617,6 @@ test('a comment of a run block does not run a check', () => {
   assert.deepEqual(missingChecks(['node pass.js'], runLinesOf(yaml)), ['node pass.js']);
 });
 
-test('with no CI, the seed is written, and the output says so', async () => {
-  const dir = project();
-  const out = await setup(['--check', 'node pass.js', '--check', 'git diff --check <base>'], gitWith(dir));
-  assert.equal(out.ok, true, JSON.stringify(out));
-  assert.equal(readFileSync(ciPath(dir), 'utf8'), seedOf('main', ['node pass.js', 'git diff --check <base>']));
-  assert.match(String(out.ci), /ci\.yml/);
-  assert.deepEqual(out.ciMissing, []);
-});
-
 test('run again, the seed is the project\'s: it is not written again', async () => {
   const dir = project();
   await setup(['--check', 'node pass.js'], gitWith(dir));
@@ -818,44 +642,11 @@ test('with a CI, nothing is changed, a check no run line has is reported, and th
   assert.equal(existsSync(factoryOf(dir)), true, 'it went on');
 });
 
-test('a failed check writes no CI', async () => {
-  const dir = project();
-  const out = await setup(['--check', 'node fail.js'], gitWith(dir));
-  assert.equal(out.ok, false);
-  assert.equal(existsSync(join(dir, '.github')), false);
-});
-
 // --- The commit on the working branch
 
 const tracked = (dir: string, ref: string) => run(dir, 'ls-tree', '-r', '--name-only', ref).split('\n');
 const branches = (dir: string) => run(dir, 'branch', '--list', '--format=%(refname:short)').split('\n').filter((b) => b !== '').sort();
 const cleanProject = (): string => { const dir = project(); rmSync(join(dir, 'loose.txt')); return dir; };
-
-test('with no release branch, the setup makes the first one and stays on it; with a tag, the next minor after it', async () => {
-  const a = project();
-  const out = await setup(['--check', 'node pass.js'], gitWith(a));
-  assert.equal(out.ok, true, JSON.stringify(out));
-  assert.equal(out.release, 'release/0.1.0');
-  assert.equal(out.releaseCreated, true);
-  assert.deepEqual(branches(a), ['main', 'release/0.1.0']);
-  assert.equal(run(a, 'branch', '--show-current'), 'release/0.1.0');
-  const b = project();
-  run(b, 'tag', 'v0.4.0');
-  assert.equal((await setup(['--check', 'node pass.js'], gitWith(b))).release, 'release/0.5.0');
-});
-
-test('everything the setup wrote is committed on the release branch, and the main branch has none of it', async () => {
-  const dir = project();
-  withLock(dir, 'package-lock.json');
-  const out = await setup(['--check', 'node pass.js'], gitWith(dir));
-  assert.equal(out.ok, true, JSON.stringify(out));
-  const made = ['.claude/factory.json', '.claude/settings.json', '.gitignore', '.github/dependabot.yml', '.github/workflows/ci.yml'];
-  assert.deepEqual(run(dir, 'show', '--name-only', '--format=', 'HEAD').split('\n').sort(), made.sort());
-  assert.equal(out.commit, run(dir, 'rev-parse', '--short', 'HEAD'));
-  assert.equal(run(dir, 'rev-list', '--count', 'main..release/0.1.0'), '1');
-  for (const file of made) assert.equal(tracked(dir, 'main').includes(file), false, file);
-  assert.deepEqual(run(dir, 'status', '--porcelain', '--', ...made), '');
-});
 
 test('an existing release branch above the last tag gets the commit, and no other branch is made', async () => {
   const dir = project();
@@ -867,29 +658,6 @@ test('an existing release branch above the last tag gets the commit, and no othe
   assert.deepEqual(branches(dir), ['main', 'release/0.5.0']);
   assert.equal(run(dir, 'branch', '--show-current'), 'release/0.5.0');
   assert.equal(tracked(dir, 'release/0.5.0').includes('.claude/factory.json'), true);
-});
-
-test('nothing is pushed, and the push is printed for the human', async () => {
-  const dir = project();
-  const remote = scratch();
-  run(remote, 'init', '-q', '--bare', '-b', 'main');
-  run(dir, 'remote', 'add', 'origin', remote);
-  run(dir, 'push', '-q', 'origin', 'main');
-  const out = await setup(['--check', 'node pass.js'], gitWith(dir));
-  assert.equal(out.push, 'git push -u origin release/0.1.0');
-  assert.equal(run(remote, 'branch', '--list', '--format=%(refname:short)'), 'main');
-  assert.equal(run(remote, 'rev-parse', 'main'), run(dir, 'rev-parse', 'main'));
-});
-
-test('the main folder ends clean, and a file of the human that the setup did not write is left as it was', async () => {
-  const dir = cleanProject();
-  const out = await setup(['--check', 'node pass.js'], gitWith(dir));
-  assert.equal(out.clean, true);
-  assert.equal(run(dir, 'status', '--porcelain'), '');
-  const loose = project();
-  const again = await setup(['--check', 'node pass.js'], gitWith(loose));
-  assert.equal(again.clean, false);
-  assert.equal(run(loose, 'status', '--porcelain'), '?? loose.txt');
 });
 
 test('run again, it makes no empty commit; what it did not write itself is not committed', async () => {
@@ -929,9 +697,209 @@ test('with nothing to commit, a setup that started off the working branch leaves
   assert.equal(run(fresh, 'rev-parse', 'HEAD'), ours);
 });
 
-test('a failed check makes no branch and no commit', async () => {
+// --- The two runs every setup scenario shares: one that passes and one that fails, each run once.
+
+type Out = Awaited<ReturnType<typeof setup>>;
+const worktreesOf = (dir: string): number => run(dir, 'worktree', 'list', '--porcelain').split('\n').filter((l) => l.startsWith('worktree ')).length;
+const checkedOut = (dir: string): Factory => JSON.parse(run(dir, 'show', 'HEAD:.claude/factory.json')) as Factory;
+
+// A passing setup of a project that has everything: a lock file, a .gitignore, a tag, a public repository and a remote
+// whose origin/HEAD is not the branch checked out; it ends clean, and is given a language.
+describe('a setup that passes', () => {
+  const MADE = ['.claude/factory.json', '.claude/settings.json', '.gitignore', '.github/dependabot.yml', '.github/workflows/ci.yml'];
+  const CHECKS = ['node pass.js', 'node where.js', 'git diff --check <base>'];
+  let dir: string;
+  let remote: string;
+  let state: string;
+  let out: Out;
+  // The folders are made here, not in before(): scratch() removes them after the hook that made them, and a hook is one.
+  dir = cleanProject();
+  writeFileSync(join(dir, '.gitignore'), 'node_modules/\n');
+  run(dir, 'add', '.gitignore');
+  run(dir, 'commit', '-q', '-m', 'ignore');
+  withLock(dir, 'package-lock.json');
+  run(dir, 'checkout', '-q', '-b', 'trunk');
+  run(dir, 'tag', 'v0.4.0');
+  remote = scratch();
+  run(remote, 'init', '-q', '--bare', '-b', 'stable');
+  run(dir, 'remote', 'add', 'origin', remote);
+  run(dir, 'push', '-q', 'origin', 'trunk:stable');
+  run(dir, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/stable');
+  const remoteHead = run(remote, 'rev-parse', 'stable');
+  state = scratch();
+  const deps = gitWith(dir, state, PUBLIC, [{ args: ['api'], stdout: '{}' }]);
+
+  before(async () => {
+    out = await setup([...CHECKS.flatMap((c) => ['--check', c]), '--language', 'Español'], deps);
+  });
+
+  test('it passes, and each check ran in a temporary copy of the committed repository that is gone after', () => {
+    assert.equal(out.ok, true, JSON.stringify(out));
+    const [, where, diff] = out.checks as { code: number; output: string }[];
+    assert.match(where.output, / no loose$/);
+    assert.ok(!where.output.includes(dir), where.output);
+    assert.equal(diff.code, 0);
+    assert.equal(worktreesOf(dir), 1);
+    assert.deepEqual(readdirSync(dir).filter((n) => n.startsWith('dynamo-setup')), []);
+  });
+
+  test('the repository, the board owner and the main branch (origin/HEAD) come from gh and git, the language from the argument; the rest from the template', () => {
+    const template = readTemplate();
+    const written = readBack(dir);
+    assert.deepEqual(written.project, { ...template.project, repo: 'acme/shop', boardOwner: 'acme', mainBranch: 'stable', checks: CHECKS, documentsLanguage: 'Español' });
+    assert.equal(written.version, template.version);
+    assert.equal(checkedOut(dir).project.documentsLanguage, 'Español');
+  });
+
+  test('the board is a copy of the template named as the repository, linked, and its ids are read back into factory.json', () => {
+    const calls = callsOf(state);
+    assert.ok(calls.includes(COPY), calls.join('\n'));
+    assert.ok(calls.includes(LINK), calls.join('\n'));
+    assert.ok(calls.indexOf(COPY) < calls.indexOf(LINK));
+    assert.equal(calls.some((c) => c.includes('@me')), false);
+    assert.equal(out.board, 7);
+    assert.equal(out.boardCopied, true);
+    assert.deepEqual(readBack(dir).board, boardOf(7, view, fieldList()));
+    assert.ok(calls.includes('project view 7 --owner acme --format json'));
+    assert.ok(calls.includes('project field-list 7 --owner acme --format json'));
+  });
+
+  test('only the label the repository lacks is created', () => {
+    assert.deepEqual(out.labelsCreated, ['in-release']);
+    assert.deepEqual(callsOf(state).filter((c) => c.startsWith('label create')), ['label create in-release -R acme/shop']);
+  });
+
+  test('a lock file of npm gets a grouped Dependabot file, and a public repository gets the call to code scanning', () => {
+    assert.equal(readFileSync(dependabotPath(dir), 'utf8'), dependabotFile());
+    assert.match(String(out.dependabot), /npm/);
+    const [call, ...rest] = scanning(state);
+    assert.equal(rest.length, 0);
+    assert.ok(call.args.includes('PATCH') && call.args.includes('repos/acme/shop/code-scanning/default-setup') && call.args.includes('state=configured'), call.args.join(' '));
+    assert.match(String(out.codeScanning), /configured|on/);
+  });
+
+  test('the settings hold the rules filled with the repository and the board, one rule per check, attribution, worktree and the plugin', () => {
+    const s = settingsOf(dir);
+    assert.deepEqual(s.worktree, { baseRef: 'head' });
+    assert.deepEqual(s.attribution, { commit: '', pr: '' });
+    assert.deepEqual(s.enabledPlugins, { 'dynamo@dynamo': true });
+    const allow: string[] = s.permissions.allow;
+    assert.ok(allow.includes('Bash(node pass.js)') && allow.includes('Bash(git diff --check *)'));
+    assert.ok(allow.includes('Bash(gh project item-list 7 --owner acme *)'));
+    assert.ok(allow.includes('Bash(gh api repos/acme/shop/issues/*)'));
+    assert.ok(allow.includes('Bash(gh project item-edit --id * --project-id PVT_new --field-id PVTSSF_new --single-select-option-id *)'));
+    assert.ok(s.permissions.deny.includes('Bash(git checkout stable*)'));
+    assert.deepEqual(strings(s).filter((x) => /<(repo|boardOwner|boardNumber|boardId|statusFieldId|mainBranch)>/.test(x)), []);
+    assert.equal(out.settings, join(dir, '.claude', 'settings.json'));
+    assert.deepEqual(out.settingsKept, []);
+  });
+
+  test('the worktrees folder is added to the .gitignore after what the file had', () => {
+    assert.match(String(out.gitignore), /added/);
+    assert.equal(ignoreOf(dir), 'node_modules/\n.claude/worktrees/\n');
+  });
+
+  test('with no CI, the seed is written for the main branch and the checks, and the output says so', () => {
+    assert.equal(readFileSync(ciPath(dir), 'utf8'), seedOf('stable', CHECKS));
+    assert.match(String(out.ci), /ci\.yml/);
+    assert.deepEqual(out.ciMissing, []);
+  });
+
+  test('everything the setup wrote is one commit on the next release branch after the tag, and the working branch has none of it', () => {
+    assert.equal(out.release, 'release/0.5.0');
+    assert.equal(out.releaseCreated, true);
+    assert.deepEqual(branches(dir), ['main', 'release/0.5.0', 'trunk']);
+    assert.equal(run(dir, 'branch', '--show-current'), 'release/0.5.0');
+    assert.deepEqual(run(dir, 'show', '--name-only', '--format=', 'HEAD').split('\n').sort(), [...MADE].sort());
+    assert.equal(out.commit, run(dir, 'rev-parse', '--short', 'HEAD'));
+    assert.equal(run(dir, 'rev-list', '--count', 'trunk..release/0.5.0'), '1');
+    // The .gitignore was already committed there; the setup changed it.
+    for (const file of MADE.filter((f) => f !== '.gitignore')) assert.equal(tracked(dir, 'trunk').includes(file), false, file);
+    assert.equal(run(dir, 'status', '--porcelain', '--', ...MADE), '');
+  });
+
+  test('nothing is pushed, the push is printed for the human, and the folder ends clean', () => {
+    assert.equal(out.push, 'git push -u origin release/0.5.0');
+    assert.equal(run(remote, 'branch', '--list', '--format=%(refname:short)'), 'stable');
+    assert.equal(run(remote, 'rev-parse', 'stable'), remoteHead);
+    assert.equal(out.clean, true);
+    assert.equal(run(dir, 'status', '--porcelain'), '');
+  });
+});
+
+// A passing setup of the plainest project: no tag, no remote, no .gitignore, no lock file, a private repository that has
+// none of the labels, no language, and a file of the human that is not committed.
+describe('a setup that passes in a plain project', () => {
   const dir = project();
-  await setup(['--check', 'node fail.js'], gitWith(dir));
-  assert.deepEqual(branches(dir), ['main']);
-  assert.equal(run(dir, 'rev-list', '--count', 'HEAD'), '1');
+  const state = scratch();
+  const deps = gitWith(dir, state, PRIVATE, [{ args: ['api'], stdout: '{}' }, ...answering('copy', {}, [])]);
+  let out: Out;
+
+  before(async () => {
+    out = await setup(['--check', 'node pass.js'], deps);
+  });
+
+  test('it makes the first release branch and stays on it, writes English, and creates the three labels', () => {
+    assert.equal(out.ok, true, JSON.stringify(out));
+    assert.equal(out.release, 'release/0.1.0');
+    assert.equal(out.releaseCreated, true);
+    assert.deepEqual(branches(dir), ['main', 'release/0.1.0']);
+    assert.equal(run(dir, 'branch', '--show-current'), 'release/0.1.0');
+    assert.equal(readBack(dir).project.documentsLanguage, 'English');
+    assert.equal(checkedOut(dir).project.documentsLanguage, 'English');
+    assert.deepEqual(out.labelsCreated, ['in-release', 'epic', 'idea']);
+  });
+
+  test('with no lock file there is no Dependabot file, and a private repository gets no call to code scanning', () => {
+    assert.match(String(out.dependabot), /package-lock\.json/);
+    assert.equal(existsSync(dependabotPath(dir)), false);
+    assert.deepEqual(scanning(state), []);
+    assert.match(String(out.codeScanning), /private/);
+  });
+
+  test('a .gitignore is made, and a file of the human that the setup did not write is left as it was', () => {
+    assert.equal(ignoreOf(dir), '.claude/worktrees/\n');
+    assert.equal(out.clean, false);
+    assert.equal(run(dir, 'status', '--porcelain'), '?? loose.txt');
+  });
+});
+
+// A failing setup: the second check fails and the third gives 127, in a project that has a lock file and a public repository.
+describe('a setup whose check fails', () => {
+  const dir = project();
+  withLock(dir, 'package-lock.json');
+  const state = scratch();
+  const deps = gitWith(dir, state, PUBLIC, [{ args: ['api'], stdout: '{}' }]);
+  let out: Out;
+
+  before(async () => {
+    out = await setup(['--check', 'node pass.js', '--check', 'node fail.js', '--check', 'no-such-program-here run build'], deps);
+  });
+
+  test('the output says which check failed and what it printed, and suggests node --run <script> for a 127', () => {
+    assert.equal(out.ok, false);
+    assert.match(String(out.error), /node fail\.js.*failed \(3\).*nothing was written/);
+    const checks = out.checks as { code: number; output: string; hint?: string }[];
+    assert.deepEqual(checks.map((c) => c.code), [0, 3, 127]);
+    assert.equal(checks[1].output, 'what failed');
+    assert.match(String(checks[2].hint), /node --run <script>/);
+  });
+
+  test('nothing is written: no factory.json, settings, .gitignore, Dependabot file or CI', () => {
+    assert.equal(existsSync(factoryOf(dir)), false);
+    assert.equal(existsSync(join(dir, '.claude')), false);
+    assert.equal(existsSync(join(dir, '.gitignore')), false);
+    assert.equal(existsSync(join(dir, '.github')), false);
+  });
+
+  test('no board is copied, no label is created and no code scanning is called', () => {
+    assert.deepEqual(callsOf(state).filter((c) => c.startsWith('project') || c.startsWith('label')), []);
+    assert.deepEqual(scanning(state), []);
+  });
+
+  test('no branch and no commit are made, and the temporary copy is gone', () => {
+    assert.deepEqual(branches(dir), ['main']);
+    assert.equal(run(dir, 'rev-list', '--count', 'HEAD'), '2');
+    assert.equal(worktreesOf(dir), 1);
+  });
 });

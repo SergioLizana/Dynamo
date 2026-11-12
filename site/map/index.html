@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en" data-page="map" data-root="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-i18n="map.page.title"></title>
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/base.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <link rel="stylesheet" href="map.css">
+  <script src="../assets/theme.js"></script>
+  <script src="../assets/diagram.js" defer></script>
+  <script src="../assets/i18n.js" defer></script>
+  <script src="../assets/shared.i18n.js" defer></script>
+  <script src="../assets/pages.js" defer></script>
+  <script src="../assets/layout.js" defer></script>
+  <script src="../assets/toc.js" defer></script>
+  <script src="../assets/motion.js" defer></script>
+  <script src="../assets/levels.js" defer></script>
+  <script src="map.data.js" defer></script>
+  <script src="map.i18n.js" defer></script>
+  <script src="map.js" defer></script>
+</head>
+<body>
+  <header data-site-header></header>
+
+  <main id="main">
+    <section class="section" aria-labelledby="map-title">
+      <div class="container">
+        <h1 id="map-title" data-i18n="map.title"></h1>
+        <p class="measure" data-i18n="map.lead"></p>
+      </div>
+    </section>
+
+    <section class="section map-diagram" aria-labelledby="diagram-title">
+      <div class="container">
+        <h2 id="diagram-title" data-i18n="map.diagram.heading"></h2>
+        <figure class="diagram" data-diagram>
+          <button type="button" class="button button--secondary diagram__toggle" data-diagram-toggle aria-pressed="false">
+            <span class="diagram__on" data-i18n="diagram.full"></span>
+            <span class="diagram__off" data-i18n="diagram.exit"></span>
+          </button>
+          <iframe class="diagram__frame" data-diagram-frame data-i18n-attr="title:map.diagram.title"></iframe>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="explore-title">
+      <div class="container">
+        <h2 id="explore-title" data-i18n="map.list.heading"></h2>
+        <div class="map-explorer">
+          <div class="map-list" data-map-list></div>
+          <aside class="map-detail" data-map-detail aria-live="polite" data-i18n-attr="aria-label:map.detail.heading">
+            <p class="map-detail__empty" data-i18n="map.detail.empty"></p>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer data-site-footer></footer>
+</body>
+</html>

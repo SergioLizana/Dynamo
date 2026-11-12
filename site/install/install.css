@@ -1,0 +1,121 @@
+/* install.css — what only the install simulator needs: the tabs, the terminal and Back / Next. Built only on the tokens, and
+   it wraps by itself, so it holds at phone width with no horizontal scroll. */
+
+.sim__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.sim__tab-number {
+  font-family: var(--font-mono);
+  font-weight: var(--weight-bold);
+}
+
+.sim__step-title {
+  margin-bottom: var(--space-2);
+}
+
+.sim__step-text {
+  max-width: var(--measure);
+  margin-bottom: var(--space-4);
+}
+
+.sim__terminal {
+  padding: var(--space-4);
+  background: var(--color-bg-inset);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.sim__line {
+  margin: 0 0 var(--space-2);
+}
+
+.sim__line:last-child {
+  margin-bottom: 0;
+}
+
+.sim__prompt {
+  margin-right: var(--space-2);
+  color: var(--color-success);
+}
+
+.sim__command {
+  font-weight: var(--weight-bold);
+}
+
+.sim__line--say {
+  color: var(--color-muted);
+}
+
+.sim__file-path {
+  margin: 0 0 var(--space-1);
+  color: var(--color-accent);
+}
+
+.sim__file-code {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sim__file-rules {
+  margin: var(--space-2) 0 0;
+}
+
+.sim__question {
+  margin: 0 0 var(--space-1);
+  color: var(--color-accent);
+}
+
+.sim__choices {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sim__choice {
+  padding-left: var(--space-4);
+  color: var(--color-muted);
+}
+
+.sim__choice--picked {
+  color: var(--color-fg);
+}
+
+.sim__choice--picked::before {
+  content: "› ";
+  margin-left: calc(-1 * var(--space-4));
+  color: var(--color-success);
+}
+
+.sim__nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.sim__nav .button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sim__count {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+}
+
+.sim__hint {
+  margin-top: var(--space-3);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}

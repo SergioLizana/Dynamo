@@ -1,0 +1,159 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "A ticket across the eight columns of the board",
+    "locale": "en",
+    "output": "site/journey/journey.board.en.html",
+    "quality_profile": "showcase"
+  },
+  "mainPath": [
+    "backlog",
+    "todo",
+    "build",
+    "verify",
+    "review",
+    "merge"
+  ],
+  "states": [
+    {
+      "id": "backlog",
+      "type": "start",
+      "label": "Backlog",
+      "sublabel": "parked"
+    },
+    {
+      "id": "todo",
+      "type": "waiting",
+      "label": "Todo",
+      "sublabel": "queued"
+    },
+    {
+      "id": "build",
+      "type": "active",
+      "label": "Build",
+      "sublabel": "Builder"
+    },
+    {
+      "id": "verify",
+      "type": "decision",
+      "label": "Verify",
+      "sublabel": "checks"
+    },
+    {
+      "id": "review",
+      "type": "decision",
+      "label": "Review",
+      "sublabel": "Reviewer"
+    },
+    {
+      "id": "merge",
+      "type": "active",
+      "label": "Merge",
+      "sublabel": "release"
+    },
+    {
+      "id": "done",
+      "type": "success",
+      "label": "Done",
+      "sublabel": "merged"
+    },
+    {
+      "id": "needs-human",
+      "type": "failure",
+      "label": "Needs Human",
+      "sublabel": "stopped"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "backlog-todo",
+      "from": "backlog",
+      "to": "todo",
+      "label": "ready"
+    },
+    {
+      "id": "todo-build",
+      "from": "todo",
+      "to": "build",
+      "label": "run"
+    },
+    {
+      "id": "build-verify",
+      "from": "build",
+      "to": "verify",
+      "label": "built"
+    },
+    {
+      "id": "verify-review",
+      "from": "verify",
+      "to": "review",
+      "label": "pass"
+    },
+    {
+      "id": "review-merge",
+      "from": "review",
+      "to": "merge",
+      "label": "PASS"
+    },
+    {
+      "id": "merge-done",
+      "from": "merge",
+      "to": "done",
+      "label": "ok"
+    },
+    {
+      "id": "verify-build",
+      "from": "verify",
+      "to": "build",
+      "label": "fail",
+      "variant": "dashed"
+    },
+    {
+      "id": "review-build",
+      "from": "review",
+      "to": "build",
+      "label": "FAIL",
+      "variant": "dashed"
+    },
+    {
+      "id": "build-needs-human",
+      "from": "build",
+      "to": "needs-human",
+      "label": "asks",
+      "variant": "security"
+    },
+    {
+      "id": "verify-needs-human",
+      "from": "verify",
+      "to": "needs-human",
+      "label": "no round",
+      "variant": "security"
+    },
+    {
+      "id": "needs-human-todo",
+      "from": "needs-human",
+      "to": "todo",
+      "label": "answer",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "The path",
+      "items": [
+        "A program moves every card; no agent does",
+        "At most two rounds of Build per ticket"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "The stops",
+      "items": [
+        "Needs Human keeps a comment, the branch and the copy",
+        "You answer, move the card to Todo and launch it again"
+      ]
+    }
+  ]
+}

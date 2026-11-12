@@ -110,7 +110,7 @@ test('the Closes decisions are pure: closes.ts imports nothing', () => {
 
 test('release check and close and the shared reading of the release get gh, git and the config as parameters: they import none of their modules', () => {
   const edges = ['./exec.ts', './gh.ts', './git.ts', './factory.ts', 'node:child_process', 'node:fs'];
-  for (const name of ['release.ts', 'release-check.ts', 'release-close.ts', 'releasing.ts', 'closes.ts']) {
+  for (const name of ['release.ts', 'release-check.ts', 'release-close.ts', 'release-new.ts', 'releasing.ts', 'closes.ts']) {
     assert.deepEqual(imports(name).filter((i) => !i.type && edges.includes(i.from)), [], name);
   }
 });

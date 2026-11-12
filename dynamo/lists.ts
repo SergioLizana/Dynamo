@@ -14,7 +14,7 @@ export type Next = { start: number[]; skip: Skip[]; done: boolean };
 // How many tickets run at once (`project.ticketsAtOnce` of factory.json): a whole number from 1.
 export function atOnceOf(project: Record<string, unknown>): number {
   const value = project.ticketsAtOnce;
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) throw new Error('factory.json has no project.ticketsAtOnce (a whole number from 1)');
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) throw new Error('factory.json has no project.ticketsAtOnce (a whole number from 1); run /dynamo:setup to bring factory.json up to date');
   return value;
 }
 

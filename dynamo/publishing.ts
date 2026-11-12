@@ -7,16 +7,17 @@ export const IDENTITY = { name: 'Sergio Lizana', email: '28341710+SergioLizana@u
 // What is published: the same allowlist that makes the plugin. A folder takes everything under it, a file only itself.
 // Left out: whatever only the development repository uses (its documentation, its CLAUDE.md, its mods and its factory.json).
 export const ALLOWLIST = [
-  '.claude-plugin/', 'skills/', 'agents/', 'hooks/', 'dynamo/', 'guides/', 'templates/', 'assets/',
+  '.claude-plugin/', 'skills/', 'agents/', 'hooks/', 'dynamo/', 'guides/', 'templates/', 'assets/', 'site/',
   'README.md', 'README.es.md', 'LICENSE', '.gitignore', '.gitattributes',
 ];
 
-// The two files that are not copied as they are: the public repository has a CI and a Dependabot of its own, kept in
+// The files that are not copied as they are: the public repository has a CI, a Pages workflow and a Dependabot of its own, kept in
 // `public/` of the tag (the development `.github/workflows/ci.yml` is another file) and placed where GitHub reads them.
 // Source in the tag → place in the public commit.
 export const PUBLIC_FILES: Record<string, string> = {
   'public/ci.yml': '.github/workflows/ci.yml',
   'public/dependabot.yml': '.github/dependabot.yml',
+  'public/pages.yml': '.github/workflows/pages.yml',
 };
 
 // The sources of PUBLIC_FILES that the listing of a tag (`git ls-tree -r -z --name-only`) lacks.

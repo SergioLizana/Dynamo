@@ -11,7 +11,7 @@ import { ROUNDS } from './rounds.ts';
 export function budgetOf(project: Record<string, unknown>, agent: string): number {
   const block = project.budgetUsd;
   const value = typeof block === 'object' && block !== null ? (block as Record<string, unknown>)[agent] : undefined;
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`factory.json has no project.budgetUsd.${agent} (a number of USD above 0)`);
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`factory.json has no project.budgetUsd.${agent} (a number of USD above 0); run /dynamo:setup to bring factory.json up to date`);
   return value;
 }
 
@@ -20,7 +20,7 @@ export function budgetOf(project: Record<string, unknown>, agent: string): numbe
 export function timeoutOf(project: Record<string, unknown>, agent: string): number {
   const block = project.timeoutMinutes;
   const value = typeof block === 'object' && block !== null ? (block as Record<string, unknown>)[agent] : undefined;
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`factory.json has no project.timeoutMinutes.${agent} (a number of minutes above 0)`);
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`factory.json has no project.timeoutMinutes.${agent} (a number of minutes above 0); run /dynamo:setup to bring factory.json up to date`);
   return value;
 }
 
@@ -72,7 +72,8 @@ export type Facts = {
   // What was removed from the copy because git did not track it (cleaning.ts); the comment names it only when there is any.
   removed: string[];
   // `asked`: the Builder stopped to ask the human, or the Reviewer failed it in the last round (loop.ts keeps its conversation, the copy and the branch).
-  stop: { stoppedAt: Stage; reason: string; left: string | null; asked?: boolean } | null;
+  // `cause`: with `asked`, why a Builder was cut off (keeps.ts); null when it asked or was failed.
+  stop: { stoppedAt: Stage; reason: string; left: string | null; asked?: boolean; cause?: string | null; failedCheck?: string | null; resume?: 'review' | 'verify' | null } | null;
 };
 
 // Lines after the first are indented, so no line of an agent's text can start a field of the comment.
@@ -108,6 +109,20 @@ export function resultComment(f: Facts, n: number): string {
     const relaunch = f.stop.stoppedAt === 'merge'
       ? 'To relaunch: take the card out of *Needs Human* (`guides/github-board.md` of the plugin) and launch '
         + `\`/dynamo:autopilot ${n}\`: the copy and the branch are kept, and only the merge is retried (no Builder, no Reviewer).`
+      // A Builder cut off by a limit or an unknown end (keeps.ts) keeps its conversation: both ways are offered, going on and starting anew.
+      : f.stop.asked === true && f.stop.cause != null
+        ? 'To relaunch, going on where the Builder was cut off: write in a comment of this ticket what you want it to know, if anything, take the card out of *Needs Human* (`guides/github-board.md` of the plugin) and launch '
+          + `\`/dynamo:autopilot ${n}\`: the copy, the branch and the Builder's conversation are kept, and the Builder resumes in the same round with the reason it stopped and what you write here after this notice.\n`
+          + 'To start anew instead: remove what «Left» names (`git worktree remove`, then `git branch -D`) before launching it.'
+      // A Reviewer with no result, or a check that did not run, keeps the work: only that step runs again, with no Builder.
+      : f.stop.resume != null
+        ? 'To relaunch: take the card out of *Needs Human* (`guides/github-board.md` of the plugin) and launch '
+          + `\`/dynamo:autopilot ${n}\`: the copy and the branch are kept, and ${f.stop.resume === 'review' ? 'only a new Reviewer runs, on the same commit' : 'the ticket goes on from Verify'} (no Builder).`
+      // A check failed in the last round keeps the Builder's conversation: it goes on with the output of the check.
+      : f.stop.asked === true && f.stop.stoppedAt === 'check'
+        ? 'To relaunch, going on with the Builder: write in a comment of this ticket what you want it to know, if anything, take the card out of *Needs Human* (`guides/github-board.md` of the plugin) and launch '
+          + `\`/dynamo:autopilot ${n}\`: the copy, the branch and the Builder's conversation are kept, and the Builder goes on with the output of the check and what you write here after this notice.\n`
+          + 'To start anew instead: remove what «Left» names (`git worktree remove`, then `git branch -D`) before launching it.'
       // A Builder that asked keeps its conversation too: it goes on with the comments written after this notice.
       : f.stop.asked === true && f.stop.stoppedAt === 'review'
         ? 'To relaunch: answer or guide in a comment of this ticket if you want, take the card out of *Needs Human* (`guides/github-board.md` of the plugin) and launch '
