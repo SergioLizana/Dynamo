@@ -4,6 +4,7 @@ import type { AgentResult } from './agents.ts';
 import type { Check } from './checks.ts';
 import type { Outcome } from './rounds.ts';
 import { ROUNDS } from './rounds.ts';
+import { SKIPPED } from './selection.ts';
 
 const text = { type: 'string' };
 
@@ -102,7 +103,7 @@ export function reviewerPrompt(t: Ticket, previous: string | null, checks: Check
   return [
     `Ticket #${t.n} of ${t.repo}. Base: ${t.base}.`,
     `The change: the Builder's copy ${t.copy} (it is your working folder), HEAD of its branch ${t.branch}.`,
-    ...(checks === null ? [] : ['The automatic check, which dynamo ran on this change (each command and its exit code):', ...checks.map((c) => `- ${c.command} → exit ${c.code}`)]),
+    ...(checks === null ? [] : ['The automatic check, which dynamo ran on this change (each command and its exit code):', ...checks.map((c) => `- ${c.command} → ${c.skipped === true ? SKIPPED : `exit ${c.code}`}`)]),
     'Answer with the structured reply: PASS or FAIL in `verdict`, and your whole report in `report`.',
     ...(previous === null ? [] : ['', 'Your previous verdict, word for word:', previous]),
   ].join('\n');

@@ -79,10 +79,12 @@ test('claude.ts is reached from the entry point only: a subcommand gets runAgent
 });
 
 test('the decisions of the loop are pure: rounds, briefs and runs import nothing but types, each other and the shared helper', () => {
-  const allowed = ['./rounds.ts', './cli.ts'];
+  const allowed = ['./rounds.ts', './cli.ts', './checks.ts', './selection.ts'];
   for (const name of ['rounds.ts', 'briefs.ts', 'runs.ts']) {
     assert.deepEqual(imports(name).filter((i) => !i.type && !allowed.includes(i.from)), [], name);
   }
+  // The selector's answer applied to the checks is pure too: only the checks' own helpers.
+  assert.deepEqual(imports('selection.ts').filter((i) => !i.type && i.from !== './checks.ts'), []);
   assert.deepEqual(imports('rounds.ts').filter((i) => !i.type), []);
 });
 

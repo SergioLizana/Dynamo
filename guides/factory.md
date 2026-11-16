@@ -83,6 +83,13 @@ number above 0 (it may have decimals) and has no default in the code: a missing 
 `project.budgetUsd` is. To change it, edit the number in `.claude/factory.json`; set it above the longest healthy run
 of the project, which the log of a run shows.
 
+`project.budgetUsd.selector` and `project.timeoutMinutes.selector` are the budget (USD) and the time limit (minutes) of the
+test selector, the agent that narrows the checks when `project.selectTests` is `true`. They work as the keys of the
+Builder and the Reviewer, and they are required only with `selectTests` on: with it on and a key missing, `dynamo run`
+stops with an error that names the key; without `selectTests`, a `factory.json` with no selector keys works as before.
+Start with `0.5` USD and `3` minutes. The selector is not part of the levels: it always runs with `haiku` and effort
+`high`, whatever the level of the ticket.
+
 `project.ticketsAtOnce` is how many tickets of a list `dynamo run` takes at once, each in its own copy: so it is also
 the most agents that run at the same time, since a ticket runs one agent at a time. A ticket waits for a free place and
 for its blockers of the list to be merged; merges still go one at a time, whatever the number. It is a whole number
@@ -135,6 +142,22 @@ failed check, with «timed out after N min» first in its output: in *Verify* th
 the merge the ticket goes to *Needs Human*, as with any failed check. A test that does not end is usually the change's
 fault. To change it, edit the number (it may have decimals, e.g. 0.5); set it above the longest healthy run of the
 slowest command of the check.
+
+`project.selectTests`: `true` turns on the test selector; optional, and **off by default**: a `factory.json` without the key
+(or with `false`) runs every command of `project.checks` in every Verify round, as before, and never calls the selector.
+With it on, before each *Verify* round a read-only agent, `dynamo:selector`, gets the files the change touches against
+`<base>` and the checks, and answers for each one: left as it is, narrowed to the tests the change affects, or skipped.
+The agent decides which commands run tests (a linter, `git diff --check <base>` or a validator are left as they are), so
+it works for any language and runner, and when in doubt it includes the test. Dynamo then runs what it chose, and what
+passes is still the exit code of each command that ran, never what the selector said. A narrowed command must start with
+the same program as the original, or the original runs; a selector that fails, times out or gives an answer that is not
+the expected one leaves the original checks running and the ticket goes on. The comment of the run and the reviewer's
+brief show the command that ran and name a skipped check «skipped by the selector»; the selector's cost and turns are
+added to the ticket's and its time is in the *Verify* time. The checks of the merge into the working branch are narrowed
+the same way, with base `HEAD~1` (what the merge changes); the selector's time there is named in the merge checks time and
+counted in its total. Because the selector only guesses what the change affects,
+**the whole suite runs only in the CI of the pull request to the main branch**: that is where a test it skipped is
+caught. It needs `project.budgetUsd.selector` and `project.timeoutMinutes.selector` (see «Limits of a run»).
 
 ## Documents
 

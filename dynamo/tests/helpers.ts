@@ -105,3 +105,11 @@ export function fakeGhEnv(state: string): Record<string, string | undefined> {
 export function fakeClaudeEnv(state: string): Record<string, string | undefined> {
   return noGhEnv({ DYNAMO_CLAUDE: JSON.stringify([process.execPath, FAKE_CLAUDE]), FAKE_CLAUDE: state });
 }
+
+// The checks of a verify or a merge without their time, after proving each has one: a number of seconds, never negative.
+export function untimed(checks: unknown): { command: string; code: number; output: string }[] {
+  return (checks as { command: string; code: number; output: string; seconds: unknown }[]).map(({ seconds, ...rest }) => {
+    if (typeof seconds !== 'number' || !(seconds >= 0)) throw new Error(`${rest.command} has no seconds: ${String(seconds)}`);
+    return rest;
+  });
+}

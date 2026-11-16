@@ -21,6 +21,11 @@ export const STARTING: Levels = {
   high: { builder: { model: 'sonnet', effort: 'high' }, reviewer: { model: 'opus', effort: null } },
 };
 
+// The test selector (#320) is outside the levels: always haiku with effort high, whatever the level of the ticket.
+export function selectorSettingOf(_level: Level): Setting {
+  return { model: 'haiku', effort: 'high' };
+}
+
 const asObject = (v: unknown, key: string): Record<string, unknown> => {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error(`factory.json: ${key} must be an object`);
   return v as Record<string, unknown>;

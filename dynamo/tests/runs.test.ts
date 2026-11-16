@@ -5,10 +5,28 @@ import { builderPrompt, languageOf, readBuilder, readReviewer, reviewerPrompt } 
 import type { Loop } from '../loopkit.ts';
 import { ticket } from '../loopkit.ts';
 import { lastResult, outOfTicket } from '../releases.ts';
-import { budgetOf, checksOf, failedChecks, resultComment, rowOf, timeoutOf, total } from '../runs.ts';
+import { budgetOf, checksOf, failedChecks, resultComment, rowOf, selectorLimitsOf, timeoutOf, total } from '../runs.ts';
 import type { Facts } from '../runs.ts';
 
 // --- The settings of a run (runs.ts).
+
+test('selectorLimitsOf reads the selector budget and time limit only with selectTests true, and names the missing key', () => {
+  const ok = { selectTests: true, budgetUsd: { selector: 0.5 }, timeoutMinutes: { selector: 3 } };
+  const cases: [string, Record<string, unknown>, RegExp | null][] = [
+    ['no budget', { ...ok, budgetUsd: {} }, /no project\.budgetUsd\.selector/],
+    ['no budget block', { ...ok, budgetUsd: undefined }, /no project\.budgetUsd\.selector/],
+    ['no time limit', { ...ok, timeoutMinutes: {} }, /no project\.timeoutMinutes\.selector/],
+    ['neither', { selectTests: true }, /no project\.budgetUsd\.selector/],
+    ['budget 0', { ...ok, budgetUsd: { selector: 0 } }, /no project\.budgetUsd\.selector/],
+    ['time limit text', { ...ok, timeoutMinutes: { selector: '3' } }, /no project\.timeoutMinutes\.selector/],
+    ['both set', ok, null],
+  ];
+  for (const [name, project, error] of cases) {
+    if (error === null) assert.deepEqual(selectorLimitsOf(project), { budget: 0.5, minutes: 3 }, name);
+    else assert.throws(() => selectorLimitsOf(project), error, name);
+  }
+  for (const project of [{}, { selectTests: false }, { selectTests: undefined }]) assert.equal(selectorLimitsOf(project), null);
+});
 
 test('budgetOf reads budgetUsd.<agent> of factory.json, a number above 0, and refuses anything else', () => {
   assert.equal(budgetOf({ budgetUsd: { builder: 5 } }, 'builder'), 5);
@@ -40,7 +58,8 @@ test('rowOf reads the ticket\'s row of dynamo board, and checksOf and failedChec
 
 const facts: Facts = {
   base: 'release/1.0.0', merged: true, rounds: 1,
-  checks: [{ command: 'node --test', code: 0, output: '' }, { command: 'git diff --check <base>', code: 0, output: '' }],
+  checks: [{ command: 'node --test', code: 0, output: '', seconds: 1 }, { command: 'git diff --check <base>', code: 0, output: '', seconds: 0.5 }],
+  verifySeconds: [{ round: 1, seconds: 1.5 }], mergeChecks: null, mergeSelector: null, selector: [],
   verdict: 'PASS', report: 'VERDICT: PASS\nCheckboxes:\n- [x] one — a.ts:1', spent: [{ cost: 1.25, turns: 10 }, { cost: 0.5, turns: 4 }],
   noTrace: null, outOfTicket: 'the README is old', stop: null, mergeSkipped: null, removed: [],
 };
@@ -60,8 +79,40 @@ test('the comment starts with «run · », and has Rounds, Checks, Reviewer, Cos
   assert.deepEqual(total(facts.spent), { cost: 1.75, turns: 14 });
 });
 
+test('the comment gives the time of Verify in each round and of the checks of the merge, always', () => {
+  const lines = (f: Facts) => resultComment(f, 7).split('\n');
+  assert.ok(lines(facts).includes('Verify time: round 1 1.5s'));
+  assert.ok(lines(facts).includes('Merge checks time: not run'));
+  assert.ok(lines({ ...facts, verifySeconds: [] }).includes('Verify time: not run'));
+  assert.ok(lines({ ...facts, verifySeconds: [{ round: 1, seconds: 2 }, { round: 2, seconds: 0.25 }] }).includes('Verify time: round 1 2.0s; round 2 0.3s'));
+  const merge = [{ command: 'node --test', code: 0, output: '', seconds: 30.1 }, { command: 'git diff --check <base>', code: 0, output: '', seconds: 0.2 }];
+  assert.ok(lines({ ...facts, mergeChecks: merge }).includes('Merge checks time: 30.3s (node --test 30.1s; git diff --check <base> 0.2s)'));
+  assert.ok(lines({ ...facts, mergeChecks: [], mergeSkipped: 'same tree' }).includes('Merge checks time: skipped'));
+});
+
+test('the merge checks time names the merge selector\'s seconds and counts them in its total; with none it is as without', () => {
+  const merge = [{ command: 'node --test', code: 0, output: '', seconds: 30.1 }, { command: 'git diff --check <base>', code: 0, output: '', seconds: 0.2 }];
+  const skipped = { command: 'git diff --check <base>', code: 0, output: 'skipped by the selector', seconds: 0, skipped: true };
+  const cases: [string, Partial<Facts>, string][] = [
+    ['selector ran', { mergeChecks: merge, mergeSelector: 2.5 }, 'Merge checks time: 32.8s (selector 2.5s; node --test 30.1s; git diff --check <base> 0.2s)'],
+    ['selector ran, one check skipped', { mergeChecks: [merge[0], skipped], mergeSelector: 1.5 }, 'Merge checks time: 31.6s (selector 1.5s; node --test 30.1s; git diff --check <base> 0.0s)'],
+    ['no merge selector', { mergeChecks: merge, mergeSelector: null }, 'Merge checks time: 30.3s (node --test 30.1s; git diff --check <base> 0.2s)'],
+    ['merge skipped', { mergeChecks: [], mergeSkipped: 'same tree', mergeSelector: null }, 'Merge checks time: skipped'],
+  ];
+  for (const [name, over, line] of cases) assert.ok(resultComment({ ...facts, ...over }, 7).split('\n').includes(line), name);
+});
+
+test('the comment shows a check the selector skipped, and the selector\'s time, cost and turns in each round it ran; with no selector it says nothing of it', () => {
+  const lines = (f: Facts) => resultComment(f, 7).split('\n');
+  assert.ok(!lines(facts).some((l) => l.startsWith('Selector')));
+  const skipped = { command: 'git diff --check <base>', code: 0, output: 'skipped by the selector', seconds: 0, skipped: true };
+  const withSelector = lines({ ...facts, checks: [facts.checks![0], skipped], selector: [{ round: 1, seconds: 3.25, cost: 0.0123, turns: 4 }, { round: 2, seconds: 2, cost: null, turns: null }] });
+  assert.ok(withSelector.includes('Checks: node --test → 0; git diff --check <base> → skipped by the selector'));
+  assert.ok(withSelector.some((l) => l.startsWith('Selector: round 1 3.3s, 0.0123 USD, 4 turns; round 2 2.0s, no cost, no turns')), withSelector.join('\n'));
+});
+
 test('a merge that skipped its checks says so in the comment, after Checks; one that ran them says nothing of it', () => {
-  assert.ok(!resultComment(facts, 7).includes('Merge checks'));
+  assert.ok(!resultComment(facts, 7).includes('Merge checks:'));
   const why = 'the merged tree is the tree of abc1234, which Verify passed: the checks were not run again';
   const lines = resultComment({ ...facts, mergeSkipped: why }, 7).split('\n');
   const at = lines.findIndex((l) => l.startsWith('Checks: '));

@@ -2,9 +2,11 @@
 // subcommand `run` reads the config and posts the comment. The comment starts with «run · », as the run workflow's did,
 // so `dynamo report` reads it as the ticket's result (releases.ts, `lastResult`).
 import type { Check } from './checks.ts';
+import { formatSeconds, sumSeconds } from './checks.ts';
 import type { Output } from './cli.ts';
 import type { Stage } from './rounds.ts';
 import { ROUNDS } from './rounds.ts';
+import { SKIPPED } from './selection.ts';
 
 // The most one run of an agent may spend, in USD (`project.budgetUsd.<agent>` of factory.json; `project` is its block): a
 // number above 0.
@@ -24,6 +26,13 @@ export function timeoutOf(project: Record<string, unknown>, agent: string): numb
   return value;
 }
 
+// The budget and time limit of the test selector (#320): read only when `project.selectTests` is true, so a project that
+// does not use it needs no selector keys. null when it is off; with it on, a missing key is an error that names it.
+export function selectorLimitsOf(project: Record<string, unknown>): { budget: number; minutes: number } | null {
+  if (project.selectTests !== true) return null;
+  return { budget: budgetOf(project, 'selector'), minutes: timeoutOf(project, 'selector') };
+}
+
 // The row of ticket n in what `dynamo board` returned, unknown until checked: its title, whether it is ready and why not.
 export function rowOf(out: Output, n: number): { title: string; ready: boolean; why: string | null } | null {
   const rows = Array.isArray(out.tickets) ? out.tickets : [];
@@ -38,11 +47,13 @@ export function rowOf(out: Output, n: number): { title: string; ready: boolean; 
 export function checksOf(out: Output): Check[] | null {
   const list: unknown = out.checks;
   if (!Array.isArray(list)) return null;
-  const checks = list.filter((c: unknown): c is Check => {
+  const valid = (c: unknown): c is Omit<Check, 'seconds'> & { seconds?: unknown } => {
     const o = typeof c === 'object' && c !== null ? (c as Record<string, unknown>) : {};
     return typeof o.command === 'string' && typeof o.code === 'number' && typeof o.output === 'string';
-  });
-  return checks.length === list.length ? checks : null;
+  };
+  const checks = list.filter(valid);
+  // A check kept in the file of a run that began before the time was measured has no seconds: it counts as 0.
+  return checks.length === list.length ? checks.map((c) => ({ ...c, seconds: typeof c.seconds === 'number' ? c.seconds : 0 })) : null;
 }
 
 // What failed in a check, for the Builder of the next round or the human: each failing command with its code and the end
@@ -64,6 +75,13 @@ export type Facts = {
   checks: Check[] | null;
   // Why the merge ran no check (its tree was the one Verify passed), null when it ran them.
   mergeSkipped: string | null;
+  // The seconds of Verify in each round that ran it (loop.ts), and the checks the merge ran (null when it ran none or did not run).
+  verifySeconds: { round: number; seconds: number }[];
+  mergeChecks: Check[] | null;
+  // The seconds of the merge's selector when it ran (counted in the merge checks time), null when it did not.
+  mergeSelector: number | null;
+  // The runs of the test selector (#320), one per round it ran in; empty when `project.selectTests` is off.
+  selector: { round: number; seconds: number; cost: number | null; turns: number | null }[];
   verdict: 'PASS' | 'FAIL' | null;
   report: string | null;
   spent: Spent[];
@@ -90,13 +108,16 @@ export function total(spent: Spent[]): { cost: number; turns: number } {
 export function resultComment(f: Facts, n: number): string {
   const { cost, turns } = total(f.spent);
   const unknown = f.spent.filter((s) => s.cost === null || s.turns === null).length;
-  const checks = f.checks === null ? 'not run' : f.checks.map((c) => `${c.command} → ${c.code}`).join('; ');
+  const checks = f.checks === null ? 'not run' : f.checks.map((c) => `${c.command} → ${c.skipped === true ? SKIPPED : c.code}`).join('; ');
   const reviewer = f.verdict === null ? 'not run or no verdict' : f.report === null ? f.verdict : `${f.verdict}\n  ${block(f.report)}`;
   const lines = [
     `run · ${f.merged ? `PASS and merged into ${f.base}` : 'not merged'}`,
     `Rounds: ${f.rounds}/${ROUNDS}`,
     `Checks: ${checks}`,
     ...(f.mergeSkipped === null ? [] : [`Merge checks: skipped, ${block(f.mergeSkipped)}`]),
+    `Verify time: ${f.verifySeconds.length === 0 ? 'not run' : f.verifySeconds.map((v) => `round ${v.round} ${formatSeconds(v.seconds)}`).join('; ')}`,
+    ...(f.selector.length === 0 ? [] : [`Selector: ${f.selector.map((s) => `round ${s.round} ${formatSeconds(s.seconds)}, ${s.cost === null ? 'no cost' : `${s.cost.toFixed(4)} USD`}, ${s.turns === null ? 'no turns' : `${s.turns} turns`}`).join('; ')} (its seconds are in the Verify time, its cost and turns in the totals)`]),
+    `Merge checks time: ${f.mergeChecks === null || f.mergeChecks.length === 0 ? (f.mergeSkipped === null ? 'not run' : 'skipped') : `${formatSeconds(Math.round((sumSeconds(f.mergeChecks) + (f.mergeSelector ?? 0)) * 10) / 10)} (${f.mergeSelector === null ? '' : `selector ${formatSeconds(f.mergeSelector)}; `}${f.mergeChecks.map((c) => `${c.command} ${formatSeconds(c.seconds)}`).join('; ')})`}`,
     `Reviewer: ${reviewer}`,
     `Cost: ${cost.toFixed(4)} USD (the sum of total_cost_usd of ${f.spent.length} agent runs${unknown ? `; ${unknown} gave none` : ''})`,
     `Turns: ${turns} (the sum of num_turns)`,

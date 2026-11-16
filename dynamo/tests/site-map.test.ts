@@ -116,7 +116,7 @@ test('the runners, the efforts and the reasons for the levels have their texts i
 
 test('every node has the takes, leaves and example parts of its detail, in English and Spanish', () => {
   const nodes = map.nodes;
-  assert.equal(nodes.length, 28);
+  assert.equal(nodes.length, 29);
   const keys = [
     ...nodes.flatMap((n) => ['takes', 'leaves', 'example'].map((p) => `map.node.${n.id}.${p}`)),
     'map.detail.takes', 'map.detail.leaves', 'map.detail.example', 'map.detail.close',

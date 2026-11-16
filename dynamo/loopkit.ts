@@ -26,6 +26,12 @@ export type State = {
   // The commit Verify passed (the copy's HEAD) and, once merged, why the merge ran no check; neither is kept in the ticket's
   // file: a run that goes on has no record of what Verify passed, so its merge runs the checks.
   verified: string | null; mergeSkipped: string | null;
+  // The time of Verify in each round and the checks the merge ran; for the comment only, not kept in the file either.
+  verifySeconds: { round: number; seconds: number }[]; mergeChecks: Check[] | null;
+  // The seconds of the selector run by the merge, null when it did not run (its time is in the merge checks time).
+  mergeSelector: number | null;
+  // What each run of the test selector (selecting.ts) spent, in the round it ran; the comment names it, and its cost and turns are in `spent` too.
+  selector: { round: number; seconds: number; cost: number | null; turns: number | null }[];
   checks: Check[] | null; builder: BuilderAnswer | null; review: ReviewerAnswer | null; spent: Spent[]; resetsAt: string | null; sessions: Hold['sessions'];
   // The Builder stopped to ask the human; only the file written at that stop says it (a run that goes on starts with it off).
   asked: boolean;
@@ -42,6 +48,8 @@ export type Loop = {
   budget: Record<'builder' | 'reviewer', number>; minutes: Record<'builder' | 'reviewer', number>;
   // The model and effort of every level, and the level of this ticket (read once, at the start, from its body: its rounds keep it).
   levels: Levels; level: Level;
+  // The test selector's budget and time limit (#320), null when `project.selectTests` is off.
+  selector: { budget: number; minutes: number } | null;
 };
 
 // The level of ticket n: the `Level:` line of its body, `high` when it has none. The body that cannot be read is an error, not

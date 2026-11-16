@@ -72,7 +72,7 @@ const builder = { commit: 'x', needsHuman: false, needsHumanReason: '', publishe
 type Call = { args: string[]; stdin: string; cwd: string; agent: string; watched?: string };
 
 // `body`: the body of the issue, where its Level: line is; `levels`: what the project sets as `project.levels`.
-function setup(answers: Record<string, unknown>[], blockers: unknown[] = [], checks?: string[], own: { body?: string; levels?: unknown } = {}) {
+function setup(answers: Record<string, unknown>[], blockers: unknown[] = [], checks?: string[], own: { body?: string; levels?: unknown; project?: Record<string, unknown> } = {}) {
   const dir = repo();
   const ghState = scratch();
   const claudeState = scratch();
@@ -85,7 +85,7 @@ function setup(answers: Record<string, unknown>[], blockers: unknown[] = [], che
     gh: (args, o) => gh(args, { ...o, env: ghEnv }),
     git: (args, o) => git(['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: dir, ...o }),
     exec: execAsync,
-    factory: () => ({ ...factory, project: { ...factory.project, ...(checks === undefined ? {} : { checks }), ...(own.levels === undefined ? {} : { levels: own.levels }) } }) as Factory,
+    factory: () => ({ ...factory, project: { ...factory.project, ...(checks === undefined ? {} : { checks }), ...(own.levels === undefined ? {} : { levels: own.levels }), ...own.project } }) as Factory,
     agent: (r, o) => runAgent(r, { ...o, env: claudeEnv }),
   };
   const lines = (file: string) => (existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter((l) => l !== '').map((l) => JSON.parse(l)) : []);
@@ -144,6 +144,8 @@ test('a ready ticket is built, checked, reviewed and merged: cards in order, one
   // Neither gets tools by flag: the reviewer is held to read-only tools by its agent file. Both run in the copy.
   const [b, r] = calls;
   assert.deepEqual([b.agent, r.agent], ['builder', 'reviewer']);
+  // Without `selectTests` the selector is never called: no call of it, no log, no line in the comment.
+  assert.ok(calls.every((c) => c.agent !== 'selector'));
   for (const c of [b, r]) assert.ok(!c.args.includes('--tools') && !c.args.includes('--strict-mcp-config'), c.agent);
   assert.equal(flag(b, '--max-budget-usd'), '3');
   assert.equal(flag(r, '--max-budget-usd'), '1');
@@ -160,6 +162,9 @@ test('a ready ticket is built, checked, reviewed and merged: cards in order, one
   assert.ok(lines.some((l) => l.startsWith('Cost: 1.7500 USD')));
   assert.ok(lines.includes('Turns: 15 (the sum of num_turns)'));
   assert.ok(lines.includes('Checks: node pass.js → 0; git diff --check <base> → 0'));
+  assert.ok(lines.some((l) => /^Verify time: round 1 \d+\.\ds$/.test(l)), comments[0]);
+  assert.ok(lines.includes('Merge checks time: skipped'), comments[0]);
+  assert.ok(!lines.some((l) => l.startsWith('Selector')), comments[0]);
   // The working branch did not move after Verify: the merged tree is the tree Verify passed, so the merge ran no check.
   assert.ok(lines.some((l) => /^Merge checks: skipped, the merged tree is the tree of [0-9a-f]{7}, which Verify passed/.test(l)), comments[0]);
   assert.deepEqual(lastResult(comments)?.rounds, '1/2');
@@ -229,6 +234,7 @@ test('a ticket the reviewer fails twice goes to Needs Human after round 2, on th
   const lines = comments[0].split('\n');
   assert.equal(lines[0], 'run · not merged');
   assert.ok(lines.includes('Rounds: 2/2'));
+  assert.ok(lines.some((l) => /^Verify time: round 1 \d+\.\ds; round 2 \d+\.\ds$/.test(l)), comments[0]);
   assert.ok(lines.includes('Turns: 13 (the sum of num_turns)'));
   assert.ok(lines.includes('Out of the ticket (for the backlog): the docs are old'));
   assert.ok(lines.includes("Reason: the reviewer's verdict: VERDICT: FAIL"));
@@ -268,6 +274,7 @@ test('a check that fails only at the merge sends the ticket to Needs Human namin
   assert.equal(sh(f.dir, 'log', '--format=%s', '--grep=^Revert'), '');
   assert.deepEqual(f.issue().labels, []);
   assert.match(f.issue().comments[0], /^run · not merged\n[\s\S]*Stopped at: merge\n/);
+  assert.match(f.issue().comments[0], /\nMerge checks time: \d+\.\ds \(node pass\.js \d+\.\ds; node only-at-merge\.js \d+\.\ds\)\n/);
 });
 
 const spentBudget = (cost: number) => ({ agent: 'builder', stdout: JSON.stringify({ type: 'result', subtype: 'error_max_budget_usd', is_error: true, total_cost_usd: cost, num_turns: 30, errors: ['Reached maximum budget ($3)'] }) + '\n', code: 1 });
@@ -357,6 +364,7 @@ test('a factory.json with no timeoutMinutes, checkTimeoutMinutes or budgetUsd is
   for (const [name, make] of [
     ['timeoutMinutes', withProject('timeoutMinutes', { builder: 5 })],
     ['checkTimeoutMinutes', withProject('checkTimeoutMinutes', undefined)],
+    ['budgetUsd\\.selector', withProject('selectTests', true)],
     ['budgetUsd', () => ({ ...withProject('budgetUsd', undefined)(), budgetUsd: { builder: 3, reviewer: 1 } }) as unknown as Factory],
   ] as const) {
     const f = setup([]);
@@ -1354,4 +1362,124 @@ test('a ticket stopped by a time limit whose copy and branch the human removed s
   const builders = f.claudeCalls().filter((b) => b.agent === 'builder');
   assert.equal(flag(builders[1], '--resume'), undefined, 'the Builder is new');
   assert.doesNotMatch(builders[1].stdin, /cut you off/);
+});
+
+// --- The test selector (#320): with `selectTests` on, the checks of Verify are the ones it chose.
+const SELECTING = { selectTests: true, budgetUsd: { builder: 3, reviewer: 1, selector: 0.5 }, timeoutMinutes: { builder: 5, reviewer: 5, selector: 3 } };
+
+test('with selectTests, Verify runs the narrowed command and shows the skipped check: in the comment and in the reviewer\'s brief; the selector costs and takes time like the other agents', async () => {
+  const chosen = { checks: [{ action: 'narrowed', command: 'node pass.js narrowed' }, { action: 'skipped' }] };
+  const f = setup([
+    { agent: 'builder', ...built('built.txt'), stdout: stream(builder, 1.5, 12) },
+    { agent: 'selector', stdout: stream(chosen, 0.0123, 4) },
+    { agent: 'reviewer', stdout: stream({ verdict: 'PASS', report: 'VERDICT: PASS' }, 0.25, 3) },
+  ], [], undefined, { project: SELECTING });
+
+  const out = await runTicket(7, f.deps);
+
+  assert.equal(out.ok, true, JSON.stringify(out));
+  const calls = f.claudeCalls();
+  assert.deepEqual(calls.map((c) => c.agent), ['builder', 'selector', 'reviewer']);
+  // The selector: haiku with effort high, its own budget, in the copy, told the files the change touches and the checks.
+  const s = calls[1];
+  assert.deepEqual([flag(s, '--model'), flag(s, '--effort'), flag(s, '--max-budget-usd')], ['haiku', 'high', '0.5']);
+  assert.equal(s.cwd, join(f.dir, '.claude', 'worktrees', 'ticket-7'));
+  assert.match(s.stdin, /^- built\.txt$/m);
+  assert.match(s.stdin, /^1\. node pass\.js\n2\. git diff --check <base>$/m);
+  assert.ok(!s.args.includes('--tools'));
+  assert.ok(existsSync(join(logs(f.dir), 'selector-1.jsonl')));
+  // What the reviewer is told ran, and what the comment says.
+  assert.match(calls[2].stdin, /^- node pass\.js narrowed → exit 0$/m);
+  assert.match(calls[2].stdin, /^- git diff --check <base> → skipped by the selector$/m);
+  const lines = f.issue().comments[0].split('\n');
+  assert.ok(lines.includes('Checks: node pass.js narrowed → 0; git diff --check <base> → skipped by the selector'), lines.join('\n'));
+  // Its cost and turns are in the totals, and named with its time; the time of Verify has its seconds in it.
+  assert.ok(lines.some((l) => l.startsWith('Cost: 1.7623 USD (the sum of total_cost_usd of 3 agent runs')), lines.join('\n'));
+  assert.ok(lines.includes('Turns: 19 (the sum of num_turns)'));
+  assert.ok(lines.some((l) => /^Selector: round 1 \d+\.\ds, 0\.0123 USD, 4 turns /.test(l)), lines.join('\n'));
+  const verifySeconds = Number(/^Verify time: round 1 (\d+\.\d)s$/m.exec(f.issue().comments[0])?.[1]);
+  const selectorSeconds = Number(/^Selector: round 1 (\d+\.\d)s/m.exec(f.issue().comments[0])?.[1]);
+  assert.ok(verifySeconds >= selectorSeconds, `Verify ${verifySeconds}s includes the selector's ${selectorSeconds}s`);
+  const notes = jsonl(join(logs(f.dir), 'steps.jsonl'));
+  assert.deepEqual(notes.filter((n) => n.step === 'agent').map((n) => n.agent), ['builder', 'selector', 'reviewer']);
+});
+
+test('a selector that exits non-zero, times out or answers nothing valid leaves the original checks running, and the ticket goes on and merges', async () => {
+  for (const [name, answer, limits] of [
+    ['exits non-zero', { agent: 'selector', stdout: 'no stream here\n', code: 1 }, SELECTING.timeoutMinutes],
+    ['times out', { agent: 'selector', stdout: '{"type":"system","subtype":"init"}\n', waitFor: 'never' }, { ...SELECTING.timeoutMinutes, selector: 0.02 }],
+    ['answers what is not its schema', { agent: 'selector', stdout: stream({ checks: 'all' }, 0.01, 1) }, SELECTING.timeoutMinutes],
+  ] as const) {
+    const f = setup([
+      { agent: 'builder', ...built('built.txt'), stdout: stream(builder, 1, 5) },
+      answer,
+      { agent: 'reviewer', stdout: stream({ verdict: 'PASS', report: 'VERDICT: PASS' }, 0.25, 3) },
+    ], [], undefined, { project: { ...SELECTING, timeoutMinutes: limits } });
+
+    const out = await runTicket(7, f.deps);
+
+    assert.equal(out.ok && out.merged, true, `${name}: ${JSON.stringify(out)}`);
+    assert.deepEqual(f.claudeCalls().map((c) => c.agent), ['builder', 'selector', 'reviewer'], name);
+    const lines = f.issue().comments[0].split('\n');
+    assert.ok(lines.includes('Checks: node pass.js → 0; git diff --check <base> → 0'), `${name}: ${lines.join('\n')}`);
+    assert.match(f.claudeCalls()[2].stdin, /^- node pass\.js → exit 0$/m, name);
+    assert.deepEqual(moves(f.ghCalls()), ['Build', 'Verify', 'Review', 'Merge', 'Done'], name);
+  }
+});
+
+// The working branch moves after Verify (another ticket merged), so the merge runs its checks and does not skip them.
+function moveAfterReview(f: ReturnType<typeof setup>) {
+  const agent = f.deps.agent;
+  f.deps.agent = async (r, o) => {
+    const done = await agent!(r, o);
+    if (r.agent === 'reviewer') {
+      writeFileSync(join(f.dir, 'other.txt'), 'another ticket');
+      sh(f.dir, 'add', 'other.txt');
+      sh(f.dir, 'commit', '-q', '-m', 'another ticket merged');
+    }
+    return done;
+  };
+}
+
+test('with selectTests, the merge asks the selector with base HEAD~1 and runs what it narrowed', async () => {
+  const chosen = { checks: [{ action: 'narrowed', command: 'node only-at-merge.js' }, { action: 'skipped' }] };
+  const f = setup([
+    { agent: 'builder', ...built('built.txt'), stdout: stream(builder, 1, 5) },
+    { agent: 'selector', stdout: stream({ checks: [{ action: 'unchanged' }, { action: 'unchanged' }] }, 0.01, 1) },
+    { agent: 'reviewer', stdout: stream({ verdict: 'PASS', report: 'VERDICT: PASS' }, 0.5, 2) },
+    { agent: 'selector', stdout: stream(chosen, 0.02, 2) },
+  ], [], undefined, { project: SELECTING });
+  moveAfterReview(f);
+
+  const out = await runTicket(7, f.deps);
+
+  const calls = f.claudeCalls();
+  assert.deepEqual(calls.map((c) => c.agent), ['builder', 'selector', 'reviewer', 'selector']);
+  assert.match(calls[3].stdin, /against HEAD~1 \(\d+\)/);
+  assert.ok(existsSync(join(logs(f.dir), 'selector-merge-1.jsonl')));
+  // The narrowed command is what ran in the merge: it fails there (its copy is `merge-<n>`), so the ticket stops at the merge naming it.
+  assert.equal(out.merged, false);
+  assert.match(String(out.reason), /the check `node only-at-merge\.js` failed \(exit 5\)/);
+  // The merge selector's seconds are named in the merge checks time, and its total counts them.
+  const line = /^Merge checks time: (\d+\.\d)s \(selector (\d+\.\d)s; /m.exec(f.issue().comments[0]);
+  assert.ok(line, f.issue().comments[0]);
+  assert.ok(Number(line[1]) >= Number(line[2]), 'the total includes the selector');
+});
+
+test('a selector that fails in the merge leaves the original checks running and the merge going on', async () => {
+  const f = setup([
+    { agent: 'builder', ...built('built.txt'), stdout: stream(builder, 1, 5) },
+    { agent: 'selector', stdout: stream({ checks: [{ action: 'unchanged' }, { action: 'unchanged' }] }, 0.01, 1) },
+    { agent: 'reviewer', stdout: stream({ verdict: 'PASS', report: 'VERDICT: PASS' }, 0.5, 2) },
+    { agent: 'selector', stdout: 'no stream here\n', code: 1 },
+  ], [], ['node pass.js', 'node only-at-merge.js'], { project: SELECTING });
+  moveAfterReview(f);
+
+  const out = await runTicket(7, f.deps);
+
+  assert.deepEqual(f.claudeCalls().map((c) => c.agent), ['builder', 'selector', 'reviewer', 'selector']);
+  // Both original checks ran in the merge: the second one fails there.
+  assert.equal(out.merged, false);
+  assert.match(String(out.reason), /the check `node only-at-merge\.js` failed \(exit 5\)/);
+  assert.match(f.issue().comments[0], /\nMerge checks time: \d+\.\ds \(selector \d+\.\ds; node pass\.js \d+\.\ds; node only-at-merge\.js \d+\.\ds\)\n/);
 });

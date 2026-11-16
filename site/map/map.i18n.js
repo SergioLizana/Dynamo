@@ -22,6 +22,8 @@
         'The Builder agent, with the model and the effort of the ticket’s level. Nothing in the session sets them.',
       'map.runner.reviewer':
         'The Reviewer agent, with the model and the effort of the ticket’s level. Nothing in the session sets them.',
+      'map.runner.selector':
+        'The Selector agent, with the fixed model and effort of its own file: they do not depend on the ticket’s level or on the session.',
       'map.runner.none': 'No model runs it: it is plain code of Dynamo’s program, and it does the same every time.',
       'map.level.caption': 'The model and the effort at each level, and why',
       'map.level.level': 'Level',
@@ -152,6 +154,9 @@
       'map.node.agent-reviewer.does':
         'A read-only judge: reads the change against the ticket’s checkboxes, flags anything outside the ticket and returns PASS or FAIL with evidence.',
       'map.node.agent-reviewer.when': 'Never by hand: dynamo run launches it once the automatic check passes.',
+      'map.node.agent-selector.does':
+        'A read-only chooser: given the files a change touches and the project’s checks, it answers for each check whether it runs unchanged, narrowed to the tests the change affects, or skipped.',
+      'map.node.agent-selector.when': 'Never by hand: dynamo run launches it before each Verify round, only when the project turns selectTests on.',
 
       'map.node.skill-discover.takes': 'A loose idea, or an epic with a block left pending.',
       'map.node.skill-discover.leaves': 'One ticket, or one or more specs closed in the conversation. Nothing is written yet.',
@@ -186,6 +191,9 @@
       'map.node.agent-reviewer.takes': 'The ticket, the branch with the Builder’s commit and the result of the automatic check.',
       'map.node.agent-reviewer.leaves': 'A verdict: approved, or rejected with a «For the Builder» note, word for word.',
       'map.node.agent-reviewer.example': 'It reads each checkbox of the ticket, proves it against the change and returns approved or the list of what fails.',
+      'map.node.agent-selector.takes': 'The files the change touches against its base and the project’s checks, in order.',
+      'map.node.agent-selector.leaves': 'One answer per check, in the same order: unchanged, narrowed (with the whole narrowed command) or skipped.',
+      'map.node.agent-selector.example': 'For a change that only touches one test file, it narrows the test check to that file and leaves the linter unchanged.',
 
       'map.node.command-run.takes': 'The numbers of the tickets, or nothing for every ticket ready.',
       'map.node.command-run.leaves': 'The tickets merged into the release branch, the release report and one short JSON line with the result. It never pushes.',
@@ -280,6 +288,8 @@
         'El agente Builder, con el modelo y el esfuerzo del nivel del ticket. Nada de la sesión los fija.',
       'map.runner.reviewer':
         'El agente Reviewer, con el modelo y el esfuerzo del nivel del ticket. Nada de la sesión los fija.',
+      'map.runner.selector':
+        'El agente Selector, con el modelo y el esfuerzo fijos de su propio fichero: no dependen del nivel del ticket ni de la sesión.',
       'map.runner.none': 'Ningún modelo lo ejecuta: es código del programa de Dynamo y hace lo mismo cada vez.',
       'map.level.caption': 'El modelo y el esfuerzo de cada nivel, y por qué',
       'map.level.level': 'Nivel',
@@ -410,6 +420,9 @@
       'map.node.agent-reviewer.does':
         'Un juez de solo lectura: lee el cambio frente a las casillas del ticket, señala lo que queda fuera del ticket y devuelve PASS o FAIL con pruebas.',
       'map.node.agent-reviewer.when': 'Nunca a mano: dynamo run lo lanza cuando pasa la comprobación automática.',
+      'map.node.agent-selector.does':
+        'Un selector de solo lectura: dados los ficheros que toca un cambio y las comprobaciones del proyecto, responde para cada una si se ejecuta sin cambios, reducida a los tests que el cambio afecta, o se omite.',
+      'map.node.agent-selector.when': 'Nunca a mano: dynamo run lo lanza antes de cada ronda de Verify, solo cuando el proyecto activa selectTests.',
 
       'map.node.skill-discover.takes': 'Una idea suelta, o una épica con un bloque pendiente.',
       'map.node.skill-discover.leaves': 'Un ticket, o una o más specs cerradas en la conversación. Nada se escribe todavía.',
@@ -444,6 +457,9 @@
       'map.node.agent-reviewer.takes': 'El ticket, la rama con el commit del Builder y el resultado de la comprobación automática.',
       'map.node.agent-reviewer.leaves': 'Un veredicto: aprobado, o rechazado con un «Para el Builder» palabra por palabra.',
       'map.node.agent-reviewer.example': 'Lee cada casilla del ticket, la prueba contra el cambio y devuelve aprobado o la lista de lo que falla.',
+      'map.node.agent-selector.takes': 'Los ficheros que toca el cambio respecto a su base y las comprobaciones del proyecto, en orden.',
+      'map.node.agent-selector.leaves': 'Una respuesta por comprobación, en el mismo orden: sin cambios, reducida (con el comando reducido completo) u omitida.',
+      'map.node.agent-selector.example': 'Si el cambio solo toca un fichero de test, reduce la comprobación de tests a ese fichero y deja el linter sin cambios.',
 
       'map.node.command-run.takes': 'Los números de los tickets, o nada para todos los que están listos.',
       'map.node.command-run.leaves': 'Los tickets fusionados en la rama de la release, el informe de release y una línea JSON corta con el resultado. Nunca hace push.',

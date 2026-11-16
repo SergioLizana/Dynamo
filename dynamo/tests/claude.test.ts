@@ -169,7 +169,7 @@ test('agentArgs never sets the tools by flag: the agent file is the one list, an
 // names tools without StructuredOutput cannot give the answer of --json-schema, even with --tools adding it (probed
 // on that version, where reviewers answered PASS in text only).
 test('every agent dynamo runs with a schema can answer with it: a tools line in its file lists StructuredOutput', () => {
-  for (const agent of ['builder', 'reviewer']) {
+  for (const agent of ['builder', 'reviewer', 'selector']) {
     const text = readFileSync(join(import.meta.dirname, '..', '..', 'agents', `${agent}.md`), 'utf8');
     const front = text.split(/^---$/m)[1] ?? '';
     const line = front.split(/\r?\n/).find((l) => l.startsWith('tools:'));
