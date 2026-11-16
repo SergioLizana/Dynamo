@@ -2,7 +2,20 @@
 // what they did. Pure but for `runChecks`, the one loop that runs them (verify and merge), without blocking.
 import type { Deps, Output } from './cli.ts';
 
-export type Check = { command: string; code: number; output: string };
+// `seconds`: how long the command ran, to a tenth of a second, measured around the command itself, so it is the same
+// whatever decides which commands run. `skipped`: the test selector (#320) skipped the check, so it did not run: it passed with
+// no time and `command` is the check as the project wrote it; otherwise `command` is what ran, which the selector may have narrowed.
+export type Check = { command: string; code: number; output: string; seconds: number; skipped?: boolean };
+
+// Seconds as the report and the run comment show them: one decimal, «12.3s».
+export function formatSeconds(seconds: number): string {
+  return `${seconds.toFixed(1)}s`;
+}
+
+// The time of a list of checks: their sum, to a tenth of a second.
+export function sumSeconds(checks: { seconds: number }[]): number {
+  return Math.round(checks.reduce((sum, c) => sum + c.seconds, 0) * 10) / 10;
+}
 
 // How much of the end of a check's output the report keeps: enough for the summary line of a test run or a lint.
 export const END = 300;
@@ -67,21 +80,25 @@ export function checkTimeoutOf(project: Record<string, unknown>): number {
 // output of each. A command still running after `timeoutMinutes` is closed with everything it started and fails with
 // «timed out after N min» in its output. It does not stop at the first failure; deciding what a failure means is the
 // caller's. While a command runs the caller's process is free (the commands themselves still go one after another).
-export async function runChecks(commands: string[], sha: string, cwd: string, exec: Deps['exec'], timeoutMinutes: number): Promise<Check[]> {
+export async function runChecks(commands: string[], sha: string, cwd: string, exec: Deps['exec'], timeoutMinutes: number, now: () => number = Date.now): Promise<Check[]> {
   const checks: Check[] = [];
   for (const command of commands) {
     const [program, ...rest] = words(withBase(command, sha));
+    const began = now();
     const r = await exec([program], rest, { cwd, timeoutMs: timeoutMinutes * 60_000 });
+    const seconds = Math.round((now() - began) / 100) / 10;
     if (!r.timedOut) {
-      checks.push({ command, code: r.code, output: outputOf(r, r.code) });
+      checks.push({ command, code: r.code, output: outputOf(r, r.code), seconds });
       continue;
     }
     const lines = [`timed out after ${timeoutMinutes} min`, outputOf(r, 1)].filter((l) => l !== '');
-    checks.push({ command, code: r.code === 0 ? 1 : r.code, output: lines.join('\n') });
+    checks.push({ command, code: r.code === 0 ? 1 : r.code, output: lines.join('\n'), seconds });
   }
   return checks;
 }
 
-export function report(base: string, checks: Check[]): Output {
-  return { ok: checks.every((c) => c.code === 0), base, checks };
+// `seconds` is the sum of the checks' time, and of the selector's when it ran (`selectorSeconds`, also given apart).
+export function report(base: string, checks: Check[], selectorSeconds?: number): Output {
+  const seconds = Math.round((sumSeconds(checks) + (selectorSeconds ?? 0)) * 10) / 10;
+  return { ok: checks.every((c) => c.code === 0), base, seconds, ...(selectorSeconds === undefined ? {} : { selectorSeconds }), checks };
 }

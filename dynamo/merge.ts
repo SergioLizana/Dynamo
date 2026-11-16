@@ -12,16 +12,19 @@ import type { Deps, Output } from './cli.ts';
 import { read, usage } from './cli.ts';
 import type { Check } from './checks.ts';
 import { checkTimeoutOf, endOf, parseChecks, runChecks } from './checks.ts';
+import { narrow } from './narrowing.ts';
+import { assemble } from './selection.ts';
+import type { Select } from './selection.ts';
 import type { Settings } from './merging.ts';
 import { LOCK, hasLabel, refusal, settings, subject, ticketBranches } from './merging.ts';
 import { releaseBranch } from './working.ts';
 import { serially } from './serial.ts';
 
-export function merge(args: string[], deps: Deps): Promise<Output> {
-  return serially(() => mergeOne(args, deps));
+export function merge(args: string[], deps: Deps, select?: Select): Promise<Output> {
+  return serially(() => mergeOne(args, deps, select));
 }
 
-async function mergeOne(args: string[], deps: Deps): Promise<Output> {
+async function mergeOne(args: string[], deps: Deps, select?: Select): Promise<Output> {
   const form = 'usage: merge <n> [--verified <sha>]';
   if (args.length !== 1 && args.length !== 3) usage(form);
   if (!/^[1-9]\d*$/.test(args[0])) usage(form);
@@ -41,13 +44,13 @@ async function mergeOne(args: string[], deps: Deps): Promise<Output> {
       + `git update-ref -d ${LOCK}`);
   }
   try {
-    return await mergeLocked(n, verified, s, commands, limit, deps);
+    return await mergeLocked(n, verified, s, commands, limit, deps, select);
   } finally {
     deps.git(['update-ref', '-d', LOCK]);
   }
 }
 
-async function mergeLocked(n: number, verified: string | null, s: Settings, commands: string[], limit: number, deps: Deps): Promise<Output> {
+async function mergeLocked(n: number, verified: string | null, s: Settings, commands: string[], limit: number, deps: Deps, select?: Select): Promise<Output> {
   const top = read(deps, ['rev-parse', '--show-toplevel']);
   const folder = {
     clean: read(deps, ['status', '--porcelain']) === '',
@@ -63,7 +66,7 @@ async function mergeLocked(n: number, verified: string | null, s: Settings, comm
   const already = ancestor.code === 0;
   let checks: Check[] = [], skipped: string | null = null;
   if (!already) {
-    const done = await inCopy(n, branch, verified, s, commands, limit, top, deps);
+    const done = await inCopy(n, branch, verified, s, commands, limit, top, deps, select);
     if (!done.ok) return done.out;
     checks = done.checks;
     skipped = done.skipped;
@@ -89,7 +92,7 @@ async function mergeLocked(n: number, verified: string | null, s: Settings, comm
 // The merge and its check in a copy of the working branch's tip (a detached worktree, gone whatever happens). Only when every
 // check passes does the working branch move, and only by fast-forward to the merge: a failed check or a conflict leaves it
 // where it was, so nothing is ever reverted and the same merge can be run again.
-async function inCopy(n: number, branch: string, verified: string | null, s: Settings, commands: string[], limit: number, top: string, deps: Deps):
+async function inCopy(n: number, branch: string, verified: string | null, s: Settings, commands: string[], limit: number, top: string, deps: Deps, select?: Select):
   Promise<{ ok: true; checks: Check[]; skipped: string | null } | { ok: false; out: Output }> {
   const path = join(top, '.claude', 'worktrees', `merge-${n}`);
   // A copy left by a merge that died is stale: the lock is ours, so no other merge is using it.
@@ -107,7 +110,10 @@ async function inCopy(n: number, branch: string, verified: string | null, s: Set
     const passed = verified === null ? null : deps.git(['rev-parse', '--verify', '--quiet', `${verified}^{tree}`]);
     const same = passed !== null && passed.code === 0 && passed.stdout.trim() === read(deps, ['rev-parse', 'HEAD^{tree}'], path);
     const skipped = same ? `the merged tree is the tree of ${String(verified).slice(0, 7)}, which Verify passed: the checks were not run again` : null;
-    const checks = skipped === null ? await runChecks(commands, 'HEAD~1', path, deps.exec, limit) : [];
+    // With a selector (#320) the checks are narrowed against HEAD~1, what the merge changes, as Verify does against the merge-base.
+    const { plan } = skipped === null ? await narrow(commands, 'HEAD~1', path, deps, select) : { plan: [] };
+    const ran = await runChecks(plan.flatMap((p) => (p.run === null ? [] : [p.run])), 'HEAD~1', path, deps.exec, limit);
+    const checks = assemble(plan, ran);
     const failed = checks.find((c) => c.code !== 0);
     if (failed) return { ok: false, out: { ok: false, branch, base: s.base, failed, checks } };
 

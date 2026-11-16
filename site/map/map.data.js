@@ -43,6 +43,7 @@
 
       { id: 'agent-builder', kind: 'agent', name: 'dynamo:builder', source: 'agents/builder.md' },
       { id: 'agent-reviewer', kind: 'agent', name: 'dynamo:reviewer', source: 'agents/reviewer.md' },
+      { id: 'agent-selector', kind: 'agent', name: 'dynamo:selector', source: 'agents/selector.md' },
 
       { id: 'hook-outside-writes', kind: 'hook', name: 'outside-writes', source: 'hooks/outside-writes.js' },
       { id: 'hook-main-folder-lock', kind: 'hook', name: 'main-folder-lock', source: 'hooks/main-folder-lock.js' },
@@ -68,6 +69,7 @@
       { from: 'command-run', to: 'command-board', type: 'launches' },
       { from: 'command-run', to: 'agent-builder', type: 'launches' },
       { from: 'command-run', to: 'agent-reviewer', type: 'launches' },
+      { from: 'command-run', to: 'agent-selector', type: 'launches' },
 
       { from: 'skill-discover', to: 'skill-to-spec', type: 'next' },
       { from: 'skill-discover', to: 'skill-to-tickets', type: 'next' },
@@ -87,7 +89,8 @@
   };
 
   // Who runs each node: a skill is read and run by the model of the person's own Claude Code session (`session`); an agent is
-  // run by its own level's model and effort (`builder` or `reviewer`, from assets/levels.js); a subcommand, a hook and an engine
+  // run by its own level's model and effort (`builder` or `reviewer`, from assets/levels.js) or, the selector, by the fixed
+  // model of its file (`selector`: no level table); a subcommand, a hook and an engine
   // feature are plain code, no model runs them (`none`).
   site.map.nodes.forEach(function (node) {
     node.runner = node.kind === 'skill' ? 'session' : node.kind === 'agent' ? node.id.slice('agent-'.length) : 'none';

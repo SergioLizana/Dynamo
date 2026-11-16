@@ -9,7 +9,7 @@ import { gh } from '../gh.ts';
 import { git } from '../git.ts';
 import { merge } from '../merge.ts';
 import { LOCK, hasLabel, refusal, settings, stopReason, subject, ticketBranches } from '../merging.ts';
-import { DYNAMO, fakeGhEnv, noGhEnv, scratch } from './helpers.ts';
+import { DYNAMO, fakeGhEnv, noGhEnv, scratch, untimed } from './helpers.ts';
 import type { Deps } from '../cli.ts';
 import type { Options } from '../exec.ts';
 import type { Factory } from '../factory.ts';
@@ -137,7 +137,7 @@ test('it merges with --no-ff and the subject, runs the checks against HEAD~1, an
   assert.equal(run(dir, 'log', '-1', '--format=%s'), `Merge ticket/7-x into ${BASE} (#7)`);
   assert.equal(run(dir, 'rev-parse', 'HEAD^1'), before);
   assert.equal(run(dir, 'rev-parse', 'HEAD^2'), run(dir, 'rev-parse', 'ticket/7-x'));
-  assert.deepEqual(out.checks, [
+  assert.deepEqual(untimed(out.checks), [
     { command: 'node pass.js', code: 0, output: '' },
     { command: 'git rev-parse <base>', code: 0, output: before },
   ]);
@@ -180,7 +180,7 @@ test('a failed check leaves the working branch where it was, with no revert comm
   const fake = fakeGh();
   const out = await merge(['7'], deps(dir, ['node pass.js', 'node fail.js'], fake));
   assert.equal(out.ok, false);
-  assert.deepEqual(out.failed, { command: 'node fail.js', code: 3, output: 'what failed' });
+  assert.deepEqual(untimed([out.failed])[0], { command: 'node fail.js', code: 3, output: 'what failed' });
   assert.equal(out.reverted, undefined);
   assert.equal(out.conflict, undefined);
   assert.equal(head(dir), before);
@@ -352,19 +352,19 @@ test('a working branch that moved after Verify (the trees differ) runs every che
   const before = head(dir);
   const failing = await merge(['7', '--verified', verified], deps(dir, ['node pass.js', 'node fail.js']));
   assert.equal(failing.ok, false);
-  assert.deepEqual(failing.failed, { command: 'node fail.js', code: 3, output: 'what failed' });
+  assert.deepEqual(untimed([failing.failed])[0], { command: 'node fail.js', code: 3, output: 'what failed' });
   assert.equal(head(dir), before);
   const out = await merge(['7', '--verified', verified], deps(dir, ['node pass.js', 'git rev-parse <base>']));
   assert.equal(out.ok, true);
   assert.equal(out.skipped, undefined);
-  assert.deepEqual(out.checks, [{ command: 'node pass.js', code: 0, output: '' }, { command: 'git rev-parse <base>', code: 0, output: before }]);
+  assert.deepEqual(untimed(out.checks), [{ command: 'node pass.js', code: 0, output: '' }, { command: 'git rev-parse <base>', code: 0, output: before }]);
 });
 
 test('with no record of what Verify passed (a merge by hand), or one that names no commit, the checks run', async () => {
   const dir = repo();
   const failing = await merge(['7'], deps(dir, ['node fail.js']));
   assert.equal(failing.ok, false);
-  assert.deepEqual(failing.failed, { command: 'node fail.js', code: 3, output: 'what failed' });
+  assert.deepEqual(untimed([failing.failed])[0], { command: 'node fail.js', code: 3, output: 'what failed' });
   const unknown = await merge(['7', '--verified', 'deadbeef'], deps(dir, ['node fail.js']));
   assert.equal(unknown.ok, false, 'a sha that is not a commit of the repository proves nothing');
   const out = await merge(['7'], deps(dir, ['node pass.js']));

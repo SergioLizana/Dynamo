@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { levelOf, levelsOf, LEVELS, STARTING } from '../levels.ts';
+import { levelOf, levelsOf, LEVELS, selectorSettingOf, STARTING } from '../levels.ts';
+
+test('the selector is haiku with effort high at every level, whatever project.levels says', () => {
+  for (const level of LEVELS) assert.deepEqual(selectorSettingOf(level), { model: 'haiku', effort: 'high' }, level);
+});
 
 test('a project with no levels gives the starting values of low, medium and high', () => {
   for (const project of [{}, { levels: {} }, { levels: undefined }]) {

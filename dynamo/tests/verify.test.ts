@@ -8,7 +8,7 @@ import { END, endOf, parseChecks, report, withBase, words } from '../checks.ts';
 import { verify } from '../verify.ts';
 import { execAsync } from '../exec.ts';
 import { git } from '../git.ts';
-import { DYNAMO, noGhEnv, scratch } from './helpers.ts';
+import { DYNAMO, noGhEnv, scratch, untimed } from './helpers.ts';
 import type { Deps } from '../cli.ts';
 import type { Factory } from '../factory.ts';
 
@@ -42,10 +42,16 @@ test('endOf gives the end of the output, stdout then stderr, with LF line ends, 
 });
 
 test('report is ok only if every check exits 0, and always says what each one did', () => {
-  const pass = { command: 'a', code: 0, output: 'fine' };
-  const fail = { command: 'b', code: 3, output: 'broke' };
-  assert.deepEqual(report('sha', [pass]), { ok: true, base: 'sha', checks: [pass] });
-  assert.deepEqual(report('sha', [pass, fail, pass]), { ok: false, base: 'sha', checks: [pass, fail, pass] });
+  const pass = { command: 'a', code: 0, output: 'fine', seconds: 1.5 };
+  const fail = { command: 'b', code: 3, output: 'broke', seconds: 0.25 };
+  assert.deepEqual(report('sha', [pass]), { ok: true, base: 'sha', seconds: 1.5, checks: [pass] });
+  assert.deepEqual(report('sha', [pass, fail, pass]), { ok: false, base: 'sha', seconds: 3.3, checks: [pass, fail, pass] });
+});
+
+test('report adds the selector\'s seconds to the time of the checks, and names them apart only when the selector ran', () => {
+  const pass = { command: 'a', code: 0, output: '', seconds: 1.5 };
+  assert.deepEqual(report('sha', [pass], 2.25), { ok: true, base: 'sha', seconds: 3.8, selectorSeconds: 2.25, checks: [pass] });
+  assert.equal('selectorSeconds' in report('sha', [pass]), false);
 });
 
 // --- The subcommand, on a temporary git repository, with real git and real processes.
@@ -90,7 +96,7 @@ test('a check that passes and one that fails: each has its command, exit code an
   const { dir } = repo();
   const out = await verify([dir, 'main'], deps('node pass.js', 'node fail.js'));
   assert.equal(out.ok, false);
-  assert.deepEqual(out.checks, [
+  assert.deepEqual(untimed(out.checks), [
     { command: 'node pass.js', code: 0, output: '' },
     { command: 'node fail.js', code: 3, output: 'what failed' },
   ]);
@@ -115,7 +121,7 @@ test('<base> becomes the merge-base of HEAD and the base, not the base itself', 
   assert.notEqual(mergeBase, mainTip);
   const out = await verify([dir, 'main'], deps('node show.js <base>'));
   assert.equal(out.base, mergeBase);
-  assert.deepEqual(out.checks, [{ command: 'node show.js <base>', code: 0, output: `got ${mergeBase}` }]);
+  assert.deepEqual(untimed(out.checks), [{ command: 'node show.js <base>', code: 0, output: `got ${mergeBase}` }]);
 });
 
 test('the checks run in the copy, not in the current folder', async () => {
@@ -139,7 +145,7 @@ test('a command past checkTimeoutMinutes fails with «timed out after N min» in
   const checks = out.checks as { command: string; code: number; output: string }[];
   assert.notEqual(checks[0].code, 0);
   assert.match(checks[0].output, /timed out after 0.02 min/);
-  assert.deepEqual(checks[1], { command: 'node pass.js', code: 0, output: '' });
+  assert.deepEqual(untimed([checks[1]])[0], { command: 'node pass.js', code: 0, output: '' });
 });
 
 test('a missing or invalid checkTimeoutMinutes is an error, and no command runs', async () => {
@@ -183,4 +189,46 @@ test('through the entry point: no arguments exits 2; a copy that does not exist 
     assert.equal(lines.length, 1);
     assert.equal(JSON.parse(lines[0]).ok, false);
   }
+});
+
+// --- With the test selector (#320): `select` is what `run` gives when `project.selectTests` is on.
+
+test('with a select, the narrowed command is what runs and is reported, a skipped check shows as skipped by the selector, and the selector gets the changed files', async () => {
+  const { dir, mergeBase } = repo();
+  const asked: unknown[] = [];
+  const select = async (input: unknown) => {
+    asked.push(input);
+    return { answer: { checks: [{ action: 'narrowed', command: 'node show.js narrowed' }, { action: 'skipped' }, { action: 'unchanged' }] }, seconds: 1.5 };
+  };
+  const out = await verify([dir, 'main'], deps('node show.js whole', 'node fail.js', 'node pass.js'), select);
+  assert.equal(out.ok, true, JSON.stringify(out));
+  assert.deepEqual(asked, [{ base: mergeBase, files: ['b.txt'], commands: ['node show.js whole', 'node fail.js', 'node pass.js'] }]);
+  assert.deepEqual(untimed(out.checks), [
+    { command: 'node show.js narrowed', code: 0, output: 'got narrowed' },
+    { command: 'node fail.js', code: 0, output: 'skipped by the selector', skipped: true },
+    { command: 'node pass.js', code: 0, output: '' },
+  ]);
+  assert.equal(out.selectorSeconds, 1.5);
+  const checks = out.checks as { seconds: number }[];
+  assert.equal(out.seconds, Math.round((checks.reduce((s, c) => s + c.seconds, 0) + 1.5) * 10) / 10, 'the selector\'s time is in the time of Verify');
+});
+
+test('a select that gives no answer, or throws, leaves every check running as the project wrote it; a command of another program does too', async () => {
+  const { dir } = repo();
+  for (const select of [
+    async () => ({ answer: null, seconds: 0.5 }),
+    async (): Promise<{ answer: unknown; seconds: number }> => { throw new Error('the selector broke'); },
+    async () => ({ answer: { checks: [{ action: 'narrowed', command: 'git status' }, { action: 'unchanged' }] }, seconds: 0 }),
+  ]) {
+    const out = await verify([dir, 'main'], deps('node show.js whole', 'node fail.js'), select);
+    assert.deepEqual(untimed(out.checks), [{ command: 'node show.js whole', code: 0, output: 'got whole' }, { command: 'node fail.js', code: 3, output: 'what failed' }]);
+  }
+});
+
+test('without a select the report carries no selectorSeconds, and git diff is not asked for', async () => {
+  const { dir } = repo();
+  const calls: string[][] = [];
+  const out = await verify([dir, 'main'], { ...deps('node pass.js'), git: (args, o) => { calls.push(args); return git(args, o); } });
+  assert.equal('selectorSeconds' in out, false);
+  assert.ok(!calls.some((c) => c[0] === 'diff'));
 });

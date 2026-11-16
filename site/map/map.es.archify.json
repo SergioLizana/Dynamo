@@ -43,6 +43,7 @@
 
     { "id": "agent-builder", "type": "cloud", "label": "builder", "pos": [540, 240], "size": [140, 52] },
     { "id": "agent-reviewer", "type": "cloud", "label": "reviewer", "pos": [720, 240], "size": [140, 52] },
+    { "id": "agent-selector", "type": "cloud", "label": "selector", "pos": [880, 140], "size": [140, 52] },
 
     { "id": "hook-outside-writes", "type": "security", "label": "outside-writes", "pos": [300, 240], "size": [150, 52] },
     { "id": "hook-main-folder-lock", "type": "security", "label": "main-folder-lock", "pos": [830, 600], "size": [160, 52] },
@@ -72,6 +73,7 @@
     { "id": "run-board", "from": "command-run", "to": "command-board" },
     { "id": "run-builder", "from": "command-run", "to": "agent-builder", "fromSide": "top", "toSide": "bottom" },
     { "id": "run-reviewer", "from": "command-run", "to": "agent-reviewer", "fromSide": "top", "toSide": "bottom" },
+    { "id": "run-selector", "from": "command-run", "to": "agent-selector", "fromSide": "right", "toSide": "bottom" },
 
     { "id": "status-run", "from": "command-status", "to": "command-run", "label": "lee logs", "variant": "dashed", "fromSide": "top", "toSide": "bottom" },
     { "id": "lock-run", "from": "hook-main-folder-lock", "to": "command-run", "label": "protege", "variant": "security", "fromSide": "top", "toSide": "bottom" },

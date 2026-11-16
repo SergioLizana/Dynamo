@@ -12,7 +12,7 @@ import type { AgentResult } from './agents.ts';
 import { BUILDER_SCHEMA, OUTAGE_PROMPT, REVIEWER_SCHEMA, RESUME_PROMPT, answerPrompt, builderPrompt, causePrompt, failurePrompt, readBuilder, readReviewer, reviewerPrompt } from './briefs.ts';
 import { card } from './card.ts';
 import { cleanCopy } from './cleaning.ts';
-import { checkTimeoutOf } from './checks.ts';
+import { checkTimeoutOf, sumSeconds } from './checks.ts';
 import type { RunAgent } from './claude.ts';
 import type { Deps, Output } from './cli.ts';
 import { exit } from './cli.ts';
@@ -27,6 +27,7 @@ import type { Loop, State } from './loopkit.ts';
 import { makeCopy, mark, readAnswers, readLevel, stopped, ticket } from './loopkit.ts';
 import { merge } from './merge.ts';
 import { settings, stopReason } from './merging.ts';
+import { selectorOf } from './selecting.ts';
 import { readReinforced } from './reinforce.ts';
 import { releaseBranch } from './working.ts';
 import { latestAttempt, note, readLog } from './notes.ts';
@@ -39,7 +40,7 @@ import { readLock } from './runlock.ts';
 import type { Next, Outcome } from './rounds.ts';
 import { OUTAGE_TRIES, OUTAGE_WAIT_MS, next, stoppedByOutage } from './rounds.ts';
 import type { Facts } from './runs.ts';
-import { budgetOf, checksOf, failedChecks, resultComment, rowOf, timeoutOf, total } from './runs.ts';
+import { budgetOf, checksOf, failedChecks, resultComment, rowOf, selectorLimitsOf, timeoutOf, total } from './runs.ts';
 import { Pause, Stop } from './stops.ts';
 import { verify } from './verify.ts';
 
@@ -48,11 +49,12 @@ export async function runTicket(n: number, deps: Deps): Promise<Output> {
   const factory = deps.factory();
   checkTimeoutOf(factory.project); // the check's limit is read now, not at the first check: a wrong value stops the run before anything is read or moved
   const levels = levelsOf(factory.project); // so is a wrong value of the levels
+  const selector = selectorLimitsOf(factory.project); // and the selector's limits, which a project with selectTests off need not have
   const s = settings(factory.project, releaseBranch(deps));
   const both = (of: typeof budgetOf) => ({ builder: of(factory.project, 'builder'), reviewer: of(factory.project, 'reviewer') });
   const loop: Loop = {
     n, title: '', deps, agent: deps.agent, wait: deps.wait ?? ((ms) => sleep(ms)), logs: '', main: '', startedAt: new Date().toISOString(), budget: both(budgetOf), minutes: both(timeoutOf),
-    levels, level: 'high',
+    levels, level: 'high', selector,
   };
   // The file of a ticket whose run is alive refuses it: that run holds it. One whose run is dead is a ticket half done.
   loop.main = mainFolder(deps);
@@ -83,7 +85,7 @@ export async function runTicket(n: number, deps: Deps): Promise<Output> {
 
   const st: State = {
     round: hold?.round ?? 1, stage: hold?.phase ?? 'build', merged: false, head: null, copy: null, branch: null, failed: hold?.failed ?? null,
-    verified: null, mergeSkipped: null, checks: hold?.checks ?? null, builder: hold?.builder ?? null, review: hold?.review ?? null, spent: hold?.spent ?? [], resetsAt: null,
+    verified: null, mergeSkipped: null, verifySeconds: [], selector: [], mergeChecks: null, mergeSelector: null, checks: hold?.checks ?? null, builder: hold?.builder ?? null, review: hold?.review ?? null, spent: hold?.spent ?? [], resetsAt: null,
     sessions: hold?.sessions ?? { builder: null, reviewer: null }, asked: false, cause: null, failedCheck: null, resume: null,
   };
   mark(loop, st);
@@ -117,7 +119,7 @@ export async function runTicket(n: number, deps: Deps): Promise<Output> {
   const removed = paused === null && !st.asked && st.resume === null && st.copy !== null ? cleanCopy(deps, st.copy) : [];
   const file = join(loop.logs, 'comment.md');
   writeFileSync(file, paused === null ? resultComment({
-    base: s.base, merged: st.merged, rounds: st.round, checks: st.checks, mergeSkipped: st.mergeSkipped, verdict: st.review?.verdict ?? null, report: st.review?.report ?? null,
+    base: s.base, merged: st.merged, rounds: st.round, checks: st.checks, mergeSkipped: st.mergeSkipped, verifySeconds: st.verifySeconds, selector: st.selector, mergeChecks: st.mergeChecks, mergeSelector: st.mergeSelector, verdict: st.review?.verdict ?? null, report: st.review?.report ?? null,
     spent: st.spent, noTrace: st.builder?.noTrace ?? null, outOfTicket: st.builder?.outOfTicket ?? null, removed, stop,
   }, n) : pausedComment({
     stoppedAt: paused.stoppedAt, reason: paused.message, round: st.round, log: `${shown(loop)}/${basename(paused.log)}`, raw: rawEnd(readLog(paused.log)),
@@ -211,8 +213,9 @@ async function steps(loop: Loop, repo: string, base: string, st: State, from: St
     } else if (go === 'verify') {
       mark(loop, st, 'check');
       await move(COLUMNS.verify);
-      const v = await exit(() => verify([String(st.copy), base], deps));
+      const v = await exit(() => verify([String(st.copy), base], deps, selectorOf(loop, st)));
       st.checks = checksOf(v.out);
+      if (st.checks !== null) st.verifySeconds.push({ round: st.round, seconds: typeof v.out.seconds === 'number' ? v.out.seconds : sumSeconds(st.checks) }); // the selector's time is in it
       // What Verify passed is the commit the copy is at; the merge compares its tree with that commit's. The Builder leaves nothing
       // uncommitted (what is merged is the branch, not the folder), so the tree Verify checked is the tree of this commit.
       const tip = v.code === 0 ? deps.git(['rev-parse', 'HEAD'], { cwd: String(st.copy) }) : null;
@@ -224,8 +227,9 @@ async function steps(loop: Loop, repo: string, base: string, st: State, from: St
       mark(loop, st, 'merge');
       if (!inBase) await move(COLUMNS.merge);
       inBase = false;
-      const m = await exit(() => merge(st.verified === null ? [String(n)] : [String(n), '--verified', st.verified], deps));
+      const m = await exit(() => merge(st.verified === null ? [String(n)] : [String(n), '--verified', st.verified], deps, selectorOf(loop, st, 'merge')));
       st.head = m.code === 0 && typeof m.out.head === 'string' ? m.out.head : null;
+      st.mergeChecks = checksOf(m.out);
       st.mergeSkipped = m.code === 0 && typeof m.out.skipped === 'string' ? m.out.skipped : null;
       o = { step: 'merge', code: m.code, conflict: m.out.conflict === true, reason: m.code === 0 ? '' : stopReason(m.code, m.out) };
     } else {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkTimeoutOf, failedTests, runChecks } from '../checks.ts';
+import { checkTimeoutOf, failedTests, formatSeconds, report, runChecks, sumSeconds } from '../checks.ts';
 import { settings } from '../merging.ts';
 import type { Deps } from '../cli.ts';
 
@@ -12,14 +12,14 @@ test('runChecks runs each command in the folder, in order, with <base> replaced,
     calls.push({ command, args, cwd: options?.cwd, timeoutMs: options?.timeoutMs });
     return { code: command[0] === 'bad' ? 3 : 0, stdout: 'out\r\n', stderr: 'err' };
   };
-  const checks = await runChecks(['ok one <base>', 'bad two'], 'abc123', '/copy', exec, 15);
+  const checks = await runChecks(['ok one <base>', 'bad two'], 'abc123', '/copy', exec, 15, () => 0);
   assert.deepEqual(calls, [
     { command: ['ok'], args: ['one', 'abc123'], cwd: '/copy', timeoutMs: 900000 },
     { command: ['bad'], args: ['two'], cwd: '/copy', timeoutMs: 900000 },
   ]);
   assert.deepEqual(checks, [
-    { command: 'ok one <base>', code: 0, output: 'out\nerr' },
-    { command: 'bad two', code: 3, output: 'out\nerr' },
+    { command: 'ok one <base>', code: 0, output: 'out\nerr', seconds: 0 },
+    { command: 'bad two', code: 3, output: 'out\nerr', seconds: 0 },
   ]);
 });
 
@@ -27,12 +27,30 @@ test('a command that timed out fails, with «timed out after N min» first in it
   const exec: Deps['exec'] = async (command) => command[0] === 'slow'
     ? { code: 124, stdout: 'partial', stderr: '', timedOut: true }
     : { code: 0, stdout: '', stderr: '' };
-  assert.deepEqual(await runChecks(['slow one', 'fast two'], 'abc', '/copy', exec, 15), [
-    { command: 'slow one', code: 124, output: 'timed out after 15 min\npartial' },
-    { command: 'fast two', code: 0, output: '' },
+  assert.deepEqual(await runChecks(['slow one', 'fast two'], 'abc', '/copy', exec, 15, () => 0), [
+    { command: 'slow one', code: 124, output: 'timed out after 15 min\npartial', seconds: 0 },
+    { command: 'fast two', code: 0, output: '', seconds: 0 },
   ]);
   const odd = await runChecks(['slow'], 'abc', '/copy', async () => ({ code: 0, stdout: '', stderr: '', timedOut: true }), 2);
   assert.notEqual(odd[0].code, 0, 'a timed-out command never counts as passed, whatever code it gave');
+});
+
+test('runChecks gives each command the seconds it took, to a tenth, timed or not, and report sums them', async () => {
+  const ticks = [1000, 3340, 5000, 5000, 9000, 9060]; // starts and ends of three commands: 2.3 s, 0 s, 0.1 s
+  const exec: Deps['exec'] = async (command) => command[0] === 'slow' ? { code: 124, stdout: '', stderr: '', timedOut: true } : { code: 0, stdout: '', stderr: '' };
+  const checks = await runChecks(['slow a', 'b', 'c'], 'abc', '/copy', exec, 15, () => ticks.shift() ?? 0);
+  assert.deepEqual(checks.map((c) => c.seconds), [2.3, 0, 0.1]);
+  const out = report('sha', checks);
+  assert.equal(out.seconds, 2.4, 'the sum, with no float noise (2.3 + 0 + 0.1)');
+  assert.deepEqual(out.checks, checks);
+  assert.equal(report('sha', []).seconds, 0);
+});
+
+test('formatSeconds shows one decimal and the unit; sumSeconds rounds the sum to a tenth', () => {
+  assert.equal(formatSeconds(0), '0.0s');
+  assert.equal(formatSeconds(12.34), '12.3s');
+  assert.equal(formatSeconds(95), '95.0s');
+  assert.equal(sumSeconds([{ seconds: 0.1 }, { seconds: 0.2 }]), 0.3);
 });
 
 // The «failing tests:» section of `node --test`, as it prints it, with a long trace under each test.
